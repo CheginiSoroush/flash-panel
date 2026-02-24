@@ -133,7 +133,9 @@ export async function updateDataset(request: Request, env: Env): Promise<Setting
             ["noiseDelayMax"],
             ["amneziaNoiseCount"],
             ["amneziaNoiseSizeMin"],
-            ["amneziaNoiseSizeMax"]
+            ["amneziaNoiseSizeMax"],
+            ["customSubs"],
+            ["customConfigs"]
         ];
 
     const entries = await Promise.all(

@@ -8,7 +8,7 @@ import { fetchWarpAccounts } from "@warp";
 import { VlOverWSHandler } from "@vless";
 import { TrOverWSHandler } from "@trojan";
 import JSZip from "jszip";
-import { base64EncodeUtf8, HttpStatus, respond } from "@common";
+import { base64DecodeUtf8, base64EncodeUtf8, HttpStatus, respond } from "@common";
 import { generateRemark, generateWsPath, getConfigAddresses, randomUpperCase, resolveDNS } from "@utils";
 
 export async function handleWebsocket(request: Request): Promise<Response> {
@@ -562,7 +562,9 @@ export async function getURLConfigs() {
             VLConfigs,
             TRConfigs,
             outProxy,
-            remoteDNS
+            remoteDNS,
+            customConfigs,
+            customSubs
         }
     } = globalThis;
 
@@ -643,7 +645,9 @@ export async function getURLConfigs() {
         }
     }
 
-    const configs = btoa(VLConfs + TRConfs + chainProxy);
+    const customConfs = customConfigs.join("\n") + await fetchCustomSubs(customSubs);
+    const configs = base64EncodeUtf8(VLConfs + TRConfs + chainProxy + customConfs);
+    
     return new Response(configs, {
         status: 200,
         headers: {
@@ -654,4 +658,39 @@ export async function getURLConfigs() {
             'DNS': remoteDNS
         }
     });
+}
+
+async function fetchCustomSubs(subs: string[]): Promise<string> {
+    const results = await Promise.all(
+        subs.map(async (url) => {
+            try {
+                const res = await fetch(url);
+                if (!res.ok) return "";
+
+                const text = (await res.text()).trim();
+                if (!text) return "";
+
+                if (isBase64(text)) {
+                    try {
+                        return base64DecodeUtf8(text);
+                    } catch {
+                        return text;
+                    }
+                }
+
+                return text;
+            } catch {
+                return "";
+            }
+        })
+    );
+
+    return results
+        .filter(Boolean)
+        .join("\n");
+}
+
+function isBase64(str: string): boolean {
+    if (!str || str.length % 4 !== 0) return false;
+    return /^[A-Za-z0-9+/=\r\n]+$/.test(str);
 }

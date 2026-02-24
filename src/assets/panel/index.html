@@ -328,6 +328,30 @@
             </details>
             <details>
                 <summary>
+                    <h3>External Raw Configs
+                        <a href="https://bia-pain-bache.github.io/BPB-Worker-Panel/configuration/external-configs/"
+                            target="_blank" title="Help">
+                            <span class="material-symbols-rounded">info</span>
+                        </a>
+                    </h3>
+                </summary>
+                <div class="section">
+                    <div class="form-control">
+                        <label for="customSubs">🔗 Subscriptions</label>
+                        <div>
+                            <textarea type="text" id="customSubs" name="customSubs" rows="1" wrap="off"></textarea>
+                        </div>
+                    </div>
+                    <div class="form-control">
+                        <label for="customConfigs">➕ Single Configs</label>
+                        <div>
+                            <textarea type="text" id="customConfigs" name="customConfigs" rows="1" wrap="off"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </details>
+            <details>
+                <summary>
                     <h3>Warp General
                         <a href="https://bia-pain-bache.github.io/BPB-Worker-Panel/configuration/warp/" target="_blank"
                             title="Help">
@@ -812,8 +836,7 @@
             <summary>
                 <h3>
                     Raw (without settings)
-                    <a href="https://bia-pain-bache.github.io/BPB-Worker-Panel/usage/raw/" target="_blank"
-                        title="Help">
+                    <a href="https://bia-pain-bache.github.io/BPB-Worker-Panel/usage/raw/" target="_blank" title="Help">
                         <span class="material-symbols-rounded">info</span>
                     </a>
                 </h3>
@@ -852,8 +875,7 @@
                             </div>
                         </td>
                         <td>
-                            <button title="Display QR code"
-                                onclick="openQR('raw', 'xray', 'Raw', 'Raw Subscription')">
+                            <button title="Display QR code" onclick="openQR('raw', 'xray', 'Raw', 'Raw Subscription')">
                                 <span class="material-symbols-rounded">qr_code</span>
                             </button>
                             <button title="Copy subscription URL" onclick="subURL('raw', 'xray', 'Raw')">

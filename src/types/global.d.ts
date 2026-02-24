@@ -137,6 +137,8 @@ declare global {
         amneziaNoiseCount: number;
         amneziaNoiseSizeMin: number;
         amneziaNoiseSizeMax: number;
+        customSubs: string[];
+        customConfigs: string[];
         panelVersion: string;
     }
 
