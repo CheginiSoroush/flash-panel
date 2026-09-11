@@ -5,3 +5,4 @@ deploy/metadata.json
 .wrangler/
 *.log
 deploy/entry.js
+cookies.txt
