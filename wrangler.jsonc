@@ -3,6 +3,7 @@
     "main": "dist/panel-full.js",
     "compatibility_date": "2025-06-01",
     "compatibility_flags": ["nodejs_compat"],
+    "observability": { "enabled": true },
     "kv_namespaces": [
         {
             "binding": "kv",
