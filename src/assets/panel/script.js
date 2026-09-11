@@ -82,7 +82,7 @@ async function getUsage() {
 
 async function checkVersion(panelVersion) {
     try {
-        const res = await fetch('https://raw.githubusercontent.com/bia-pain-bache/BPB-Worker-Panel/refs/heads/main/package.json', {
+        const res = await fetch('https://raw.githubusercontent.com/CheginiSoroush/flash-panel/refs/heads/main/package.json', {
             cache: 'no-store'
         });
 
@@ -267,7 +267,7 @@ async function fetchIPInfo() {
 function generateSubUrl(type, core, tag) {
     const url = new URL(`./sub/${type}`, window.location.href);
     url.searchParams.append('app', core);
-    url.hash = `💦 BPB ${tag}`;
+    url.hash = `💦 Flash ${tag}`;
 
     if (core === 'sing-box' && type !== 'raw') {
         return `sing-box://import-remote-profile?url=${url.href}`;
@@ -869,9 +869,9 @@ function randPath() {
 }
 
 async function updatePanel(btn) {
-    const confirm = await notify('confirm', 'Update BPB Panel', [
-        `BPB Panel verseion ${globalThis.latestVersion} is now available!`,
-        `Please read <a href='https://github.com/bia-pain-bache/BPB-Worker-Panel/releases/latest' target='_blank' rel='noopener noreferrer'>Release notes</a> carefully before updating.`,
+    const confirm = await notify('confirm', 'Update Flash Panel', [
+        `Flash Panel version ${globalThis.latestVersion} is now available!`,
+        `Please read <a href='https://github.com/CheginiSoroush/flash-panel/releases/latest' target='_blank' rel='noopener noreferrer'>Release notes</a> carefully before updating.`,
         'Are you sure?'
     ]);
 
@@ -888,14 +888,14 @@ async function updatePanel(btn) {
             }, 3000);
         })
         .catch(error => {
-            notify('error', 'Update panel', ['Failed to update your BPB Panel, please try again.']);
+            notify('error', 'Update panel', ['Failed to update your Flash Panel, please try again.']);
             console.error('Update panel error:', error)
         })
         .finally(() => stopWaiting(icons));
 }
 
 async function deletePanel(btn) {
-    const confirm = await notify('confirm', 'Delete BPB Panel', [
+    const confirm = await notify('confirm', 'Delete Flash Panel', [
         'This will permanently delete your panel from your Cloudflare account',
         'Are you sure?'
     ]);
@@ -910,7 +910,7 @@ async function deletePanel(btn) {
             notify('success', 'Delete panel', ['Your panel deleted successfully!']);
         })
         .catch(error => {
-            notify('error', 'Delete panel', ['Failed to delete your BPB Panel, please try again.']);
+            notify('error', 'Delete panel', ['Failed to delete your Flash Panel, please try again.']);
             console.error('Delete panel error:', error)
         })
         .finally(() => stopWaiting(icons));
@@ -1132,7 +1132,7 @@ function renderSubscriptions(subscriptions) {
     for (const [type, { label, categories }] of Object.entries(subscriptions)) {
         const help = elm('a', {
             className: 'help-icon',
-            href: `https://bia-pain-bache.github.io/BPB-Worker-Panel/usage/${type}/`,
+            href: `https://github.com/CheginiSoroush/flash-panel#readme`,
             target: '_blank',
             title: 'Help'
         }, createIcon('info'));
