@@ -583,7 +583,7 @@ function validateRemoteSettings(form: PanelSettings, errors: ValidationError[]) 
     if (path !== 'sub/share-settings') {
         errors.push({
             field: 'Remote Settings URL',
-            message: ['This is not a valid BPB remote settings URL']
+            message: ['This is not a valid Flash remote settings URL']
         });
     }
 }
