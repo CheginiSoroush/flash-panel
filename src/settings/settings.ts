@@ -11,6 +11,7 @@ import {
 } from '#types/settings';
 
 Object.assign(globalThis, {
+    // نام پروتکل‌ها — obfuscate می‌مونن (کلمات حساس برای اسکن‌های عمومی repo)
     _VL_: atob('dmxlc3M='),
     _VL_CAP_: atob('VkxFU1M='),
     _VM_: atob('dm1lc3M='),
@@ -19,16 +20,18 @@ Object.assign(globalThis, {
     _TR_CAP_: atob('VHJvamFu'),
     _SS_: atob('c2hhZG93c29ja3M='),
     _V2_: atob('djJyYXk='),
-    _project_: atob('QlBC'),
-    _project_SM_: atob('YnBi'),
-    _repo_: atob('aHR0cHM6Ly9naXRodWIuY29tL2JpYS1wYWluLWJhY2hlL0JQQi1Xb3JrZXItUGFuZWw='),
-    _wizard_repo_: atob('aHR0cHM6Ly9naXRodWIuY29tL2JpYS1wYWluLWJhY2hlL0JQQi1XaXphcmQ='),
-    _website_: atob('aHR0cHM6Ly9iaWEtcGFpbi1iYWNoZS5naXRodWIuaW8vQlBCLVdvcmtlci1QYW5lbC8='),
+    // ---------- هویت Flash Panel ----------
+    _project_: 'Flash',
+    _project_SM_: 'flash',
+    _repo_: 'https://github.com/CheginiSoroush/flash-panel',
+    // فعلاً به repo خودمون اشاره می‌کنه — فاز ۳ که flash-wizard ساختیم آپدیتش می‌کنیم
+    _wizard_repo_: 'https://github.com/CheginiSoroush/flash-panel',
+    _website_: 'https://github.com/CheginiSoroush/flash-panel#readme',
+    // سرویس عمومی proxyIP — وابستگی خارجی (بعداً اختیاری تعویضش کن)
     _public_proxy_ip_: atob('YnBiLnlvdXNlZi5pc2VnYXJvLmNvbQ=='),
 });
 
 // ---------- بخش استاتیک globalSettings ----------
-// این فیلدها در زمان build تزریق می‌شن و در طول عمر isolate ثابت می‌مونن
 
 let staticGlobals: Omit<
     EmbededSettings & ReqSettings,
@@ -75,7 +78,7 @@ function safeDecode(value: string): string {
 
 export function init(request: Request, env: Env) {
     if (env.UUID || env.TR_PASS || typeof EMBEDED_SETTINGS === 'undefined') {
-        throw new Error(`BPB Panel v5 can only be installed using <a href="${_wizard_repo_}/secrets" target="_blank">BPB Wizard v3</a> or later.`);
+        throw new Error(`Flash Panel is not configured — EMBEDED_SETTINGS is missing. See the <a href="${_repo_}#readme" target="_blank">installation guide</a>.`);
     }
 
     const { pathname, origin, searchParams, hostname } = new URL(request.url);
@@ -213,7 +216,6 @@ export const clients: Client[] = [
 ];
 
 // ---------- پیش‌فرض‌های KV ----------
-// حالا جدا از متغیر mutable — تا reset واقعی بتونه کلون تازه‌شون بگیره
 
 const DEFAULT_KV_SETTINGS: KvSettings = {
     localDNS: '8.8.8.8',
