@@ -11,6 +11,10 @@ A fast, optimized Cloudflare Workers panel for **VLESS**, **Trojan** and **Warp*
 - **Tested** — unit tests on protocol parsers, CI on every push
 - **Small** — about 172 KB gzipped
 
+## 🪄 Quick Install
+
+Deploy your own panel in 60 seconds with **[Flash Wizard](https://cheginisoroush.github.io/flash-wizard/)** — no CLI needed.
+
 ## Build
 
 Requires Node.js 22+. Run npm install, then npm run check, npm run test and npm run build. Deploy the built worker with your EMBEDED_SETTINGS injected.
