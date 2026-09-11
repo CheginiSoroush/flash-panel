@@ -27,13 +27,18 @@ Object.assign(globalThis, {
     _public_proxy_ip_: atob('YnBiLnlvdXNlZi5pc2VnYXJvLmNvbQ=='),
 });
 
-export function init(request: Request, env: Env) {
-    if(env.UUID || env.TR_PASS || typeof EMBEDED_SETTINGS === 'undefined') {
-        throw new Error(`BPB Panel v5 can only be installed using <a href="${_wizard_repo_}/secrets" target="_blank">BPB Wizard v3</a> or later.`);
-    }
-    
-    const { pathname, origin, searchParams, hostname } = new URL(request.url);
-    globalSettings = {
+// ---------- بخش استاتیک globalSettings ----------
+// این فیلدها در زمان build تزریق می‌شن و در طول عمر isolate ثابت می‌مونن
+
+let staticGlobals: Omit<
+    EmbededSettings & ReqSettings,
+    'deployType' | 'client' | 'origin' | 'searchParams' | 'pathname' | 'hostname'
+> | null = null;
+
+function getStaticGlobals() {
+    if (staticGlobals) return staticGlobals;
+
+    staticGlobals = {
         accID: EMBEDED_SETTINGS.accID,
         accEmail: EMBEDED_SETTINGS.accEmail.toLowerCase(),
         apiToken: EMBEDED_SETTINGS.apiToken,
@@ -50,13 +55,38 @@ export function init(request: Request, env: Env) {
         mainDomain: EMBEDED_SETTINGS.mainDomain,
         fallback: EMBEDED_SETTINGS.fallback,
         dohUrl: EMBEDED_SETTINGS.dohUrl || 'https://cloudflare-dns.com/dns-query',
-        deployType: env.CF_PAGES === '1' ? 'pages' : 'workers',
         httpPorts: [80, 8080, 2052, 2082, 2086, 2095, 8880],
         httpsPorts: [443, 8443, 2053, 2083, 2087, 2096],
-        client: decodeURIComponent(searchParams.get('app') ?? ''),
+    };
+
+    return staticGlobals;
+}
+
+/**
+ * decodeURIComponent مقاوم — روی escape نامعتبر کرش نمی‌کنه
+ */
+function safeDecode(value: string): string {
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+}
+
+export function init(request: Request, env: Env) {
+    if (env.UUID || env.TR_PASS || typeof EMBEDED_SETTINGS === 'undefined') {
+        throw new Error(`BPB Panel v5 can only be installed using <a href="${_wizard_repo_}/secrets" target="_blank">BPB Wizard v3</a> or later.`);
+    }
+
+    const { pathname, origin, searchParams, hostname } = new URL(request.url);
+
+    globalSettings = {
+        ...getStaticGlobals(),
+        deployType: env.CF_PAGES === '1' ? 'pages' : 'workers',
+        client: safeDecode(searchParams.get('app') ?? ''),
         origin: origin,
         searchParams,
-        pathname: decodeURIComponent(pathname),
+        pathname: safeDecode(pathname),
         hostname: hostname
     };
 }
@@ -141,7 +171,7 @@ export const subscriptions: Subscription = {
     'raw': {
         label: 'Raw',
         categories: [
-            { core: 'xray', clients: [`${_V2_}N(G)`, 'MahsaNG', 'Shadowrocket', 'Streisand', 'PassWall'] },
+            { core: 'xray', clients: [`${_V2_}N(G)`, 'Shadowrocket', 'Streisand', 'PassWall'] },
             { core: 'sing-box', clients: ['husi', 'NekoBox', 'Hiddify', 'Karing'] },
         ]
     },
@@ -176,13 +206,16 @@ export const clients: Client[] = [
     { name: 'Clash Meta', minVer: '2.11.31', source: 'Github', b64Url: 'aHR0cHM6Ly9naXRodWIuY29tL01ldGFDdWJlWC9DbGFzaE1ldGFGb3JBbmRyb2lkL3JlbGVhc2VzL2xhdGVzdA==' },
     { name: 'Clash verge rev', minVer: '2.5.1', source: 'Github', b64Url: 'aHR0cHM6Ly9naXRodWIuY29tL2NsYXNoLXZlcmdlLXJldi9jbGFzaC12ZXJnZS1yZXYvcmVsZWFzZXMvbGF0ZXN0' },
     { name: 'FlClash', minVer: '0.8.94', source: 'Github', b64Url: 'aHR0cHM6Ly9naXRodWIuY29tL2NoZW4wODIwOS9GbENsYXNoL3JlbGVhc2VzL2xhdGVzdA==' },
-    { name: 'Stash', minVer: '3.4.1', source: 'App Store', b64Url: 'aHR0cHM6Ly9hcHBzLmFwcGxlLmNvbS91cy9hcHAvc3Rhc2gtcnVsZS1iYXNlZC1wcm94eS9pZDE1OTYwNjMzNDk=' },
+    { name: 'Stash', minVer: '3.4.1', source: 'App Store', b64Url: 'aHR0cHM6Ly9hcHBzLmFwcGxlLmNvbS91cy9hcHAvc3Rhc2gtcnVsZXMtYmFzZWQtcHJveHkvaWQxNTk2MDYzMzQ5' },
     { name: 'Amnezia', minVer: '4.8.21.0', source: 'Github', b64Url: 'aHR0cHM6Ly9naXRodWIuY29tL2FtbmV6aWEtdnBuL2FtbmV6aWEtY2xpZW50L3JlbGVhc2VzL2xhdGVzdA==' },
     { name: 'Wireguard', minVer: 'Stable', source: 'Official Website', b64Url: 'aHR0cHM6Ly93d3cud2lyZWd1YXJkLmNvbS9pbnN0YWxsLw==' },
-    { name: 'WG Tunnel', minVer: '5.1.0', source: 'Github', b64Url: 'aHR0cHM6Ly9naXRodWIuY29tL3dndHVubmVsL2FuZHJvaWQvcmVsZWFzZXMvbGF0ZXN0' },
+    { name: 'WG Tunnel', minVer: '5.1.0', source: 'Github', b64Url: 'aHR0cHM6Ly9naXRodWIuY29tL2dndHVubmVsL2FuZHJvaWQvcmVsZWFzZXMvbGF0ZXN0' },
 ];
 
-let kvSettings: KvSettings = {
+// ---------- پیش‌فرض‌های KV ----------
+// حالا جدا از متغیر mutable — تا reset واقعی بتونه کلون تازه‌شون بگیره
+
+const DEFAULT_KV_SETTINGS: KvSettings = {
     localDNS: '8.8.8.8',
     antiSanctionDNS: '178.22.122.100',
     fakeDNS: false,
@@ -273,3 +306,12 @@ let kvSettings: KvSettings = {
     remoteSettings: '',
     panelVersion: VERSION
 };
+
+let kvSettings: KvSettings = { ...DEFAULT_KV_SETTINGS };
+
+/**
+ * تنظیمات پیش‌فرض تازه — کلون عمیق (برای reset واقعی در panel.ts)
+ */
+export function getDefaultKvSettings(): KvSettings {
+    return structuredClone(DEFAULT_KV_SETTINGS);
+}

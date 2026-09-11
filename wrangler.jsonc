@@ -1,0 +1,12 @@
+{
+    "name": "flash-panel",
+    "main": "dist/panel-full.js",
+    "compatibility_date": "2025-06-01",
+    "compatibility_flags": ["nodejs_compat"],
+    "kv_namespaces": [
+        {
+            "binding": "kv",
+            "id": "a186b7d68e1a47ae9dcaea240a3c3a82"
+        }
+    ]
+}

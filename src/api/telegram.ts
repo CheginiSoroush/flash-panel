@@ -2,7 +2,36 @@ import { HttpStatus, respond, safeError } from '@common';
 import { clients, getGlobals, subscriptions } from '@settings';
 import { getCfWorkerUsage } from './usage';
 import { authenticate } from '@auth';
+import { getDataset, invalidateDatasetCache } from '@kv';
 import { TelegramBot } from '#types/settings';
+
+// ---------- کش usage ----------
+// getCfWorkerUsage در هر پیام/کلیک صدا زده می‌شد — یه درخواست کامل به API کلادفلر!
+// دیتای usage روزانه‌ست — کش ۶۰ ثانیه‌ای کاملاً کافیه
+
+type UsageResult = Awaited<ReturnType<typeof getCfWorkerUsage>>;
+
+let usageCache: { data: UsageResult; expiresAt: number } | null = null;
+const USAGE_CACHE_TTL = 60_000;
+
+async function getUsageCached(): Promise<UsageResult> {
+    if (usageCache && Date.now() < usageCache.expiresAt) {
+        return usageCache.data;
+    }
+    const data = await getCfWorkerUsage();
+    usageCache = { data, expiresAt: Date.now() + USAGE_CACHE_TTL };
+    return data;
+}
+
+/**
+ * secret وب‌هوک — مشتق‌شده از توکن بات (بدون تغییر schema ذخیره‌سازی).
+ * در setWebhook به تلگرام داده می‌شه و در هر آپدیت با هدر
+ * X-Telegram-Bot-Api-Secret-Token مقایسه می‌شه.
+ */
+async function deriveWebhookSecret(botToken: string): Promise<string> {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(botToken));
+    return Array.from(new Uint8Array(digest).slice(0, 24), b => b.toString(16).padStart(2, '0')).join('');
+}
 
 export async function setupTelegramWebhook(request: Request, env: Env): Promise<Response> {
     if (request.method !== 'PUT') {
@@ -15,12 +44,12 @@ export async function setupTelegramWebhook(request: Request, env: Env): Promise<
             return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
         }
 
-        const { telegramBotToken, telegramUserId } = await request.json() as any;
-        const botToken = telegramBotToken.trim();
-        const userID = telegramUserId.trim();
+        const body = await request.json().catch(() => null) as any;
+        const botToken = typeof body?.telegramBotToken === 'string' ? body.telegramBotToken.trim() : '';
+        const userID = typeof body?.telegramUserId === 'string' ? body.telegramUserId.trim() : '';
 
         if (!botToken || !userID) {
-            return respond(false, HttpStatus.BAD_REQUEST, 'Missing but info.');
+            return respond(false, HttpStatus.BAD_REQUEST, 'Missing bot info.');
         }
 
         const { securePath } = getGlobals();
@@ -32,6 +61,7 @@ export async function setupTelegramWebhook(request: Request, env: Env): Promise<
         };
 
         await env.kv.put('telegramBot', JSON.stringify(bot));
+        invalidateDatasetCache(); // کش دیتاست بعد از write باطل بشه
         return respond(true, HttpStatus.OK, 'Telegram bot setup completed successfully!', bot);
     } catch (error) {
         return respond(false, HttpStatus.INTERNAL_SERVER_ERROR, `Error occurred while setting Telegram Bot: ${safeError(error)}`);
@@ -43,6 +73,8 @@ export async function setTelegramBot(path: string, token: string) {
     const webhookUrl = new URL(`/${path}/telegram/webhook`, origin);
     const api = new URL(`https://api.telegram.org/bot${token}/setWebhook`);
     api.searchParams.set('url', webhookUrl.href);
+    // 🔐 secret token — برای اعتبارسنجی منبع آپدیت‌های وب‌هوک
+    api.searchParams.set('secret_token', await deriveWebhookSecret(token));
 
     try {
         const res = await fetch(api);
@@ -84,22 +116,28 @@ export async function removeTelegramBot(request: Request, env: Env) {
             return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
         }
 
-        const { telegramBotToken } = await env.kv.get('telegramBot', { type: 'json' }) as any;
-        const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/deleteWebhook`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                drop_pending_updates: true
-            })
-        });
+        const { telegramBot: tgBot } = await getDataset(env);
+        const token = tgBot?.telegramBotToken || '';
 
-        const data = await res.json() as { ok: boolean; description?: string };
-        if (!res.ok || !data.ok) {
-            throw new Error(data.description || `Failed with status ${res.status}`);
+        // اگر بات ست نشده بود، فقط KV پاک بشه (قبلاً کل عملیات fail می‌شد)
+        if (token) {
+            const res = await fetch(`https://api.telegram.org/bot${token}/deleteWebhook`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    drop_pending_updates: true
+                })
+            });
+
+            const data = await res.json() as { ok: boolean; description?: string };
+            if (!res.ok || !data.ok) {
+                throw new Error(data.description || `Failed with status ${res.status}`);
+            }
         }
 
         const bot: TelegramBot = { telegramBotToken: '', telegramUserId: '' };
         await env.kv.put('telegramBot', JSON.stringify(bot));
+        invalidateDatasetCache(); // کش دیتاست بعد از write باطل بشه
 
         return respond(true, HttpStatus.OK, 'Telegram bot webhook deleted successfully!', bot);
     } catch (error) {
@@ -296,7 +334,7 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
 
         case 'usage':
         case 'usage_refresh':
-            const result = await getCfWorkerUsage();
+            const result = await getUsageCached();
             if (!result) {
                 await tgFetch(token, 'sendMessage', {
                     chat_id: chatId,
@@ -338,8 +376,9 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
             break;
 
         default:
-            const typeKey = data.split('_')[1];
             if (data.startsWith('sub_')) {
+                // با slice به‌جای split — کل مقدار بعد از پیشوند
+                const typeKey = data.slice(4); // 'sub_'.length
                 const subscription = subscriptions[typeKey];
                 if (!subscription) break;
 
@@ -391,7 +430,11 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
             }
 
             if (data.startsWith('client_')) {
-                const client = clients.find(cli => cli.name === typeKey);
+                // باگ قبلی: split('_')[1] برای اسم‌های دارای فاصله
+                // ('Clash Meta', 'Clash verge rev', 'WG Tunnel') فقط بخش اول اسم رو
+                // برمی‌گردوند و این دکمه‌ها کار نمی‌کردن — با slice کل اسم حفظ می‌شه
+                const clientName = data.slice(7); // 'client_'.length
+                const client = clients.find(cli => cli.name === clientName);
                 if (!client) break;
                 let text = [
                     `✅ <b>${client.name}</b>`,
@@ -416,13 +459,26 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
 }
 
 export async function handleTelegramWebhook(request: Request, env: Env): Promise<Response> {
-    const tgBot: TelegramBot | null = await env.kv.get('telegramBot', { type: 'json' });
+    // تنظیمات بات از دیتاست کش‌شده — به‌جای خواندن KV در هر آپدیت
+    const { telegramBot: tgBot } = await getDataset(env);
     if (!tgBot) return new Response(null, { status: 200 });
 
     const { telegramBotToken: botToken, telegramUserId: userId } = tgBot;
     if (!botToken || !userId) return new Response(null, { status: 200 });
 
-    const update: TgUpdate = await request.json();
+    // 🔐 اعتبارسنجی secret تلگرام — درخواست فقط از سرورهای تلگرام معتبره
+    // (قبلاً هر کسی که URL وب‌هوک رو بدونه می‌تونست آپدیت جعلی بفرسته)
+    const expectedSecret = await deriveWebhookSecret(botToken);
+    if (request.headers.get('X-Telegram-Bot-Api-Secret-Token') !== expectedSecret) {
+        return new Response(null, { status: 200 });
+    }
+
+    let update: TgUpdate;
+    try {
+        update = await request.json();
+    } catch {
+        return new Response(null, { status: 200 });
+    }
 
     if (update.callback_query) {
         const cq = update.callback_query;
@@ -446,7 +502,9 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
             await handleCallback(cq, botToken, chatId);
         }
 
-        checkCfUsageWarning(botToken, chatId);
+        // await شده — بدون await بعد از return شدن response در Workers
+        // این promise احتمالاً cancel می‌شد (باگ قبلی)
+        await checkCfUsageWarning(botToken, chatId);
         return new Response(null, { status: 200 });
     }
 
@@ -458,7 +516,7 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
 
         switch (text) {
             case '/usage':
-                const result = await getCfWorkerUsage();
+                const result = await getUsageCached();
                 if (!result.success || !result.worker || !result.total) break;
                 await tgFetch(botToken, 'sendMessage', {
                     chat_id: chatId,
@@ -496,7 +554,7 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
                 break;
         }
 
-        checkCfUsageWarning(botToken, chatId);
+        await checkCfUsageWarning(botToken, chatId);
         return new Response(null, { status: 200 });
     }
 
@@ -504,7 +562,7 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
 }
 
 async function checkCfUsageWarning(botToken: string, chatId: number): Promise<void> {
-    const result = await getCfWorkerUsage();
+    const result = await getUsageCached();
     if (!result.success || !result.worker || !result.total) return;
 
     const nearLimit = result.total / 100000 * 100 > 80;

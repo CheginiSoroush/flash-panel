@@ -11,40 +11,52 @@ import { handleWebsocket } from '@handlers/websocket';
 import { init, getGlobals } from '@settings';
 
 export default {
-	async fetch(request: Request, env: Env) {
-		try {
-			init(request, env);
-			if (request.headers.get('Upgrade') === 'websocket') return handleWebsocket(request);
-			const { securePath, pathname } = getGlobals();
-			const path = pathname.split('/').splice(0, 3).join('/');
+    async fetch(request: Request, env: Env) {
+        try {
+            init(request, env);
 
-			switch (path) {
-				case `/${securePath}/panel`:
-					return handlePanel(request, env);
+            // طبق RFC 6455 مقایسه Upgrade باید case-insensitive باشه
+            // (کلاینتی که 'WebSocket' بفرسته قبلاً به مسیر پنل می‌افتاد)
+            if ((request.headers.get('Upgrade') || '').toLowerCase() === 'websocket') {
+                return handleWebsocket(request);
+            }
 
-				case `/${securePath}/login`:
-					return handleLogin(request, env);
+            const { securePath, pathname } = getGlobals();
 
-				case `/${securePath}/sub`:
-					return handleSubscriptions(request, env);
+            // روتینگ سگمنت‌محور — بدون join/splice و تخصیص‌های اضافه
+            // معادل دقیق منطق قبلی: '/segment1/segment2/...' → مسیر ۳ سگمنتی
+            const segments = pathname.split('/');
+            if (segments[1] !== securePath) {
+                return fallback(request);
+            }
 
-				case `/${securePath}/telegram`:
-					return handleTelegram(request, env);
+            switch (segments[2]) {
+                case 'panel':
+                    return handlePanel(request, env);
 
-				case `/${securePath}/dns-query`:
-					return handleDoH(request);
+                case 'login':
+                    return handleLogin(request, env);
 
-				case `/${securePath}/proxy-ip`:
-					return handleProxyIPs(request, env);
-				
-				case `/${securePath}/qrcode`:
-					return generateQRCode(request);
-					
-				default:
-					return fallback(request);
-			}
-		} catch (error) {
-			return renderError(error);
-		}
-	}
+                case 'sub':
+                    return handleSubscriptions(request, env);
+
+                case 'telegram':
+                    return handleTelegram(request, env);
+
+                case 'dns-query':
+                    return handleDoH(request);
+
+                case 'proxy-ip':
+                    return handleProxyIPs(request, env);
+
+                case 'qrcode':
+                    return generateQRCode(request);
+
+                default:
+                    return fallback(request);
+            }
+        } catch (error) {
+            return renderError(error);
+        }
+    }
 }
