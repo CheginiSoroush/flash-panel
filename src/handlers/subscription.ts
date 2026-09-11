@@ -2,7 +2,7 @@ import { getClNormalConfig, getClWarpConfig } from '@cores/clash/configs';
 import { getURLConfigs } from '@cores/common';
 import { getSbCustomConfig, getSbWarpConfig } from '@cores/sing-box/configs';
 import { getXrCustomConfigs, getXrWarpConfigs } from '@cores/xray/configs';
-import { setSettings, getGlobals, getKvSettings, getSharedSettings } from '@settings';
+import { setSettings, getGlobals, getSharedSettings, getSettings } from '@settings';
 import { fallback } from './utils';
 import { getWireguardConfigs } from '@cores/wireguard';
 import { HttpStatus } from '@common';
@@ -13,6 +13,26 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
     const { pathname, client } = getGlobals();
     const path = pathname.split('/')[3];
 
+    // ETag بر اساس «ورودی‌های» تولید کانفیگ (نه خروجی‌شون):
+    // نسخه پنل + کل تنظیمات KV + تنظیمات embedded + نوع ساب + کلاینت.
+    // getSettings() همه‌چیز رو داره: kvSettings + globalSettings (شامل client, hostname, origin)
+    const etag = await computeSubETag(path, client);
+
+    // کلاینت قبلاً همین نسخه رو گرفته؟ کل تولید کانفیگ رد می‌شه → 304
+    if (request.method === 'GET' && request.headers.get('If-None-Match') === etag) {
+        return new Response(null, { status: 304, headers: { ETag: etag } });
+    }
+
+    const response = await routeSubscription(path, client);
+    if (response) {
+        response.headers.set('ETag', etag);
+        return response;
+    }
+
+    return fallback(request);
+}
+
+async function routeSubscription(path: string, client: string): Promise<Response | null> {
     switch (path) {
         case 'normal':
             switch (client) {
@@ -24,20 +44,18 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
 
                 case 'clash':
                     return getClNormalConfig();
-
-                default:
-                    break;
             }
+            // ← باگ fallthrough: بدون این break ها، default داخلی به case بعدی
+            // سقوط می‌کرد و در نهایت shareSettings (فایل تنظیمات) برگردانده می‌شد!
+            break;
 
         case 'raw':
             switch (client) {
                 case 'xray':
                 case 'sing-box':
                     return getURLConfigs();
-
-                default:
-                    break;
             }
+            break;
 
         case 'fragment':
             switch (client) {
@@ -46,10 +64,8 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
 
                 case 'sing-box':
                     return getSbCustomConfig(true);
-
-                default:
-                    break;
             }
+            break;
 
         case 'warp':
             switch (client) {
@@ -64,10 +80,8 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
 
                 case 'wireguard':
                     return getWireguardConfigs(false);
-
-                default:
-                    break;
             }
+            break;
 
         case 'warp-pro':
             switch (client) {
@@ -82,17 +96,29 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
 
                 case 'amnezia':
                     return getWireguardConfigs(true);
-
-                default:
-                    break;
             }
+            break;
 
         case 'share-settings':
             return shareSettings();
-
-        default:
-            return fallback(request);
     }
+
+    return null;
+}
+
+/**
+ * هش SHA-256 از ورودی‌های تولید کانفیگ — ۸ بایت اول به‌صورت hex
+ */
+async function computeSubETag(path: string, client: string): Promise<string> {
+    const payload = JSON.stringify({ v: VERSION, path, client, s: getSettings() });
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
+    const bytes = new Uint8Array(digest).slice(0, 8);
+
+    let hex = '';
+    for (const b of bytes) {
+        hex += b.toString(16).padStart(2, '0');
+    }
+    return `"${hex}"`;
 }
 
 async function shareSettings() {

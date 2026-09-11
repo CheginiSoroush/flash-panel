@@ -7,10 +7,35 @@ import { resetPassword, logout, authenticate } from '@auth';
 import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
 import { getDataset, updateDataset } from '@kv';
 import { buildScript, updateMainSettings } from '@main';
-import { getGlobals, getMainSettings, subscriptions, clients } from '@settings';
+import { getGlobals, getMainSettings, getDefaultKvSettings, subscriptions, clients } from '@settings';
 import { validateSettings } from '@validators';
 import { fallback } from './utils';
 import { setTelegramBot } from '@api/telegram';
+
+// ---------- کش سطح isolate برای HTML پنل ----------
+// PANEL_HTML_CONTENT و ICON_CONTENT ثابت‌ان — دیکمپرس + جایگزینی آیکون
+// فقط یک‌بار در عمر isolate انجام می‌شه (قبلاً در هر لود پنل)
+
+let cachedPanelHtml: string | null = null;
+let cachedPanelEtag = '';
+
+async function getPanelHtml(): Promise<{ html: string; etag: string }> {
+    if (cachedPanelHtml !== null) {
+        return { html: cachedPanelHtml, etag: cachedPanelEtag };
+    }
+
+    const str = await decompressGzipBase64(PANEL_HTML_CONTENT);
+    cachedPanelHtml = str.replaceAll('__ICON__', ICON_CONTENT);
+
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(cachedPanelHtml));
+    let hex = '';
+    for (const b of new Uint8Array(digest).slice(0, 8)) {
+        hex += b.toString(16).padStart(2, '0');
+    }
+    cachedPanelEtag = `"${hex}"`;
+
+    return { html: cachedPanelHtml, etag: cachedPanelEtag };
+}
 
 export async function handlePanel(request: Request, env: Env): Promise<Response> {
     const { pathname } = getGlobals();
@@ -34,7 +59,7 @@ export async function handlePanel(request: Request, env: Env): Promise<Response>
             return resetPassword(request, env);
 
         case 'panel/my-ip':
-            return getMyIP(request);
+            return getMyIP(request, env);
 
         case 'panel/update-warp':
             return updateWarpConfigs(request, env);
@@ -66,11 +91,25 @@ async function renderPanel(request: Request, env: Env): Promise<Response> {
         }
     }
 
-    const str = await decompressGzipBase64(PANEL_HTML_CONTENT);
-    const html = str.replaceAll('__ICON__', ICON_CONTENT);
+    const { html, etag } = await getPanelHtml();
+
+    // revalidate — بار بعدی فقط 304 برمی‌گرده
+    if (request.headers.get('If-None-Match') === etag) {
+        return new Response(null, {
+            status: 304,
+            headers: {
+                'ETag': etag,
+                'Cache-Control': 'no-cache'
+            }
+        });
+    }
 
     return new Response(html, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'ETag': etag,
+            'Cache-Control': 'no-cache'
+        }
     });
 }
 
@@ -212,8 +251,11 @@ async function resetPanelSettings(request: Request, env: Env): Promise<Response>
             return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
         }
 
-        const [kvSettings, mainSettings] = await Promise.all([
-            updateDataset(env),
+        // باگ قبلی: updateDataset(env) متغیر ماژول رو ذخیره می‌کرد که ممکن بود
+        // stale باشه (اگه request سابسکریپشن قبلاً توی همین isolate اجرا شده بود،
+        // reset هیچی رو ریست نمی‌کرد). حالا همیشه پیش‌فرض‌های تازه ذخیره می‌شن
+                const [kvSettings, mainSettings] = await Promise.all([
+            updateDataset(env, getDefaultKvSettings() as unknown as PanelSettings),
             updateMainSettings(null)
         ]);
 
@@ -228,8 +270,23 @@ async function resetPanelSettings(request: Request, env: Env): Promise<Response>
     }
 }
 
-async function getMyIP(request: Request): Promise<Response> {
-    const ip = await request.text();
+async function getMyIP(request: Request, env: Env): Promise<Response> {
+    // auth — بقیه endpoint ها این چک رو دارن، این یکی نداشت!
+    const pwd = await env.kv.get('pwd');
+    if (pwd) {
+        const auth = await authenticate(request, env);
+        if (!auth) {
+            return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+        }
+    }
+
+    const ip = (await request.text()).trim();
+
+    // ورودی کاربر مستقیم می‌ره توی URL درخواست خارجی — اعتبارسنجی اجباریه
+    // (فقط کاراکترهای معتبر IPv4/IPv6)
+    if (!/^[0-9a-fA-F.:]+$/.test(ip)) {
+        return respond(false, HttpStatus.BAD_REQUEST, 'Invalid IP address.');
+    }
 
     try {
         const response = await fetch(`http://ip-api.com/json/${ip}?nocache=${Date.now()}`);
@@ -241,7 +298,7 @@ async function getMyIP(request: Request): Promise<Response> {
             false,
             HttpStatus.INTERNAL_SERVER_ERROR,
             `Error fetching IP address: ${safeError(error)}`
-        )
+        );
     }
 }
 

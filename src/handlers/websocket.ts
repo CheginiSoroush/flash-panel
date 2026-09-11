@@ -6,7 +6,11 @@ import { fallback } from './utils';
 
 export async function handleWebsocket(request: Request): Promise<Response> {
     const { pathname } = getGlobals();
-    const protocol = pathname.split('/')[1];
+
+    // استخراج سگمنت اول بدون ساخت آرایه (در هر کانکشن اجرا می‌شه)
+    // '/vl' → 'vl' ، '/vl/xyz' → 'vl' ، '/' → ''
+    const slash = pathname.indexOf('/', 1);
+    const protocol = slash === -1 ? pathname.slice(1) : pathname.slice(1, slash);
 
     try {
         switch (protocol) {
@@ -20,6 +24,8 @@ export async function handleWebsocket(request: Request): Promise<Response> {
                 return fallback(request);
         }
     } catch (error) {
+        // فقط در مسیر خطا اجرا می‌شه — علت واقعی برای دیباگ لاگ بشه
+        console.error('handleWebsocket error:', error);
         return new Response('Bad Request', { status: HttpStatus.BAD_REQUEST });
     }
 }

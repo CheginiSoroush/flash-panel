@@ -1,44 +1,52 @@
 import { getGlobals } from '@settings';
-import { isValidUUID } from '@common';
 import {
     safeCloseTcpSocket,
     handleTCPOutBound,
     makeReadableWebSocketStream,
     WS_READY_STATE_OPEN
 } from '@protocols/common';
+import type { RemoteSocketWrapper } from '@protocols/common';
+import { getUUIDBytes, parseVlHeader } from './parsers';
+
+// در حالت دیباگ true کنید تا لاگ‌ها فعال بشن
+const LOG_ENABLED = false;
 
 export async function VlOverWSHandler(request: Request): Promise<Response> {
     const { vlUUID } = getGlobals();
+    const userUUIDBytes = getUUIDBytes(vlUUID);
+
     const webSocketPair = new WebSocketPair();
     const [client, webSocket] = Object.values(webSocketPair);
     webSocket.accept();
     webSocket.binaryType = 'arraybuffer';
 
     let address = '';
-    let portWithRandomLog = '';
+    let portForLog = 0;
 
-    const log = (info: string, event?: string) => {
-        console.log(`[${address}:${portWithRandomLog}] ${info}`, event || '');
+    const log = (info: string, event?: unknown) => {
+        if (LOG_ENABLED) {
+            console.log(`[${address}:${portForLog}] ${info}`, event || '');
+        }
     };
 
     const earlyDataHeader = request.headers.get('sec-websocket-protocol') || '';
     const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log);
 
-    let remoteSocketWapper: { value: Socket | null } = { value: null };
-    let udpStreamWrite: any = null;
+    // writer حالا داخل wrapper توسط common.ts کش می‌شه
+    const remoteSocketWrapper: RemoteSocketWrapper = { value: null, writer: null };
+    let udpStreamWrite: ((chunk: ArrayBuffer | Uint8Array<ArrayBuffer>) => Promise<void>) | null = null;
     let isDns = false;
 
     const writableStream = new WritableStream({
-        async write(chunk) {
+        async write(chunk: ArrayBuffer) {
             if (isDns && udpStreamWrite) {
                 return udpStreamWrite(chunk);
             }
 
-            if (remoteSocketWapper.value) {
-                const writer = remoteSocketWapper.value.writable.getWriter();
-                await writer.write(chunk);
-                writer.releaseLock();
-                return;
+            // استفاده از writer کش‌شده — بدون getWriter/releaseLock و بدون race
+            const writer = remoteSocketWrapper.writer;
+            if (writer) {
+                return writer.write(chunk);
             }
 
             const {
@@ -46,25 +54,25 @@ export async function VlOverWSHandler(request: Request): Promise<Response> {
                 message,
                 portRemote = 443,
                 addressRemote = '',
-                rawDataIndex,
-                VLVersion = new Uint8Array([0, 0]),
-                isUDP,
-            } = parseVlHeader(chunk, vlUUID);
+                rawDataIndex = 0,
+                version = 0,
+                isUDP = false,
+            } = parseVlHeader(chunk, userUUIDBytes);
 
             address = addressRemote;
-            portWithRandomLog = `${portRemote}--${Math.random()} ${isUDP ? 'udp ' : 'tcp '} `;
+            portForLog = portRemote;
 
             if (hasError) {
                 throw new Error(message);
             }
 
-            const VLResponseHeader = new Uint8Array([VLVersion[0], 0]);
-            const rawClientData = chunk.slice(rawDataIndex);
+            const vlessResponseHeader = new Uint8Array([version, 0]);
+            const rawClientData = new Uint8Array(chunk, rawDataIndex);
 
             if (isUDP) {
                 if (portRemote === 53) {
                     isDns = true;
-                    const { write } = await handleUDPOutBound(webSocket, VLResponseHeader, log);
+                    const { write } = await handleUDPOutBound(webSocket, vlessResponseHeader, log);
                     udpStreamWrite = write;
                     await udpStreamWrite(rawClientData);
                     return;
@@ -74,28 +82,28 @@ export async function VlOverWSHandler(request: Request): Promise<Response> {
             }
 
             handleTCPOutBound(
-                remoteSocketWapper,
+                remoteSocketWrapper,
                 addressRemote,
                 portRemote,
                 rawClientData,
                 webSocket,
-                VLResponseHeader,
+                vlessResponseHeader,
                 log
             );
         },
         close() {
-            safeCloseTcpSocket(remoteSocketWapper.value);
+            safeCloseTcpSocket(remoteSocketWrapper.value);
         },
         abort(reason) {
-            log(`readableWebSocketStream is abort`, JSON.stringify(reason));
+            log('readableWebSocketStream is abort', JSON.stringify(reason));
         },
     });
 
     readableWebSocketStream
         .pipeTo(writableStream)
-        .catch(error => {
+        .catch((error) => {
             log('readableWebSocketStream pipeTo error', error);
-            safeCloseTcpSocket(remoteSocketWapper.value);
+            safeCloseTcpSocket(remoteSocketWrapper.value);
         });
 
     return new Response(null, {
@@ -104,195 +112,71 @@ export async function VlOverWSHandler(request: Request): Promise<Response> {
     });
 }
 
-function parseVlHeader(VLBuffer: ArrayBuffer, userID: string) {
-    if (VLBuffer.byteLength < 24) {
-        return {
-            hasError: true,
-            message: 'invalid data',
-        };
-    }
+async function handleUDPOutBound(
+    webSocket: WebSocket,
+    vlessResponseHeader: Uint8Array<ArrayBuffer>,
+    log: (info: string, event?: unknown) => void
+) {
+    let isHeaderSent = false;
 
-    const version = new Uint8Array(VLBuffer.slice(0, 1));
-    const slicedBuffer = new Uint8Array(VLBuffer.slice(1, 17));
-    const slicedBufferString = stringify(slicedBuffer);
-    const isValidUser = slicedBufferString === userID;
-
-    if (!isValidUser) {
-        return {
-            hasError: true,
-            message: 'invalid user',
-        };
-    }
-
-    const optLength = new Uint8Array(VLBuffer.slice(17, 18))[0];
-    const command = new Uint8Array(VLBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
-    let isUDP = false;
-
-    if (command === 1) {
-    } else if (command === 2) {
-        isUDP = true;
-    } else {
-        return {
-            hasError: true,
-            message: `command ${command} is not supported, command 01-tcp,02-udp,03-mux`,
-        };
-    }
-
-    const portIndex = 18 + optLength + 1;
-    const portBuffer = VLBuffer.slice(portIndex, portIndex + 2);
-    const portRemote = new DataView(portBuffer).getUint16(0);
-
-    let addressIndex = portIndex + 2;
-    const addressBuffer = new Uint8Array(VLBuffer.slice(addressIndex, addressIndex + 1));
-    const addressType = addressBuffer[0];
-    let addressLength = 0;
-    let addressValueIndex = addressIndex + 1;
-    let addressValue = '';
-
-    switch (addressType) {
-        case 1:
-            addressLength = 4;
-            addressValue = new Uint8Array(VLBuffer.slice(addressValueIndex, addressValueIndex + addressLength)).join('.');
-            break;
-
-        case 2:
-            addressLength = new Uint8Array(VLBuffer.slice(addressValueIndex, addressValueIndex + 1))[0];
-            addressValueIndex += 1;
-            addressValue = new TextDecoder().decode(VLBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
-            break;
-
-        case 3: {
-            addressLength = 16;
-            const dataView = new DataView(VLBuffer.slice(addressValueIndex, addressValueIndex + addressLength));
-            const ipv6 = [];
-
-            for (let i = 0; i < 8; i++) {
-                ipv6.push(dataView.getUint16(i * 2).toString(16));
-            }
-
-            addressValue = ipv6.join(':');
-            break;
-        }
-        default:
-            return {
-                hasError: true,
-                message: `invalid addressType is ${addressType}`,
-            };
-    }
-
-    if (!addressValue) {
-        return {
-            hasError: true,
-            message: `addressValue is empty, addressType is ${addressType}`,
-        };
-    }
-
-    return {
-        hasError: false,
-        addressRemote: addressValue,
-        addressType,
-        portRemote,
-        rawDataIndex: addressValueIndex + addressLength,
-        VLVersion: version,
-        isUDP,
-    };
-}
-
-function unsafeStringify(arr: Uint8Array, offset = 0) {
-    const byteToHex: string[] = [];
-
-    for (let i = 0; i < 256; ++i) {
-        byteToHex.push((i + 256).toString(16).slice(1));
-    }
-
-    return (
-        byteToHex[arr[offset + 0]] +
-        byteToHex[arr[offset + 1]] +
-        byteToHex[arr[offset + 2]] +
-        byteToHex[arr[offset + 3]] +
-        '-' +
-        byteToHex[arr[offset + 4]] +
-        byteToHex[arr[offset + 5]] +
-        '-' +
-        byteToHex[arr[offset + 6]] +
-        byteToHex[arr[offset + 7]] +
-        '-' +
-        byteToHex[arr[offset + 8]] +
-        byteToHex[arr[offset + 9]] +
-        '-' +
-        byteToHex[arr[offset + 10]] +
-        byteToHex[arr[offset + 11]] +
-        byteToHex[arr[offset + 12]] +
-        byteToHex[arr[offset + 13]] +
-        byteToHex[arr[offset + 14]] +
-        byteToHex[arr[offset + 15]]
-    ).toLowerCase();
-}
-
-function stringify(arr: Uint8Array, offset = 0) {
-    const uuid = unsafeStringify(arr, offset);
-
-    if (!isValidUUID(uuid)) {
-        throw TypeError('Stringified UUID is invalid');
-    }
-
-    return uuid;
-}
-
-async function handleUDPOutBound(webSocket: WebSocket, VLResponseHeader: Uint8Array<ArrayBuffer>, log: Function) {
-    let isVLHeaderSent = false;
-
-    const transformStream = new TransformStream({
-        start(_controller) { },
-        transform(chunk, controller) {
-            for (let index = 0; index < chunk.byteLength;) {
-                const lengthBuffer = chunk.slice(index, index + 2);
-                const udpPakcetLength = new DataView(lengthBuffer).getUint16(0);
-                const udpData = new Uint8Array(chunk.slice(index + 2, index + 2 + udpPakcetLength));
-                index = index + 2 + udpPakcetLength;
-                controller.enqueue(udpData);
+    // تایپ‌های صریح — خروجی Uint8Array<ArrayBuffer> تا برای body قابل استفاده باشه
+    const transformStream = new TransformStream<
+        ArrayBuffer | Uint8Array<ArrayBuffer>,
+        Uint8Array<ArrayBuffer>
+    >({
+        transform(message, controller) {
+            const data = message instanceof ArrayBuffer ? new Uint8Array(message) : message;
+            for (let index = 0; index + 2 <= data.length;) {
+                const udpPacketLength = (data[index] << 8) | data[index + 1];
+                index += 2;
+                controller.enqueue(data.subarray(index, index + udpPacketLength));
+                index += udpPacketLength;
             }
         },
-        flush(_controller) { },
     });
 
     transformStream.readable
         .pipeTo(
-            new WritableStream({
+            new WritableStream<Uint8Array<ArrayBuffer>>({
                 async write(chunk) {
                     const resp = await fetch('https://cloudflare-dns.com/dns-query', {
                         method: 'POST',
                         headers: {
                             'content-type': 'application/dns-message',
                         },
-                        body: chunk
+                        body: chunk,
                     });
 
-                    const dnsQueryResult = await resp.arrayBuffer();
-                    const udpSize = dnsQueryResult.byteLength;
-                    const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
+                    const dnsQueryResult = new Uint8Array(await resp.arrayBuffer());
+                    const udpSize = dnsQueryResult.length;
+
+                    const response = new Uint8Array(
+                        (isHeaderSent ? 0 : vlessResponseHeader.length) + 2 + udpSize
+                    );
+                    let offset = 0;
+                    if (!isHeaderSent) {
+                        response.set(vlessResponseHeader, 0);
+                        offset = vlessResponseHeader.length;
+                        isHeaderSent = true;
+                    }
+                    response[offset] = (udpSize >> 8) & 0xff;
+                    response[offset + 1] = udpSize & 0xff;
+                    response.set(dnsQueryResult, offset + 2);
 
                     if (webSocket.readyState === WS_READY_STATE_OPEN) {
-                        log(`doh success and dns message length is ${udpSize}`);
-
-                        if (isVLHeaderSent) {
-                            webSocket.send(await new Blob([udpSizeBuffer, dnsQueryResult]).arrayBuffer());
-                        } else {
-                            webSocket.send(await new Blob([VLResponseHeader, udpSizeBuffer, dnsQueryResult]).arrayBuffer());
-                            isVLHeaderSent = true;
-                        }
+                        webSocket.send(response);
                     }
                 },
             })
         )
         .catch((error) => {
-            log('dns udp has error' + error);
+            log('dns udp has error', String(error));
         });
 
     const writer = transformStream.writable.getWriter();
 
     return {
-        async write(chunk: ArrayBuffer) {
+        async write(chunk: ArrayBuffer | Uint8Array<ArrayBuffer>) {
             await writer.write(chunk);
         },
     };

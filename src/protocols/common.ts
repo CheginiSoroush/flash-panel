@@ -6,27 +6,56 @@ import { getGlobals } from '@settings';
 export const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
 
+export type Logger = (info: string, event?: unknown) => void;
+export type Chunk = ArrayBuffer | Uint8Array;
+
+/**
+ * Wrapper سوکت ریموت با کش writer.
+ * caller های قدیمی فقط { value } می‌فرستن و رفتار قبلی براشون حفظ می‌شه —
+ * caller های جدید { value, writer } می‌فرستن تا از کش writer استفاده کنن.
+ */
+export interface RemoteSocketWrapper {
+    value: Socket | null;
+    writer?: WritableStreamDefaultWriter<Chunk> | null;
+}
+
 export async function handleTCPOutBound(
-    remoteSocket: { value: Socket | null },
+    remoteSocket: RemoteSocketWrapper,
     addressRemote: string,
     portRemote: number,
-    rawClientData: ArrayBuffer | undefined,
+    rawClientData: Chunk | undefined,
     webSocket: WebSocket,
-    VLResponseHeader: Uint8Array<ArrayBuffer> | null,
-    log: Function
+    VLResponseHeader: Uint8Array | null,
+    log: Logger
 ) {
     async function connectAndWrite(address: string, port: number): Promise<Socket> {
-        // if (/^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(address)) address = `${atob('d3d3Lg==')}${address}${atob('LnNzbGlwLmlv')}`;
         const tcpSocket = connect({
             hostname: address,
             port: port,
         });
 
-        remoteSocket.value = tcpSocket;
-        log(`connected to ${address}:${port}`);
+        // اگه caller از کش writer پشتیبانی کنه، قفل فقط یک‌بار گرفته می‌شه و تا پایان
+        // عمر سوکت نگه داشته می‌شه — هم race قفل حذف می‌شه هم سربار per-chunk
+        const keepWriter = 'writer' in remoteSocket;
         const writer = tcpSocket.writable.getWriter();
-        await writer.write(rawClientData);
-        writer.releaseLock();
+
+        // قبل از اولین await مقداردهی می‌شن تا chunk های بعدی بدون race
+        // از همین writer استفاده کنن (ترتیب FIFO خود writer تضمین می‌شه)
+        remoteSocket.value = tcpSocket;
+        if (keepWriter) {
+            remoteSocket.writer = writer;
+        }
+
+        log(`connected to ${address}:${port}`);
+
+        if (rawClientData) {
+            await writer.write(rawClientData);
+        }
+
+        if (!keepWriter) {
+            writer.releaseLock();
+        }
+
         return tcpSocket;
     }
 
@@ -34,22 +63,30 @@ export async function handleTCPOutBound(
         const { proxyIpMode, proxyIPs, prefixes } = getGlobals();
         const getRandomValue = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
-        if (proxyIpMode === 'proxyip') {
-            log(`direct connection failed, trying to use Proxy IP for ${addressRemote}`);
-            const proxyIP = getRandomValue(proxyIPs);
-            const { host, port } = parseHostPort(proxyIP, true);
-            addressRemote = host || addressRemote;
-            portRemote = port || portRemote;
-        } else if (proxyIpMode === 'prefix') {
-            log(`direct connection failed, trying to generate dynamic prefix for ${addressRemote}`);
-            const prefix = getRandomValue(prefixes);
-            const dynamicProxyIP = await getDynamicProxyIP(addressRemote, prefix);
+        // کل منطق retry داخل try — دیگه unhandled rejection نداریم
+        try {
+            if (proxyIpMode === 'proxyip') {
+                log(`direct connection failed, trying to use Proxy IP for ${addressRemote}`);
+                const proxyIP = getRandomValue(proxyIPs);
+                const { host, port } = parseHostPort(proxyIP, true);
+                if (host) addressRemote = host;
+                if (port) portRemote = port;
+            } else if (proxyIpMode === 'prefix') {
+                log(`direct connection failed, trying to generate dynamic prefix for ${addressRemote}`);
+                const prefix = getRandomValue(prefixes);
+                const dynamicProxyIP = await getDynamicProxyIP(addressRemote, prefix);
 
-            if (dynamicProxyIP) {
-                addressRemote = dynamicProxyIP;
-            } else {
-                webSocket.close(1011, 'Retry connection failed: Invalid Prefix');
+                if (dynamicProxyIP) {
+                    addressRemote = dynamicProxyIP;
+                } else {
+                    webSocket.close(1011, 'Retry connection failed: Invalid Prefix');
+                    return; // باگ قبلی: ادامه می‌داد و به همون آدرس شکست‌خورده reconnect می‌کرد
+                }
             }
+        } catch (error) {
+            console.error('Retry connection failed:', error);
+            webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);
+            return;
         }
 
         try {
@@ -77,24 +114,29 @@ export async function handleTCPOutBound(
 async function remoteSocketToWS(
     remoteSocket: Socket,
     webSocket: WebSocket,
-    VLResponseHeader: Uint8Array<ArrayBuffer> | null,
-    retry: Function | null,
-    log: Function
+    VLResponseHeader: Uint8Array | null,
+    retry: (() => void) | null,
+    log: Logger
 ) {
     let vlHeader = VLResponseHeader;
     let hasIncomingData = false;
 
     const writableStream = new WritableStream({
-        start() { },
-        async write(chunk, controller) {
+        async write(chunk: Chunk, controller) {
             hasIncomingData = true;
             if (webSocket.readyState !== WS_READY_STATE_OPEN) {
                 controller.error('webSocket.readyState is not open, maybe close');
+                return; // باگ قبلی: بعد از error هم به send ادامه می‌داد
             }
 
             if (vlHeader) {
-                webSocket.send(await new Blob([vlHeader, chunk]).arrayBuffer());
+                // الحاق همگام با تخصیص واحد — به‌جای Blob + arrayBuffer async
+                const view = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+                const merged = new Uint8Array(vlHeader.length + view.length);
+                merged.set(vlHeader, 0);
+                merged.set(view, vlHeader.length);
                 vlHeader = null;
+                webSocket.send(merged);
             } else {
                 webSocket.send(chunk);
             }
@@ -105,7 +147,7 @@ async function remoteSocketToWS(
         abort(reason) {
             console.error(`remoteConnection.readable abort`, reason);
             safeCloseTcpSocket(remoteSocket);
-        }
+        },
     });
 
     try {
@@ -122,8 +164,14 @@ async function remoteSocketToWS(
     }
 }
 
-export function makeReadableWebSocketStream(webSocketServer: WebSocket, earlyDataHeader: string, log: Function) {
+export function makeReadableWebSocketStream(
+    webSocketServer: WebSocket,
+    earlyDataHeader: string,
+    log: Logger
+) {
     let readableStreamCancel = false;
+    let streamEnded = false; // گارد: جلوگیری از close/error دوباره روی controller
+
     const stream = new ReadableStream({
         start(controller) {
             webSocketServer.addEventListener('message', (event) => {
@@ -133,30 +181,35 @@ export function makeReadableWebSocketStream(webSocketServer: WebSocket, earlyDat
 
             webSocketServer.addEventListener('close', () => {
                 safeCloseWebSocket(webSocketServer);
-                if (readableStreamCancel) return;
+                if (readableStreamCancel || streamEnded) return;
+                streamEnded = true;
                 controller.close();
             });
 
             webSocketServer.addEventListener('error', (err) => {
                 log('webSocketServer has error');
+                safeCloseWebSocket(webSocketServer);
+                if (readableStreamCancel || streamEnded) return;
+                streamEnded = true;
                 controller.error(err);
             });
 
             const { earlyData, error } = base64ToArrayBuffer(earlyDataHeader);
 
             if (error) {
+                streamEnded = true;
                 controller.error(error);
+                safeCloseWebSocket(webSocketServer); // باگ قبلی: WS باز می‌موند
             } else if (earlyData) {
                 controller.enqueue(earlyData);
             }
         },
-        pull(_controller) { },
         cancel(reason) {
             if (readableStreamCancel) return;
             log(`ReadableStream was canceled, due to ${reason}`);
             readableStreamCancel = true;
             safeCloseWebSocket(webSocketServer);
-        }
+        },
     });
 
     return stream;
@@ -168,11 +221,14 @@ function base64ToArrayBuffer(base64Str: string) {
     }
 
     try {
-        // go use modified Base64 for URL rfc4648 which js atob not support
-        base64Str = base64Str.replace(/-/g, '+').replace(/_/g, '/');
-        const decode = atob(base64Str);
-        const arryBuffer = Uint8Array.from(decode, (c) => c.charCodeAt(0));
-        return { earlyData: arryBuffer.buffer, error: null };
+        // Base64 برای URL (rfc4648) — تک‌پاس به‌جای دو regex
+        const normalized = base64Str.replace(/[-_]/g, (c) => (c === '-' ? '+' : '/'));
+        const decode = atob(normalized);
+        const buffer = new Uint8Array(decode.length);
+        for (let i = 0; i < decode.length; i++) {
+            buffer[i] = decode.charCodeAt(i);
+        }
+        return { earlyData: buffer.buffer, error: null };
     } catch (error) {
         return { earlyData: null, error };
     }
@@ -237,4 +293,3 @@ function convertToNAT64IPv6(ipv4Address: string, prefix: string) {
         return `[${match[1]}${hex[0]}${hex[1]}:${hex[2]}${hex[3]}]`;
     }
 }
-
