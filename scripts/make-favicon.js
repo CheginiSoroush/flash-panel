@@ -83,7 +83,7 @@ ico.writeUInt16LE(images.length, 4);
 
 let offset = ico.length;
 images.forEach((img, i) => {
-    const d = i * 16;
+    const d = 6 + i * 16;
     ico[d] = SIZES[i];
     ico[d + 1] = SIZES[i];
     ico.writeUInt16LE(1, d + 4);
