@@ -1,0 +1,106 @@
+/* =========================================================
+   Flash Theme v1 — تم‌لایر روی توکن‌های CSS اصلی
+   فقط متغیرها و چند اصلاح هدفمند — ساختار دست‌نخورده
+   ========================================================= */
+
+:root {
+    /* پس‌زمینه — سرمه‌ای عمیق */
+    --color-bg-main: linear-gradient(160deg, #05070f 0%, #0a1226 55%, #0e1c36 100%);
+    --color-bg-card: rgba(18, 26, 45, 0.62);
+    --color-bg-input: rgba(8, 12, 24, 0.55);
+    --color-bg-modal: #101a30;
+    --color-bg-btn: rgba(255, 214, 10, 0.12);
+
+    --color-border-ui: #26314b;
+    --color-border-accent: color-mix(in srgb, var(--color-brand-hover), transparent 82%);
+
+    --color-text-primary: #eef2fb;
+    --color-text-secondary: #a7b6d4;
+    --color-text-muted: #6b7893;
+    --color-text-btn: #ffd60a;
+
+    /* برند — زرد برقی */
+    --color-brand-primary: #ffd60a;
+    --color-brand-hover: #ffe14d;
+    --color-brand-light-focus: rgba(255, 214, 10, 0.45);
+
+    --shadow-header: 0.125rem 0.125rem 0.25rem #05070f;
+    --shadow-icon: 0.125rem 0.125rem 0.2rem #05070f;
+
+    --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.25), 0 20px 40px -15px rgba(0, 0, 0, 0.55), 0 30px 60px -20px rgba(255, 214, 10, 0.07);
+    --shadow-input: inset 0 2px 4px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(255, 255, 255, 0.04);
+    --shadow-input-focus: 0 0 0 3px rgba(255, 214, 10, 0.35), 0 8px 20px -4px rgba(255, 214, 10, 0.22);
+}
+
+/* فونت وزیرمتن — پایه فارسی‌سازی فاز ۴ */
+body,
+button,
+input,
+select,
+textarea {
+    font-family: 'Vazirmatn', 'Twemoji Country Flags', 'Ubuntu', system-ui, sans-serif !important;
+}
+
+/* لینک‌ها — فیروزه‌ای */
+a,
+.link {
+    color: #38bdf8;
+}
+
+a:hover,
+.link:hover {
+    color: #7dd3fc;
+}
+
+/* دکمه اصلی (Apply) — زرد توپر با متن تیره */
+.button.apply,
+.form-control.apply {
+    background: #ffd60a !important;
+    color: #0a1226 !important;
+    border-color: #ffd60a !important;
+    font-weight: 700;
+}
+
+.button.apply:hover,
+.form-control.apply:hover {
+    background: #ffe14d !important;
+    color: #0a1226 !important;
+}
+
+/* عنوان هدر — گرادیان زرد برقی */
+.header-title {
+    background: linear-gradient(90deg, #ffd60a 20%, #fff3b0 90%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* انتخاب متن */
+::selection {
+    background: rgba(255, 214, 10, 0.35);
+}
+
+/* اسکرول‌بار */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0a1226;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #26314b;
+    border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #3a4a6b;
+}
+
+/* حلقه فوکوس */
+:focus-visible {
+    outline: 2px solid rgba(255, 214, 10, 0.6);
+    outline-offset: 2px;
+}

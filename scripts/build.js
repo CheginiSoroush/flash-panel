@@ -14,6 +14,7 @@ const __dirname = pathDirname(__filename);
 const ASSET_PATH = join(__dirname, '../src/assets');
 const DIST_PATH = join(__dirname, '../dist/');
 const WORKER_PATH = join(DIST_PATH, 'worker.js');
+const FLASH_THEME_PATH = join(ASSET_PATH, 'flash-theme.css');
 
 // سقف‌های Cloudflare (پس از فشرده‌سازی gzip): Free=3MB — Paid=10MB
 const SIZE_LIMIT_FREE = 3 * 1024 * 1024;
@@ -32,6 +33,7 @@ const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 
 async function processHtmlPages() {
     const indexFiles = globSync('**/index.html', { cwd: ASSET_PATH });
+    const flashTheme = readFileSync(FLASH_THEME_PATH, 'utf8');
     const result = {};
 
     for (const relativeIndexPath of indexFiles) {
@@ -47,10 +49,9 @@ async function processHtmlPages() {
             const script = readFileSync(base('script.js'), 'utf8');
             const { code } = await jsMinify(script);
 
-            // فرم تابعی replace — از تفسیر $& و $' و $$ در محتوای CSS/JS
-            // جلوگیری می‌کنه (باگ قبلی: محتوای حاوی این توکن‌ها خراب می‌شد)
+            // CSS اصلی + تم Flash — تم بعد از CSS اصلی میاد تا override کنه
             html = html
-                .replace('/* CSS_PLACEHOLDER */', () => css)
+                .replace('/* CSS_PLACEHOLDER */', () => css + '\n' + flashTheme)
                 .replace('/* JS_PLACEHOLDER */', () => code);
         }
 
@@ -95,9 +96,6 @@ async function buildWorker() {
             comments: false
         },
         compress: {
-            // dead_code و unused فعال شدن (پیش‌فرض terser) — قبلاً غیرفعال بودن
-            // و کد بلااستفاده در باندل می‌موند.
-            // ⚠️ اگه بعد از deploy مشکلی در پنل دیدی، این دو رو false کن.
             dead_code: true,
             unused: true
         }
@@ -136,7 +134,7 @@ function reportSize(worker, scriptBytes, sourceContent, embededContents) {
 
     console.log('\n📊 Bundle size report:');
     console.log(`   worker code    : ${kb(scriptBytes)}`);
-    console.log(`   SOURCE_CONTENT : ${kb(Buffer.byteLength(sourceContent, 'utf8'))} (سورس self-update — gzipped+base64)`);
+    console.log(`   SOURCE_CONTENT : ${kb(Buffer.byteLength(sourceContent, 'utf8'))}`);
     console.log(`   HTML embeds    : ${kb(htmlBytes)}`);
     console.log(`   ─────────────────────────────`);
     console.log(`   total (raw)    : ${kb(rawBytes)}`);
