@@ -79,13 +79,15 @@ export async function setWorkersDevRoute(enabled: boolean) {
     const scriptName = mainDomain.split('.')[0];
 
     try {
+        const form = new FormData();
+        form.append('settings', new Blob([JSON.stringify({ workers_dev: enabled })], { type: 'application/json' }));
+
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts/${scriptName}/settings`, {
             method: 'PATCH',
             headers: {
-                'Authorization': `Bearer ${apiToken}`,
-                'Content-Type': 'application/json'
+                'Authorization': `Bearer ${apiToken}`
             },
-            body: JSON.stringify({ workers_dev: enabled })
+            body: form
         });
 
         const data: any = await res.json();
