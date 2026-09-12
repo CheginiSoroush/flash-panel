@@ -1,6 +1,6 @@
 import { EmbededSettings, MainSettings, PanelSettings } from '#types/settings';
 import { deployPages, getPagesDomains, setPagesDomain } from '@api/pages';
-import { deployWorkers, getWorkerDomains, setWorkerDomain } from '@api/workers';
+import { deployWorkers, getWorkerDomains, setWorkerDomain, setWorkersDevRoute } from '@api/workers';
 import { getGlobals, getMainSettings, getSettings } from '@settings';
 import { createCNAME, listZones } from '@api/dns';
 import { decompressGzipBase64, safeError } from '@common';
@@ -59,10 +59,17 @@ function compareMainSettings(settings: MainSettings): boolean {
 }
 
 export async function setCustomDomain(customDomain: string) {
-    if (!customDomain) return;
     const { deployType } = getGlobals();
 
     try {
+        // فیکس باگ ۸: دامنه پاک شد؟ → مسیر workers.dev برمی‌گرده تا پنل بی‌جا نمونه
+        if (!customDomain) {
+            if (deployType === 'workers') {
+                await setWorkersDevRoute(true);
+            }
+            return;
+        }
+
         const tld = customDomain.split('.').slice(-2).join('.');
         const dnsZones = await listZones();
         const zone = dnsZones?.find((z: any) => z.name === tld);
@@ -72,15 +79,18 @@ export async function setCustomDomain(customDomain: string) {
             ? await getWorkerDomains()
             : await getPagesDomains();
 
-        if (customDomains.includes(customDomain)) {
-            throw new Error(`Custom domain '${customDomain}' is already added to ${deployType}.`);
-        }
-
         if (deployType === 'pages') {
-            await setPagesDomain(customDomain);
-            await createCNAME(zoneID, customDomain);
+            if (!customDomains.includes(customDomain)) {
+                await setPagesDomain(customDomain);
+                await createCNAME(zoneID, customDomain);
+            }
         } else {
-            await setWorkerDomain(customDomain);
+            // فیکس باگ ۷: idempotent — اگه ویزارد قبلاً وصلش کرده، فقط تنظیم ذخیره می‌شه
+            if (!customDomains.includes(customDomain)) {
+                await setWorkerDomain(customDomain);
+            }
+            // دامنه‌ی سفارشی فعاله → مسیر قابل‌اسکن workers.dev خاموش
+            await setWorkersDevRoute(false);
         }
 
         return customDomain;
