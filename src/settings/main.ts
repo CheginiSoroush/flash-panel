@@ -88,7 +88,6 @@ export async function setCustomDomain(customDomain: string) {
             // فیکس باگ ۷: idempotent — اگه ویزارد قبلاً وصلش کرده، فقط تنظیم ذخیره می‌شه
             if (!customDomains.includes(customDomain)) {
                 await setWorkerDomain(customDomain);
-            await disableWorkersDev();
             }
             // دامنه‌ی سفارشی فعاله → مسیر قابل‌اسکن workers.dev خاموش
             await setWorkersDevRoute(false);
