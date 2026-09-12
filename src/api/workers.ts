@@ -111,3 +111,27 @@ export async function deleteWorker() {
         throw new Error(`Failed to delete worker: ${safeError(error)}`);
     }
 }
+/**
+ * ⚡ خاموش کردن مسیر workers.dev — وقتی دامنه‌ی سفارشی وصل می‌شه صدا زده می‌شه
+ * تا URL قابل‌اسکن (*.workers.dev) از رادار خارج بشه
+ */
+export async function disableWorkersDev() {
+    const { accID, apiToken, mainDomain } = getGlobals();
+    const scriptName = mainDomain.split('.')[0];
+
+    try {
+        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts/${scriptName}/subdomain`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${apiToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ enabled: false })
+        });
+
+        const data: any = await res.json();
+        if (!data.success) throw new Error(data?.errors?.[0]?.message);
+    } catch (error) {
+        throw new Error(`Failed to disable workers.dev route: ${safeError(error)}`);
+    }
+}
