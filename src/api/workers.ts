@@ -69,6 +69,32 @@ export async function setWorkerDomain(domain: string) {
     }
 }
 
+/**
+ * ⚡ کنترل مسیر workers.dev
+ * enabled=false → وقتی دامنه‌ی سفارشی فعاله: URL قابل‌اسکن از رادار خارج می‌شه
+ * enabled=true  → وقتی دامنه پاک می‌شه: پنل بی‌جا نمی‌مونه
+ */
+export async function setWorkersDevRoute(enabled: boolean) {
+    const { accID, apiToken, mainDomain } = getGlobals();
+    const scriptName = mainDomain.split('.')[0];
+
+    try {
+        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts/${scriptName}/subdomain`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${apiToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ enabled })
+        });
+
+        const data: any = await res.json();
+        if (!data.success) throw new Error(data?.errors?.[0]?.message);
+    } catch (error) {
+        throw new Error(`Failed to set workers.dev route: ${safeError(error)}`);
+    }
+}
+
 export async function deleteWorker() {
     const { accID, apiToken, mainDomain } = getGlobals();
     const scriptName = mainDomain.split('.')[0];
