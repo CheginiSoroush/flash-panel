@@ -1,3 +1,4 @@
+
 # ⚡ Flash Panel
 
 A fast, optimized Cloudflare Workers panel for **VLESS**, **Trojan** and **Warp** — built for personal use, hardened for performance and security.
@@ -28,10 +29,3 @@ Requires Node.js 22+. Run npm install, then npm run check, npm run test and npm 
 
 مستندات کامل: [README_fa.md](README_fa.md)
 
-## 🇮🇷 فارسی
-
-مستندات کامل: [README_fa.md](README_fa.md)
-
-## 🇮🇷 فارسی
-
-مستندات کامل: [README_fa.md](README_fa.md)
