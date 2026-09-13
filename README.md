@@ -13,7 +13,7 @@ A fast, optimized Cloudflare Workers panel for **VLESS**, **Trojan** and **Warp*
 
 ## 🪄 Quick Install
 
-Deploy your own panel in 60 seconds with **[Flash Wizard](https://cheginisoroush.github.io/flash-wizard/)** — no CLI needed.
+Deploy your own panel in 60 seconds with **[Flash Wizard](https://flash-wizard.imsoroush.workers.dev)** — no CLI needed.
 
 ## Build
 
