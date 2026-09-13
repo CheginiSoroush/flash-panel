@@ -6,3 +6,4 @@ deploy/metadata.json
 *.log
 deploy/entry.js
 cookies.txt
+wrangler.jsonc
