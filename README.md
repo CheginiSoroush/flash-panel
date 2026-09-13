@@ -23,3 +23,7 @@ Requires Node.js 22+. Run npm install, then npm run check, npm run test and npm 
 
 - Original project: [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) by [bia-pain-bache](https://github.com/bia-pain-bache)
 - Licensed under GPL-3.0 — see the LICENSE file
+
+## 🇮🇷 فارسی
+
+مستندات کامل: [README_fa.md](README_fa.md)
