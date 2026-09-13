@@ -1,31 +1,49 @@
+<div align="center">
+  <h1>⚡ Flash Panel</h1>
+  <p><strong>A high-performance, serverless proxy management panel powered by Cloudflare Workers.</strong></p>
+  <p><a href="README_fa.md">🇮🇷 فارسی</a></p>
+  <p>
+    <img src="https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare" alt="Workers">
+    <img src="https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white" alt="TS">
+    <img src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square" alt="License">
+  </p>
+</div>
 
-# ⚡ Flash Panel
+---
 
-A fast, optimized Cloudflare Workers panel for **VLESS**, **Trojan** and **Warp** — built for personal use, hardened for performance and security.
+Flash Panel transforms your Cloudflare Workers into a robust, easily manageable proxy server. Say goodbye to expensive VPS hosting and embrace the serverless revolution with advanced routing, multiple core support, and Telegram bot integration.
 
-> Flash Panel is a hard fork of [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) with major performance optimizations, bug fixes and security hardening.
+> Hard fork of [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) with performance optimizations, bug fixes, and security hardening.
 
-## Highlights
+## ✨ Key Features
 
-- **Fast** — cached socket writer, zero-copy parsing, isolate-level caches
-- **Secure** — login rate-limiting, constant-time credential checks, Telegram webhook secret validation
-- **Tested** — unit tests on protocol parsers, CI on every push
-- **Small** — about 172 KB gzipped
+* **☁️ 100% Serverless** — zero maintenance costs
+* **🛡️ VLESS + Trojan** — modern protocol support
+* **📦 Xray, Sing-box, Clash** — universal core compatibility
+* **🤖 Telegram Bot** — manage everything from chat
+* **🔀 Advanced Routing** — WARP, Fragment, DoH
+* **🌍 Proxy IPs** — external IP integration
 
-## 🪄 Quick Install
+## 🚀 Quick Deployment
 
-Deploy your own panel in 60 seconds with **[Flash Wizard](https://flash-wizard.imsoroush.workers.dev)** — no CLI needed.
+### 🪄 Flash Wizard (recommended)
 
-## Build
+Deploy in 60 seconds with **[Flash Wizard](https://flash-wizard.imsoroush.workers.dev/)** — no CLI needed.
 
-Requires Node.js 22+. Run npm install, then npm run check, npm run test and npm run build. Deploy the built worker with your EMBEDED_SETTINGS injected.
+> ⚠️ **Use a custom domain.** Deploying on `*.workers.dev` risks automated abuse reports and account suspension.
 
-## Credits & License
+### Manual
 
-- Original project: [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) by [bia-pain-bache](https://github.com/bia-pain-bache)
-- Licensed under GPL-3.0 — see the LICENSE file
+```bash
+npm install
+cp wrangler.jsonc.example wrangler.jsonc
+cp deploy/settings.example.js deploy/settings.js
+npm run check && npm run test && npm run build
+npx wrangler deploy
+```
 
-## 🇮🇷 فارسی
+## 📖 Credits & License
 
-مستندات کامل: [README_fa.md](README_fa.md)
-
+- **Original:** [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) by [bia-pain-bache](https://github.com/bia-pain-bache)
+- **License:** GPL-3.0 — [LICENSE](LICENSE)
+- **Wizard:** [Flash Wizard](https://github.com/CheginiSoroush/flash-wizard)
