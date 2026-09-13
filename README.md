@@ -27,3 +27,7 @@ Requires Node.js 22+. Run npm install, then npm run check, npm run test and npm 
 ## 🇮🇷 فارسی
 
 مستندات کامل: [README_fa.md](README_fa.md)
+
+## 🇮🇷 فارسی
+
+مستندات کامل: [README_fa.md](README_fa.md)
