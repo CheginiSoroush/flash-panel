@@ -267,7 +267,7 @@ async function fetchIPInfo() {
 function generateSubUrl(type, core, tag) {
     const url = new URL(`./sub/${type}`, window.location.href);
     url.searchParams.append('app', core);
-    url.hash = `💦 Flash ${tag}`;
+    url.hash = `⚡ Flash ${tag}`;
 
     if (core === 'sing-box' && type !== 'raw') {
         return `sing-box://import-remote-profile?url=${url.href}`;

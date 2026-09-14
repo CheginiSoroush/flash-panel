@@ -100,7 +100,7 @@ export async function getURLConfigs() {
     }
 
     if (chainProxy) {
-        let chainRemark = `#${encodeURIComponent('💦 Chain proxy 🔗')}`;
+        let chainRemark = `#${encodeURIComponent('⚡ Chain proxy 🔗')}`;
         if (chainProxy.startsWith('socks') || chainProxy.startsWith('http')) {
             const regex = /^(?:socks|http):\/\/([^@]+)@/;
             const isUserPass = chainProxy.match(regex);
@@ -123,7 +123,7 @@ export async function getURLConfigs() {
             'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma': 'no-cache',
             'Expires': '0',
-            'Profile-Title': `base64:${base64EncodeUtf8(`💦 ${_project_} Raw`)}`,
+            'Profile-Title': `base64:${base64EncodeUtf8(`⚡ ${_project_} Raw`)}`,
             'DNS': remoteDNS
         }
     });

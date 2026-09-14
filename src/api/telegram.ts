@@ -271,12 +271,12 @@ function buildClientUrl(type: string, app: string, label: string): string {
     if (app === 'sing-box' && type !== 'raw') {
         const singUrl = new URL('sing-box://import-remote-profile');
         singUrl.searchParams.set('url', url.href);
-        singUrl.hash = `💦 ${_project_} ${label}`;
+        singUrl.hash = `⚡ ${_project_} ${label}`;
 
         return singUrl.href;
     }
 
-    url.hash = `💦 ${_project_} ${label}`;
+    url.hash = `⚡ ${_project_} ${label}`;
     return url.href;
 }
 
@@ -390,7 +390,7 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
 
                     const supportedList = appInfo.clients.map(a => `✅ ${a}`).join('\n');
                     const showUrl = wgClient ? '' : `<code>${clientUrl}</code>\n\n`;
-                    const caption = `💦 <b>${_project_} ${subscription.label}</b>\n\n${showUrl}<b>Supported apps:</b>\n\n${supportedList}`;
+                    const caption = `⚡ <b>${_project_} ${subscription.label}</b>\n\n${showUrl}<b>Supported apps:</b>\n\n${supportedList}`;
 
                     const isLast = index === subscription.categories.length - 1;
                     const backBtn = {

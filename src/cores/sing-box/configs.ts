@@ -99,10 +99,10 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
     const outbounds: Outbound[] = [];
 
     const tagGroup: TagGroup = {
-        '💦 Best Ping 🚀': [],
-        '💦 🔗 Best Ping 🚀': [],
-        '💦 Best Ping D 🚀': [],
-        '💦 🔗 Best Ping D 🚀': [],
+        '⚡ Best Ping 🚀': [],
+        '⚡ 🔗 Best Ping 🚀': [],
+        '⚡ Best Ping D 🚀': [],
+        '⚡ 🔗 Best Ping D 🚀': [],
     };
 
     for (const domain of domains) {
@@ -124,9 +124,9 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
                     outbounds.push(outbound);
                     
                     if (domain === customDomain) {
-                        tagGroup['💦 Best Ping D 🚀'].push(tag);
+                        tagGroup['⚡ Best Ping D 🚀'].push(tag);
                     } else {
-                        tagGroup['💦 Best Ping 🚀'].push(tag);
+                        tagGroup['⚡ Best Ping 🚀'].push(tag);
                     }
 
                     if (isChain) {
@@ -137,9 +137,9 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
                         outbounds.push(chain);
 
                         if (domain === customDomain) {
-                            tagGroup['💦 🔗 Best Ping D 🚀'].push(chainTag);
+                            tagGroup['⚡ 🔗 Best Ping D 🚀'].push(chainTag);
                         } else {
-                            tagGroup['💦 🔗 Best Ping 🚀'].push(chainTag);
+                            tagGroup['⚡ 🔗 Best Ping 🚀'].push(chainTag);
                         }
                     }
 
@@ -176,16 +176,16 @@ export async function getSbWarpConfig(): Promise<Response> {
     const outbounds: WireguardEndpoint[] = [];
 
     const tagGroup: TagGroup = {
-        '💦 Warp - Best Ping 🚀': [],
-        '💦 WoW - Best Ping 🚀': []
+        '⚡ Warp - Best Ping 🚀': [],
+        '⚡ WoW - Best Ping 🚀': []
     };
 
     warpEndpoints.forEach((endpoint, index) => {
-        const warpTag = `💦 ${index + 1}. Warp 🇮🇷`;
-        tagGroup['💦 Warp - Best Ping 🚀'].push(warpTag);
+        const warpTag = `⚡ ${index + 1}. Warp 🇮🇷`;
+        tagGroup['⚡ Warp - Best Ping 🚀'].push(warpTag);
 
-        const wowTag = `💦 ${index + 1}. WoW 🌍`;
-        tagGroup['💦 WoW - Best Ping 🚀'].push(wowTag);
+        const wowTag = `⚡ ${index + 1}. WoW 🌍`;
+        tagGroup['⚡ WoW - Best Ping 🚀'].push(wowTag);
 
         const warpOutbound = buildWarpOutbound(warpAccounts[0], warpTag, endpoint);
         const wowOutbound = buildWarpOutbound(warpAccounts[1], wowTag, endpoint, warpTag);
