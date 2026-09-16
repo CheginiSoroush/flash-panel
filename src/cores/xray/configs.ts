@@ -298,7 +298,7 @@ export async function getXrCustomConfigs(isFragment: boolean): Promise<Response>
     } = getSettings();
 
     const chainOutbound = chainProxy ? buildChainOutbound() : undefined;
-    const domains = [mainDomain].concatIf(!!customDomain, customDomain);
+    const domains = [...new Set([mainDomain].concatIf(!!customDomain, customDomain))];
     const protocols = getProtocols();
 
     const configs: Config[] = [];
@@ -364,7 +364,7 @@ export async function getXrCustomConfigs(isFragment: boolean): Promise<Response>
             }
         }
 
-        const isCustomDomain = domain === customDomain;
+        const isCustomDomain = domain === customDomain && domain !== mainDomain;
         await addBestPingConfigs(configs, totalHosts, proxies, chains, isFragment, isCustomDomain);
     }
 

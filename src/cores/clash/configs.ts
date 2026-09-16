@@ -93,7 +93,7 @@ export async function getClNormalConfig(): Promise<Response> {
 
     const chainOutbound = chainProxy ? buildChainOutbound() : undefined;
     const isChain = !!chainOutbound;
-    const domains = [mainDomain].concatIf(!!customDomain, customDomain);
+    const domains = [...new Set([mainDomain].concatIf(!!customDomain, customDomain))];
     const protocols = getProtocols();
 
     const outbounds: Outbound[] = [];
@@ -123,7 +123,7 @@ export async function getClNormalConfig(): Promise<Response> {
 
                     if (outbound) {
                         outbounds.push(outbound);
-                        if (domain === customDomain) {
+                        if (domain === customDomain && domain !== mainDomain) {
                             tagGroup['⚡ Best Ping D 🚀'].push(tag);
                         } else {
                             tagGroup['⚡ Best Ping 🚀'].push(tag);
@@ -136,7 +136,7 @@ export async function getClNormalConfig(): Promise<Response> {
                             chain['dialer-proxy'] = tag;
                             outbounds.push(chain);
 
-                            if (domain === customDomain) {
+                            if (domain === customDomain && domain !== mainDomain) {
                                 tagGroup['⚡ 🔗 Best Ping D 🚀'].push(chainTag);
                             } else {
                                 tagGroup['⚡ 🔗 Best Ping 🚀'].push(chainTag);

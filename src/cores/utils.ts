@@ -77,13 +77,13 @@ export function generateRemark(
     isFragment: boolean,
     isChain: boolean
 ): string {
-    const { cleanIPs, customCdnAddrs, customDomain, upstreamParams: { upstreamServer } } = getSettings();
+    const { cleanIPs, customCdnAddrs, customDomain, mainDomain, upstreamParams: { upstreamServer } } = getSettings();
 
     const chainSign = isChain ? '🔗 ' : '';
     const protoSign = protocol === _VL_ ? _VL_CAP_ : _TR_CAP_;
 
     const fragmentSign = isFragment ? 'F ' : '';
-    const customDomainSign = domain === customDomain ? 'D ' : '';
+    const customDomainSign = domain === customDomain && domain !== mainDomain ? 'D ' : '';
     const customCdnSign = customCdnAddrs.includes(address) ? 'C ' : '';
     const configType = `${fragmentSign}${customDomainSign}${customCdnSign}`;
 

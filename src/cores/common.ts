@@ -66,7 +66,7 @@ export async function getURLConfigs() {
 
     let VLConfs = '', TRConfs = '', chainConfig = '';
     let proxyIndex = 1;
-    const domains = [mainDomain].concatIf(!!customDomain, customDomain);
+    const domains = [...new Set([mainDomain].concatIf(!!customDomain, customDomain))];
     const protocols = getProtocols();
 
     for (const domain of domains) {
