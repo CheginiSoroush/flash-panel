@@ -30,19 +30,38 @@ function buildBalancer(tag: string, selector: string, hasFallback: boolean): Bal
     };
 }
 
-async function buildConfig(
-    remark: string,
-    outbounds: Outbound[],
-    isBalancer: boolean,
-    isChain: boolean,
-    balancerFallback: boolean,
-    isWarp: boolean,
-    isWorkerLess: boolean,
-    outboundAddrs: string[],
-    domainToStaticIPs?: string,
-    customDns?: string,
-    customDnsHosts?: string[]
-): Promise<Config> {
+// ---------- پارامترهای نامی به‌جای ۱۱ آرگومان positional ----------
+// خوانایی بالاتر + صفر ریسک جابه‌جایی آرگومان
+
+interface BuildConfigOptions {
+    remark: string;
+    outbounds: Outbound[];
+    isBalancer: boolean;
+    isChain: boolean;
+    balancerFallback: boolean;
+    isWarp: boolean;
+    isWorkerLess: boolean;
+    outboundAddrs: string[];
+    domainToStaticIPs?: string;
+    customDns?: string;
+    customDnsHosts?: string[];
+}
+
+async function buildConfig(options: BuildConfigOptions): Promise<Config> {
+    const {
+        remark,
+        outbounds,
+        isBalancer,
+        isChain,
+        balancerFallback,
+        isWarp,
+        isWorkerLess,
+        outboundAddrs,
+        domainToStaticIPs,
+        customDns,
+        customDnsHosts
+    } = options;
+
     const {
         fakeDNS,
         warpBestPingInterval,
@@ -144,7 +163,7 @@ async function addBestPingConfigs(
     isFragment: boolean,
     isCustomDomain: boolean
 ) {
-    totalAddresses = [...new Set(totalAddresses)];
+    const uniqueAddresses = [...new Set(totalAddresses)];
     const isChain = !!chainOutbounds.length;
     const chainSign = isChain ? '🔗 ' : '';
     const fragmentSign = isFragment ? 'F ' : '';
@@ -157,10 +176,19 @@ async function addBestPingConfigs(
         ...proxyOutbounds
     ];
 
-    const config = await buildConfig(remark, outbounds, true, isChain, true, false, false, totalAddresses);
+    const config = await buildConfig({
+        remark,
+        outbounds,
+        isBalancer: true,
+        isChain,
+        balancerFallback: true,
+        isWarp: false,
+        isWorkerLess: false,
+        outboundAddrs: uniqueAddresses
+    });
 
     if (isChain) {
-        await addBestPingConfigs(configs, totalAddresses, proxyOutbounds, [], isFragment, isCustomDomain);
+        await addBestPingConfigs(configs, uniqueAddresses, proxyOutbounds, [], isFragment, isCustomDomain);
     }
 
     configs.push(config);
@@ -202,17 +230,17 @@ async function addBestFragmentConfigs(
     });
 
     const chainSign = isChain ? '🔗 ' : '';
-    const config = await buildConfig(
-        `⚡ ${chainSign}Smart Fragment 🧠`,
+    const config = await buildConfig({
+        remark: `⚡ ${chainSign}Smart Fragment 🧠`,
         outbounds,
-        true,
+        isBalancer: true,
         isChain,
-        false,
-        false,
-        false,
-        [],
-        mainDomain
-    );
+        balancerFallback: false,
+        isWarp: false,
+        isWorkerLess: false,
+        outboundAddrs: [],
+        domainToStaticIPs: mainDomain
+    });
 
     if (chainProxy) {
         await addBestFragmentConfigs(configs);
@@ -231,33 +259,31 @@ async function addWorkerlessConfigs(configs: Config[]) {
         udpNoise
     ];
 
-    const cfDnsConfig = await buildConfig(
-        `⚡ 1 - Serverless 🌟`,
+    const cfDnsConfig = await buildConfig({
+        remark: `⚡ 1 - Serverless 🌟`,
         outbounds,
-        false,
-        false,
-        false,
-        false,
-        true,
-        [],
-        undefined,
-        'cloudflare-dns.com',
-        ['cloudflare.com']
-    );
+        isBalancer: false,
+        isChain: false,
+        balancerFallback: false,
+        isWarp: false,
+        isWorkerLess: true,
+        outboundAddrs: [],
+        customDns: 'cloudflare-dns.com',
+        customDnsHosts: ['cloudflare.com']
+    });
 
-    const googleDnsConfig = await buildConfig(
-        `⚡ 2 - Serverless 🌟`,
+    const googleDnsConfig = await buildConfig({
+        remark: `⚡ 2 - Serverless 🌟`,
         outbounds,
-        false,
-        false,
-        false,
-        false,
-        true,
-        [],
-        undefined,
-        'dns.google',
-        ['8.8.8.8', '8.8.4.4']
-    );
+        isBalancer: false,
+        isChain: false,
+        balancerFallback: false,
+        isWarp: false,
+        isWorkerLess: true,
+        outboundAddrs: [],
+        customDns: 'dns.google',
+        customDnsHosts: ['8.8.8.8', '8.8.4.4']
+    });
 
     configs.push(cfDnsConfig, googleDnsConfig);
 }
@@ -277,20 +303,19 @@ export async function getXrCustomConfigs(isFragment: boolean): Promise<Response>
 
     const configs: Config[] = [];
     let index = 1;
-    
+
     for (const domain of domains) {
-        let totalHosts: string[] = [];
         const proxies: Outbound[] = [];
         const chains: Outbound[] = [];
         const totalPorts = ports.filter(port => !isFragment && domain.endsWith('workers.dev') || isHttps(port));
         const hosts = await getConfigAddresses(domain, isFragment);
-        
+        const totalHosts: string[] = [...hosts];
+
         if (upstreamServer && upstreamPort && !isFragment) {
             totalPorts.unshift(upstreamPort);
             hosts.unshift(upstreamServer);
         }
 
-        totalHosts.push(...hosts);
         for (const protocol of protocols) {
             let protocolIndex = 1;
 
@@ -303,12 +328,30 @@ export async function getXrCustomConfigs(isFragment: boolean): Promise<Response>
                     proxies.push(proxy);
 
                     const remark = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, false);
-                    const config = await buildConfig(remark, [outbound], false, false, false, false, false, [host]);
+                    const config = await buildConfig({
+                        remark,
+                        outbounds: [outbound],
+                        isBalancer: false,
+                        isChain: false,
+                        balancerFallback: false,
+                        isWarp: false,
+                        isWorkerLess: false,
+                        outboundAddrs: [host]
+                    });
                     configs.push(config);
 
                     if (chainOutbound) {
-                        const remark = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, true);
-                        const chainConfig = await buildConfig(remark, [chainOutbound, outbound], false, true, false, false, false, [host]);
+                        const chainRemark = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, true);
+                        const chainConfig = await buildConfig({
+                            remark: chainRemark,
+                            outbounds: [chainOutbound, outbound],
+                            isBalancer: false,
+                            isChain: true,
+                            balancerFallback: false,
+                            isWarp: false,
+                            isWorkerLess: false,
+                            outboundAddrs: [host]
+                        });
                         configs.push(chainConfig);
 
                         const chain = modifyOutbound(chainOutbound, `chain-${index}`, `proxy-${index}`);
@@ -331,16 +374,7 @@ export async function getXrCustomConfigs(isFragment: boolean): Promise<Response>
     }
 
     const fileName = isFragment ? 'fragment' : 'normal';
-    return new Response(JSON.stringify(configs, null, 4), {
-        status: 200,
-        headers: {
-            'Content-Type': 'application/json',
-            'Content-Disposition': `attachment; filename=${_project_SM_}-${fileName}-xray.json`,
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        }
-    });
+    return buildConfigsResponse(configs, `${_project_SM_}-${fileName}-xray.json`);
 }
 
 export async function getXrWarpConfigs(
@@ -363,27 +397,27 @@ export async function getXrWarpConfigs(
         const warpOutbound = buildWarpOutbound(warpAccounts[0], endpoint, false, isPro, isKnocker);
         const wowOutbound = buildWarpOutbound(warpAccounts[1], endpoint, true, isPro, isKnocker);
 
-        const warpConfig = await buildConfig(
-            `⚡ ${index + 1} - Warp${proIndicator}🇮🇷`,
-            [warpOutbound],
-            false,
-            false,
-            false,
-            true,
-            false,
-            [host]
-        );
+        const warpConfig = await buildConfig({
+            remark: `⚡ ${index + 1} - Warp${proIndicator}🇮🇷`,
+            outbounds: [warpOutbound],
+            isBalancer: false,
+            isChain: false,
+            balancerFallback: false,
+            isWarp: true,
+            isWorkerLess: false,
+            outboundAddrs: [host]
+        });
 
-        const wowConfig = await buildConfig(
-            `⚡ ${index + 1} - WoW${proIndicator}🌍`,
-            [wowOutbound, warpOutbound],
-            false,
-            true,
-            false,
-            true,
-            false,
-            [host]
-        );
+        const wowConfig = await buildConfig({
+            remark: `⚡ ${index + 1} - WoW${proIndicator}🌍`,
+            outbounds: [wowOutbound, warpOutbound],
+            isBalancer: false,
+            isChain: true,
+            balancerFallback: false,
+            isWarp: true,
+            isWorkerLess: false,
+            outboundAddrs: [host]
+        });
 
         configs.push(warpConfig, wowConfig);
 
@@ -394,36 +428,44 @@ export async function getXrWarpConfigs(
         chains.push(chain);
     }
 
-    const warpBestPing = await buildConfig(
-        `⚡ Warp${proIndicator}- Best Ping 🚀`,
-        [...proxies],
-        true,
-        false,
-        false,
-        true,
-        false,
-        outboundDomains
-    );
+    const warpBestPing = await buildConfig({
+        remark: `⚡ Warp${proIndicator}- Best Ping 🚀`,
+        outbounds: [...proxies],
+        isBalancer: true,
+        isChain: false,
+        balancerFallback: false,
+        isWarp: true,
+        isWorkerLess: false,
+        outboundAddrs: outboundDomains
+    });
 
-    const wowBestPing = await buildConfig(
-        `⚡ WoW${proIndicator}- Best Ping 🚀`,
-        [...chains, ...proxies],
-        true,
-        true,
-        false,
-        true,
-        false,
-        outboundDomains
-    );
+    const wowBestPing = await buildConfig({
+        remark: `⚡ WoW${proIndicator}- Best Ping 🚀`,
+        outbounds: [...chains, ...proxies],
+        isBalancer: true,
+        isChain: true,
+        balancerFallback: false,
+        isWarp: true,
+        isWorkerLess: false,
+        outboundAddrs: outboundDomains
+    });
 
     configs.push(warpBestPing, wowBestPing);
 
     const fileName = isPro ? 'warp-Pro' : 'warp';
-    return new Response(JSON.stringify(configs, null, 4), {
+    return buildConfigsResponse(configs, `${_project_SM_}-${fileName}-xray.json`);
+}
+
+// ---------- Response builder مشترک ----------
+// minified JSON — کانفیگ‌ها ~۷۵٪ کوچیک‌تر از pretty-print با تورفتگی ۴
+// کلاینت‌های Xray JSON فشرده رو کاملاً قبول می‌کنن
+
+function buildConfigsResponse(configs: Config[], fileName: string): Response {
+    return new Response(JSON.stringify(configs), {
         status: 200,
         headers: {
             'Content-Type': 'application/json',
-            'Content-Disposition': `attachment; filename=${_project_SM_}-${fileName}-xray.json`,
+            'Content-Disposition': `attachment; filename=${fileName}`,
             'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma': 'no-cache',
             'Expires': '0'
