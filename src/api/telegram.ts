@@ -92,6 +92,8 @@ export async function setTelegramBot(path: string, token: string) {
                     { command: 'config', description: '🔗 Get configs' },
                     { command: 'clients', description: '📱 Get supported clients' },
                     { command: 'usage', description: '📊 Monitor usage' },
+                    { command: 'settings', description: '⚙️ Change panel settings' },
+
                 ]
             })
         });
@@ -147,6 +149,7 @@ export async function removeTelegramBot(request: Request, env: Env) {
 
 interface TgUser {
     id: number;
+    is_bot?: boolean;
     first_name?: string;
     last_name?: string;
     username?: string;
@@ -157,6 +160,8 @@ interface TgMessage {
     from: TgUser;
     chat: { id: number; type: string };
     text?: string;
+    caption?: string;
+    reply_to_message?: TgMessage;
 }
 
 interface TgCallbackQuery {
@@ -178,6 +183,11 @@ function mainKeyboard() {
             [{ text: '🔗 Get Config', callback_data: 'sub' }],
             [{ text: '📱 Supported Clients', callback_data: 'clients' }],
             [{ text: '📊 Usage', callback_data: 'usage' }],
+            [{ text: '⚙️ Settings', callback_data: 'settings' }],
+            [
+                { text: '📡 Status', callback_data: 'status' },
+                { text: '🔄 Restart', callback_data: 'restart' }
+            ],
         ]
     };
 }
@@ -214,6 +224,167 @@ function clientsKeyboard() {
     return {
         inline_keyboard: [
             ...suppClients,
+            [{ text: '◀️ Back', callback_data: 'main' }]
+        ]
+    };
+}
+// ============================================================
+// ⚙️ Settings از تلگرام — تغییر تنظیمات بدون باز کردن پنل
+// فقط فیلدهای امن — بدون UUID/securePath/pass/customDomain
+// ============================================================
+
+/** فیلدهای قابل‌ویرایش از ربات */
+const EDITABLE_SETTINGS = {
+    'localDNS': {
+        label: '🌐 Local DNS',
+        hint: 'مثل: 8.8.8.8 یا 1.1.1.1',
+        validate: (v: string) => /^(\d{1,3}\.){3}\d{1,3}$/.test(v.trim()) || 'Invalid IP format',
+        current: (s: any) => s.localDNS
+    },
+    'remoteDNS': {
+        label: '🌍 Remote DNS',
+        hint: 'مثل: https://8.8.8.8/dns-query',
+        validate: (v: string) => v.trim().startsWith('https://') || v.trim().startsWith('http://') || /^(\d{1,3}\.){3}\d{1,3}$/.test(v.trim()) || 'Invalid DNS format',
+        current: (s: any) => s.remoteDNS
+    },
+    'protocols': {
+        label: '🛡 Protocols',
+        hint: 'مثل: vless,trojan (جداشده با کاما)',
+        validate: (v: string) => {
+            const protos = v.toLowerCase().split(',').map(p => p.trim());
+            const valid = protos.every(p => ['vless', 'trojan'].includes(p));
+            return valid || 'Only vless and trojan are allowed';
+        },
+        current: (s: any) => s.protocols
+    },
+    'cleanIPs': {
+        label: '🧹 Clean IPs',
+        hint: 'هر خط یک IP یا دامنه',
+        validate: (v: string) => {
+            const lines = v.split('\n').map(l => l.trim()).filter(Boolean);
+            if (!lines.length) return 'Empty list';
+            if (lines.length > 50) return 'Max 50 entries';
+            return true;
+        },
+        current: (s: any) => (s.cleanIPs || []).join('\n') || '(empty)'
+    },
+    'fingerprint': {
+        label: '🔑 Fingerprint',
+        hint: 'chrome, firefox, safari, android, ios, edge',
+        validate: (v: string) => {
+            const valid = ['chrome', 'firefox', 'safari', 'android', 'ios', 'edge', 'random'];
+            return valid.includes(v.toLowerCase()) || `Must be one of: ${valid.join(', ')}`;
+        },
+        current: (s: any) => s.fingerprint
+    },
+
+    // ---------- قوانین مسیریابی — toggle های true/false ----------
+    'bypassIran': {
+        label: '🇮🇷 Bypass Iran',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.bypassIran)
+    },
+    'bypassChina': {
+        label: '🇨🇳 Bypass China',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.bypassChina)
+    },
+    'bypassRussia': {
+        label: '🇷🇺 Bypass Russia',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.bypassRussia)
+    },
+    'bypassOpenAi': {
+        label: '🤖 Bypass OpenAI',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.bypassOpenAi)
+    },
+    'bypassGoogleAi': {
+        label: '🧠 Bypass Google AI',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.bypassGoogleAi)
+    },
+    'bypassMicrosoft': {
+        label: '🪟 Bypass Microsoft',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.bypassMicrosoft)
+    },
+    'bypassOracle': {
+        label: '☁️ Bypass Oracle',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.bypassOracle)
+    },
+    'bypassDocker': {
+        label: '🐳 Bypass Docker',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.bypassDocker)
+    },
+    'blockAds': {
+        label: '🚫 Block Ads',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.blockAds)
+    },
+    'blockPorn': {
+        label: '🔞 Block Porn',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.blockPorn)
+    },
+    'blockMalware': {
+        label: '🦠 Block Malware',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.blockMalware)
+    },
+    'blockPhishing': {
+        label: '🎣 Block Phishing',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.blockPhishing)
+    },
+    'blockCryptominers': {
+        label: '⛏️ Block Cryptominers',
+        hint: 'true یا false',
+        validate: boolValidate, current: (s: any) => String(s.blockCryptominers)
+    },
+} as const;
+
+/** اعتبارسنجی true/false */
+function boolValidate(v: string): true | string {
+    return ['true', 'false'].includes(v.trim().toLowerCase()) || 'Send true or false';
+}
+
+type EditableField = keyof typeof EDITABLE_SETTINGS;
+
+function settingsKeyboard() {
+    return {
+        inline_keyboard: [
+            [{ text: '🌐 Local DNS', callback_data: 'set_localDNS' }],
+            [{ text: '🌍 Remote DNS', callback_data: 'set_remoteDNS' }],
+            [{ text: '🛡 Protocols', callback_data: 'set_protocols' }],
+            [{ text: '🧹 Clean IPs', callback_data: 'set_cleanIPs' }],
+            [{ text: '🔑 Fingerprint', callback_data: 'set_fingerprint' }],
+            // ---------- مسیریابی ----------
+            [
+                { text: '🇮🇷 Iran', callback_data: 'set_bypassIran' },
+                { text: '🇨🇳 China', callback_data: 'set_bypassChina' },
+                { text: '🇷🇺 Russia', callback_data: 'set_bypassRussia' }
+            ],
+            [
+                { text: '🤖 OpenAI', callback_data: 'set_bypassOpenAi' },
+                { text: '🧠 GoogleAI', callback_data: 'set_bypassGoogleAi' },
+                { text: '🪟 MSFT', callback_data: 'set_bypassMicrosoft' }
+            ],
+            [
+                { text: '☁️ Oracle', callback_data: 'set_bypassOracle' },
+                { text: '🐳 Docker', callback_data: 'set_bypassDocker' }
+            ],
+            [
+                { text: '🚫 Ads', callback_data: 'set_blockAds' },
+                { text: '🔞 Porn', callback_data: 'set_blockPorn' }
+            ],
+            [
+                { text: '🦠 Malware', callback_data: 'set_blockMalware' },
+                { text: '🎣 Phishing', callback_data: 'set_blockPhishing' },
+                { text: '⛏️ Miners', callback_data: 'set_blockCryptominers' }
+            ],
             [{ text: '◀️ Back', callback_data: 'main' }]
         ]
     };
@@ -310,10 +481,33 @@ function buildDocUrl(type: string, app: string): string | null {
     return docUrl.href;
 }
 
-async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number): Promise<void> {
+async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number, env: Env): Promise<void> {
     const data = cq.data || '';
 
     switch (data) {
+        case 'settings':
+            await tgFetch(token, 'sendMessage', {
+                chat_id: chatId,
+                text: '⚙️ <b>Panel Settings</b>\n\nChoose a setting to change:',
+                parse_mode: 'HTML',
+                reply_markup: settingsKeyboard()
+            });
+            break;
+
+        case 'status':
+            await sendStatus(token, chatId, env);
+            break;
+
+        case 'restart':
+            await invalidateDatasetCache();
+            await tgFetch(token, 'sendMessage', {
+                chat_id: chatId,
+                text: '🔄 <b>Caches invalidated!</b>\n\nSettings KV and dataset cache cleared — fresh values will be loaded on next request.',
+                parse_mode: 'HTML',
+                reply_markup: mainKeyboard()
+            });
+            break;
+
         case 'sub':
             await tgFetch(token, 'sendMessage', {
                 chat_id: chatId,
@@ -376,6 +570,31 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
             break;
 
         default:
+                        // ---------- Settings ----------
+            if (data.startsWith('set_')) {
+                const field = data.slice(4) as EditableField;
+                const config = EDITABLE_SETTINGS[field];
+                if (!config) break;
+
+                const { settings } = await getDataset(env);
+                const currentValue = config.current(settings);
+
+                // ثبت حالت انتظار برای این کاربر (fallback بدون reply)
+                await setPending(env, cq.from.id.toString(), field);
+
+                await tgFetch(token, 'sendMessage', {
+                    chat_id: chatId,
+                    text: `⚙️ <b>${config.label}</b>\n\n` +
+                          `📋 <b>Current:</b>\n<code>${currentValue}</code>\n\n` +
+                          `💬 <b>Send new value (reply یا پیام تکی):</b>\n<i>${config.hint}</i>`,
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        force_reply: true,
+                        selective: true
+                    }
+                });
+                break;
+            }
             if (data.startsWith('sub_')) {
                 // با slice به‌جای split — کل مقدار بعد از پیشوند
                 const typeKey = data.slice(4); // 'sub_'.length
@@ -499,9 +718,8 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
                 reply_markup: mainKeyboard()
             });
         } else {
-            await handleCallback(cq, botToken, chatId);
+            await handleCallback(cq, botToken, chatId, env);
         }
-
         // await شده — بدون await بعد از return شدن response در Workers
         // این promise احتمالاً cancel می‌شد (باگ قبلی)
         await checkCfUsageWarning(botToken, chatId);
@@ -514,6 +732,79 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
         const chatId = update.message.chat.id;
         const text = update.message.text || '';
 
+        // ---------- Settings: ورودی کاربر ----------
+        // اول از reply تشخیص بده، اگه نبود از KV-pending
+        let settingsField: string | null = null;
+
+        const replyTo = update.message.reply_to_message;
+        if (replyTo && replyTo.from?.is_bot && text) {
+            const botText = replyTo.text || replyTo.caption || '';
+            const fieldMatch = botText.match(/<b>([^<]+)<\/b>/);
+            if (fieldMatch) {
+                const label = fieldMatch[1];
+                const fieldEntry = Object.entries(EDITABLE_SETTINGS).find(
+                    ([, cfg]) => cfg.label === label
+                );
+                if (fieldEntry) settingsField = fieldEntry[0];
+            }
+        }
+
+        if (!settingsField && text && !text.startsWith('/')) {
+            const pending = await getPending(env, update.message.from.id.toString());
+            if (pending && pending in EDITABLE_SETTINGS) settingsField = pending;
+        }
+
+        if (settingsField) {
+            {
+                const field = settingsField as EditableField;
+                const config = EDITABLE_SETTINGS[field];
+                {
+                    const validation = config.validate(text);
+
+                    if (validation !== true) {
+                        await tgFetch(botToken, 'sendMessage', {
+                            chat_id: chatId,
+                            text: `❌ <b>Error:</b> ${validation}\n\nTry again:`,
+                            parse_mode: 'HTML',
+                            reply_to_message_id: update.message.message_id,
+                            reply_markup: {
+                                inline_keyboard: [[
+                                    { text: '🔄 Retry', callback_data: `set_${field}` },
+                                    { text: '◀️ Cancel', callback_data: 'settings' }
+                                ]]
+                            }
+                        });
+                        await checkCfUsageWarning(botToken, chatId);
+                        return new Response(null, { status: 200 });
+                    }
+
+                    let newValue: any;
+                    if (field === 'protocols') {
+                        newValue = text.toLowerCase().split(',').map(p => p.trim()).join(',');
+                    } else if (field === 'cleanIPs') {
+                        newValue = text.split('\n').map(l => l.trim()).filter(Boolean);
+                    } else {
+                        newValue = text.trim();
+                    }
+
+                    const { settings } = await getDataset(env);
+                    (settings as any)[field] = newValue;
+                    await updateDatasetFromTelegram(env, settings);
+
+                    await tgFetch(botToken, 'sendMessage', {
+                        chat_id: chatId,
+                        text: `✅ <b>${config.label} updated!</b>\n\n` +
+                              `📋 <b>New value:</b>\n<code>${newValue}</code>`,
+                        parse_mode: 'HTML',
+                        reply_markup: settingsKeyboard()
+                    });
+                    await clearPending(env, update.message.from.id.toString());
+                    await checkCfUsageWarning(botToken, chatId);
+                    return new Response(null, { status: 200 });
+                }
+            }
+        }
+
         switch (text) {
             case '/usage':
                 const result = await getUsageCached();
@@ -523,6 +814,29 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
                     text: buildUsageText(result.total, result.worker),
                     parse_mode: 'HTML',
                     reply_markup: usageKeyboard()
+                });
+                break;
+
+            case '/settings':
+                await tgFetch(botToken, 'sendMessage', {
+                    chat_id: chatId,
+                    text: '⚙️ <b>Panel Settings</b>\n\nChoose a setting to change:',
+                    parse_mode: 'HTML',
+                    reply_markup: settingsKeyboard()
+                });
+                break;
+
+            case '/status':
+                await sendStatus(botToken, chatId, env);
+                break;
+
+            case '/restart':
+                await invalidateDatasetCache();
+                await tgFetch(botToken, 'sendMessage', {
+                    chat_id: chatId,
+                    text: '🔄 <b>Caches invalidated!</b>\n\nFresh values will be loaded on next request.',
+                    parse_mode: 'HTML',
+                    reply_markup: mainKeyboard()
                 });
                 break;
 
@@ -561,6 +875,54 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
     return new Response(null, { status: 200 });
 }
 
+/** نمای کلی پنل — وضعیت، مصرف، خلاصه‌ی تنظیمات */
+async function sendStatus(token: string, chatId: number, env: Env): Promise<void> {
+    const { settings } = await getDataset(env);
+    const usage = await getUsageCached();
+
+    const toggles = [
+        ['🇮🇷 Iran', settings.bypassIran],
+        ['🇨🇳 China', settings.bypassChina],
+        ['🇷🇺 Russia', settings.bypassRussia],
+        ['🤖 OpenAI', settings.bypassOpenAi],
+        ['🚫 Ads', settings.blockAds],
+        ['🦠 Malware', settings.blockMalware],
+    ] as const;
+
+    const toggleLines = toggles
+        .map(([label, on]) => `${on ? '🟢' : '⚫'} ${label}`)
+        .join('   ');
+
+    let usageLine = '📊 Usage: unavailable';
+    if (usage?.success && usage.worker && usage.total) {
+        const pct = Math.ceil(Number(usage.total) / 100000 * 100);
+        usageLine = `📊 Usage: ${usage.total.toLocaleString()} / 100,000 (${pct}%)`;
+    }
+
+    const text = [
+        `📡 <b>Flash Panel Status</b>`,
+        `━━━━━━━━━━━━━━━━`,
+        `✅ Panel: <b>alive</b>`,
+        `⚡ Version: <b>${settings.panelVersion || 'unknown'}</b>`,
+        usageLine,
+        ``,
+        `🌐 Local DNS: <code>${settings.localDNS}</code>`,
+        `🛡 Protocols: <code>${settings.protocols}</code>`,
+        `🔑 Fingerprint: <code>${settings.fingerprint}</code>`,
+        `🧹 Clean IPs: <b>${(settings.cleanIPs || []).length}</b> entries`,
+        ``,
+        `Routing:`,
+        toggleLines,
+    ].join('\n');
+
+    await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text,
+        parse_mode: 'HTML',
+        reply_markup: mainKeyboard()
+    });
+}
+
 async function checkCfUsageWarning(botToken: string, chatId: number): Promise<void> {
     const result = await getUsageCached();
     if (!result.success || !result.worker || !result.total) return;
@@ -574,4 +936,27 @@ async function checkCfUsageWarning(botToken: string, chatId: number): Promise<vo
             reply_markup: usageKeyboard()
         });
     }
+}
+// ---------- state ورودی Settings (KV با TTL) ----------
+// force_reply بعضی کلاینت‌های تلگرام قابل‌اعتماد نیست — پس هم reply واقعی
+// رو قبول می‌کنیم هم پیام تکی رو (اگه user توی حالت انتظار باشه)
+
+const TG_PENDING_PREFIX = 'tg-pending-';
+
+async function setPending(env: Env, userId: string, field: string) {
+    await env.kv.put(TG_PENDING_PREFIX + userId, field, { expirationTtl: 300 });
+}
+
+async function getPending(env: Env, userId: string): Promise<string | null> {
+    return env.kv.get(TG_PENDING_PREFIX + userId);
+}
+
+async function clearPending(env: Env, userId: string) {
+    await env.kv.delete(TG_PENDING_PREFIX + userId);
+}
+
+/** ذخیره‌ی تنظیمات از ربات — مستقیم در KV + invalidate کش */
+async function updateDatasetFromTelegram(env: Env, settings: any): Promise<void> {
+    await env.kv.put('proxySettings', JSON.stringify(settings));
+    invalidateDatasetCache();
 }
