@@ -94,7 +94,7 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
 
     const chainOutbound = chainProxy ? buildChainOutbound() : undefined;
     const isChain = !!chainOutbound;
-    const domains = [mainDomain].concatIf(!!customDomain, customDomain);
+    const domains = [...new Set([mainDomain].concatIf(!!customDomain, customDomain))];
     const protocols = getProtocols();
     const outbounds: Outbound[] = [];
 
