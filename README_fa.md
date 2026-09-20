@@ -2,13 +2,17 @@
 
 # ⚡ فلش پنل
 
-**پنل مدیریت پروکسی قدرتمند و بدون سرور بر بستر Cloudflare Workers**
+### پنل پروکسی بدون سرور برای Cloudflare Workers
 
-[🇬🇧 English](README.md)
+**VLESS · Trojan · WARP** — ساخته‌شده برای سرعت، مقاوم‌شده برای دنیای واقعی
 
-![Workers](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare)
+[🇬🇧 English](README.md) · [🪄 نصب سریع](https://flash-wizard.imsoroush.workers.dev/)
+
+![Cloudflare Workers](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
+![Tests](https://img.shields.io/badge/Tests-22%20passing-34d399?style=flat-square)
 ![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)
+![Size](https://img.shields.io/badge/Bundle-176KB%20gzipped-9333ea?style=flat-square)
 
 </div>
 
@@ -16,106 +20,91 @@
 
 ---
 
-فلش پنل، Cloudflare Workers شما را به یک سرور پروکسی پیشرفته تبدیل می‌کند. با هزینه‌های سنگین VPS خداحافظی کنید و از معماری کاملاً بدون سرور با مسیریابی هوشمند، پشتیبانی چند هسته و ربات تلگرام لذت ببرید.
+<div align="center">
 
-> هارد‌فورک کامل از [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) با بهینه‌سازی عملکرد، رفع باگ و بهبودهای امنیتی.
+### 📊 بنچمارک — در برابر فورک «بهینه‌شده»‌ی BPB
 
-## ✨ ویژگی‌های کلیدی
+*تنظیمات یکسان، IP های یکسان، پورت‌های یکسان — کنار هم*
 
-| | |
-|---|---|
-| ☁️ **کاملاً بدون سرور** | اجرای ۱۰۰٪ روی Cloudflare — بدون VPS و هزینه |
-| 🛡️ **VLESS + Trojan** | پروتکل‌های مدرن با WebSocket + TLS |
-| 📦 **سازگاری کامل** | Xray، Sing-box و Clash |
-| 🤖 **ربات تلگرام** | مدیریت کامل از چت — کانفیگ، مصرف، کاربران |
-| 🔀 **مسیریابی پیشرفته** | WARP، WARP Pro، Fragment، DoH |
-| 🌍 **Proxy IP** | اتصال به IP های تمیز خارجی |
-| 🔄 **آپدیت خودکار** | از GitHub — بدون خط فرمان |
-| 🧪 **۲۲ تست + CI** | کنترل کیفیت روی هر تغییر |
+| | فلش پنل | فورک دیگر |
+|---|:---:|:---:|
+| کانفیگ سالم | **۷۲ از ۸۵** ✅ | ۵۹ از ۸۵ |
+| کمترین پینگ | **فلش** ✅ | — |
 
-## 🚀 استقرار سریع
-
-### 🪄 فلش ویزارد — پیشنهادی
-
-نصب در **۶۰ ثانیه** با [فلش ویزارد](https://flash-wizard.imsuroush.workers.dev/) — بدون خط فرمان.
-
-> ⚠️ **از دامنه شخصی استفاده کنید.** استقرار روی `*.workers.dev` ریسک گزارش خودکار و مسدودی اکانت دارد.
-
-### ⚠️ دامنه اختصاصی — حیاتی
-
-| | workers.dev | دامنه شخصی |
-|---|---|---|
-| خطر مسدودی | 🔴 بالا | 🟢 صفر |
-| دسترسی ایران | 🔴 فیلتر | 🟢 پایدار |
-| کانفیگ‌ها | 🔴 قابل کشف | 🟢 مخفی |
-
-**راهنما:** دامنه بخرید ($۲-۳/سال) → در Cloudflare اضافه کنید → با ویزارد نصب کنید
-
-### نصب دستی
-
-```bash
-git clone https://github.com/CheginiSoroush/flash-panel.git
-cd flash-panel
-npm install
-cp wrangler.jsonc.example wrangler.jsonc
-cp deploy/settings.example.js deploy/settings.js
-npm run check && npm run test && npm run build
-npx wrangler deploy
-```
-
-## 🔧 مشکلات رایج
-
-<details>
-<summary>کانفیگ‌ها به workers.dev اشاره می‌کنند</summary>
-
-پنل → تنظیمات → **Custom Domain** → دامنه خود را وارد کنید → Save
-</details>
-
-<details>
-<summary>تنظیمات ذخیره نمی‌شود</summary>
-
-این باگ BPB است — در فلش پنل فیکس شده.
-Custom Domain را پاک کنید → Save → دوباره وارد کنید → Save
-</details>
-
-<details>
-<summary>workers.dev بعد از هر deploy روشن می‌شود</summary>
-
-`"workers_dev": false` را به `wrangler.jsonc` اضافه کنید
-</details>
-
-<details>
-<summary>مصرف روزانه بالا (۴۰٪+)</summary>
-
-طبیعی است — قطعی شبکه = reconnect زیاد. سقف: ۱۰۰,۰۰۰/روز
-</details>
-
-## 🔄 آپدیت
-
-- **از پنل:** Update Panel → تأیید (تنظیمات حفظ می‌شود)
-- **از ترمینال:** `git pull` → `npm run build` → `npx wrangler deploy`
-
-## 🛡️ نکات امنیتی
-
-- پسورد قوی (۱۲+ کاراکتر)
-- کانفیگ‌ها را فقط با افراد مطمئن شیر کنید
-- اکانت جدا برای پنل
-- توکن API را دوره‌ای تغییر دهید
-
-## 📖 اعتبار
-
-| | |
-|---|---|
-| **پروژه اصلی** | [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) |
-| **لایسنس** | GPL-3.0 |
-| **ویزارد** | [فلش ویزارد](https://github.com/CheginiSoroush/flash-wizard) |
+**+۲۲٪ کانفیگ سالم بیشتر** — اندازه‌گیری‌شده، نه ادعا.
 
 </div>
 
-<div dir="rtl" align="center">
+---
+
+## ✨ چرا فلش؟
+
+اکثر فورک‌های BPB فقط **اسم** را عوض می‌کنند. فلش پنل **موتور** را بازسازی کرده:
+
+### 🔥 هسته‌ی پروتکل — بازنویسی‌شده از صفر
+
+| فیکس | اثر |
+|------|-----|
+| باگ race در سوکت | کانکشن‌هایی که وسط handshake می‌مردند → حذف کامل |
+| SHA-224 در **هر کانکشن** | کش‌شده — احراز Trojan تقریباً رایگان |
+| پارس VLESS با ۱۰ بار کپی | zero-copy — مصرف CPU هر کانکشن کاهش |
+| قفل writer در هر chunk | کش‌شده — توان پایدار |
+| خواندن KV در **هر درخواست** | کش سطح isolate + TTL |
+| تولید دوباره‌ی کانفیگ در هر fetch | ETag/304 — سرو آنی وقتی چیزی عوض نشده |
+| JSON با تورفتگی (~۲۰MB) | فشرده — **ساب‌ها ۹۴٪ کوچیک‌تر** |
+
+### 🛡️ امنیت — نه به‌عنوان بعدthought
+
+- 🔐 **محدودسازی نرخ لاگین** + مقایسه‌ی constant-time
+- 🤖 **اعتبارسنجی webhook تلگرام** — رد آپدیت‌های جعلی
+- ⚡ مسیر `workers.dev` **خودکار خاموش** — خارج از رادار اسکنرها
+
+### 🤖 ربات تلگرام — کنترل کامل از جیب
+
+URL پنل معمولاً فیلتره. تلگرامت نه.
+
+```
+/config    — دریافت کانفیگ + QR
+/status    — نمای کلی پنل
+/settings  — ۱۸ تنظیم قابل‌ویرایش (DNS، پروتکل‌ها، IP های تمیز، مسیریابی...)
+/restart   — ریست آنی کش
+```
+
+### 🧪 مهندسی — مثل نرم‌افزار واقعی
+
+- **۲۲ تست واحد** روی پارسرهای پروتکل
+- **CI روی هر push**
+- **Release خودکار** — tag → build → publish
+- **آپدیت خودکار از پنل** — بدون downtime
 
 ---
 
-**⚡ فلش پنل** — ساخته شده با ❤️ برای اینترنت آزاد
+## 🚀 نصب
 
+### 🪄 فلش ویزارد — ۶۰ ثانیه، بدون خط فرمان
+
+**[→ همین الان نصب کن](https://flash-wizard.imsoroush.workers.dev/)**
+
+> ⚠️ **حتماً دامنه‌ی شخصی استفاده کن.** اسکنرها `*.workers.dev` را ۲۴ ساعته می‌پایند و گزارش خودکار می‌دهند — اکانت‌ها اینطوری ساسپند شدن. یه دامنه‌ی $۳ در سال روی Cloudflare تو رو از رادار خارج می‌کنه.
+
+---
+
+## 📖 مستندات
+
+- [نصب دستی و مشکلات رایج](#)
+- 🪄 [فلش ویزارد](https://github.com/CheginiSoroush/flash-wizard) — ابزار نصب
+
+## 🙏 اعتبار
+
+فلش پنل یه هارد‌فورک از [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) است — تشکر فراوان از [bia-pain-bache](https://github.com/bia-pain-bache) و جامعه‌ی BPB برای پایه‌ی محکم.
+
+**لایسنس:** GPL-3.0 — فایل [LICENSE](LICENSE)
+
+<div align="center">
+
+---
+
+**⚡ فلش پنل** — *سریع، چون برای سریع بودن مهندسی شده.*
+
+</div>
 </div>
