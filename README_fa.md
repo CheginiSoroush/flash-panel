@@ -6,7 +6,7 @@
 
 **VLESS · Trojan · WARP** — ساخته‌شده برای سرعت، مقاوم‌شده برای دنیای واقعی
 
-[🇬🇧 English](README.md) · [🪄 نصب سریع](https://flash-wizard.imsoroush.workers.dev/)
+[🇬🇧 English](README.md) · [🪄 نصب سریع](https://flash-wizard.cheginisoroush6.workers.dev/)
 
 ![Cloudflare Workers](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
@@ -83,7 +83,7 @@ URL پنل معمولاً فیلتره. تلگرامت نه.
 
 ### 🪄 فلش ویزارد — ۶۰ ثانیه، بدون خط فرمان
 
-**[→ همین الان نصب کن](https://flash-wizard.imsoroush.workers.dev/)**
+**[→ همین الان نصب کن](https://flash-wizard.cheginisoroush6.workers.dev/)**
 
 > ⚠️ **حتماً دامنه‌ی شخصی استفاده کن.** اسکنرها `*.workers.dev` را ۲۴ ساعته می‌پایند و گزارش خودکار می‌دهند — اکانت‌ها اینطوری ساسپند شدن. یه دامنه‌ی $۳ در سال روی Cloudflare تو رو از رادار خارج می‌کنه.
 

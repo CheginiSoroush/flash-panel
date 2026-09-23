@@ -6,7 +6,7 @@
 
 **VLESS · Trojan · WARP** — built for speed, hardened for real-world use
 
-[🇮🇷 فارسی](README_fa.md) · [🪄 Quick Deploy](https://flash-wizard.imsoroush.workers.dev/)
+[🇮🇷 فارسی](README_fa.md) · [🪄 Quick Deploy](https://flash-wizard.cheginisoroush6.workers.dev/)
 
 ![Cloudflare Workers](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
@@ -82,7 +82,7 @@ The panel URL is often filtered. Your Telegram isn't.
 
 ### 🪄 Flash Wizard — 60 seconds, no CLI
 
-**[→ Deploy now](https://flash-wizard.imsoroush.workers.dev/)**
+**[→ Deploy now](https://flash-wizard.cheginisoroush6.workers.dev/)**
 
 > ⚠️ **Use a custom domain.** Scanners continuously probe `*.workers.dev` and file automated abuse reports — accounts have been suspended this way. A $3/year domain on a Cloudflare zone keeps you off the radar.
 
