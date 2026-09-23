@@ -7,3 +7,8 @@ deploy/metadata.json
 deploy/entry.js
 cookies.txt
 wrangler.jsonc
+
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
