@@ -1,6 +1,6 @@
 import { RoutingRule } from '#types/xray';
 import { getGeoAssets } from './geo-assets';
-import { accRoutingRules, GeoAsset } from '@utils';
+import { accRoutingRules, GeoAsset, TELEGRAM_DOMAINS, TELEGRAM_IPS } from '@utils';
 import { getSettings } from '@settings';
 
 export function buildRoutingRules(
@@ -9,7 +9,7 @@ export function buildRoutingRules(
     isWorkerless: boolean,
     isWarp: boolean
 ): RoutingRule[] {
-    const { blockUDP443 } = getSettings();
+    const { blockUDP443, telegramProxy } = getSettings();
     const rules: RoutingRule[] = [
         {
             inboundTag: [
@@ -37,6 +37,14 @@ export function buildRoutingRules(
 
     addRoutingRule(rules, undefined, ['geosite:private'], undefined, undefined, undefined, undefined, 'direct', false);
     addRoutingRule(rules, undefined, undefined, ['geoip:private'], undefined, undefined, undefined, 'direct', false);
+
+    // تلگرام — قبل از block/bypass تا هیچ قانونی (حتی bypass های کاربر) تلگرام را
+    // از تونل خارج نکند. در workerless اجرا نمی‌شود چون خروجی نهایی direct است و
+    // قوانین fragment باید اولویت بمانند؛ در سایر مدها outTag همان خروجی نهایی است.
+    if (!isWorkerless && telegramProxy) {
+        addRoutingRule(rules, undefined, TELEGRAM_DOMAINS.map(domain => `domain:${domain}`), undefined, undefined, undefined, undefined, outTag, isBalancer);
+        addRoutingRule(rules, undefined, undefined, ['geoip:telegram', ...TELEGRAM_IPS], undefined, undefined, undefined, outTag, isBalancer);
+    }
 
     if (!(isWarp || isWorkerless)) {
         addRoutingRule(rules, undefined, undefined, undefined, undefined, 'udp', undefined, 'block', false);

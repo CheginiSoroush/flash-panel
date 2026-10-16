@@ -255,6 +255,39 @@ export function buildBroadcastConfirmText(
     ].join('\n');
 }
 
+// ---------- راهنمای تلگرام ----------
+
+/**
+ * راهنمای اتصال تلگرام از طریق اشتراک پنل — خالص و تست‌پذیر.
+ * پاسخ صادقانه به «پروکسی MTProto تلگرام روی کلادفلر»: غیرممکن است
+ * (ورکر فقط HTTP/WS می‌پذیرد) ولی تونل VLESS/WS همین اشتراک تلگرام را کامل عبور می‌دهد.
+ */
+export function buildTelegramGuideText(): string {
+    return [
+        '✈️ <b>Telegram via your subscription</b>',
+        '━━━━━━━━━━━━━━━━',
+        'Your panel configs already tunnel Telegram — no separate MTProto proxy needed.',
+        '',
+        '<b>📱 Android</b>',
+        '1️⃣ Install <i>v2rayNG</i> or <i>Hiddify</i>',
+        '2️⃣ Import your subscription link',
+        '3️⃣ Connect → open Telegram ✅',
+        '',
+        '<b>📱 iOS</b>',
+        '<i>Streisand</i> / <i>Shadowrocket</i> — same steps',
+        '',
+        '<b>💻 Desktop</b>',
+        '<i>v2rayN</i> / <i>Hiddify</i> → system proxy → Telegram',
+        '',
+        '<b>📞 Voice / video calls:</b>',
+        'Use the <b>Warp</b> subscription type (carries UDP). Normal configs carry messages, media and files (TCP).',
+        '',
+        'ℹ️ <i>Why not a real MTProto proxy?</i> Telegram apps connect to MTProto proxies over raw TCP — Cloudflare Workers only accept HTTP/WebSocket. This tunnel is the reliable Cloudflare way.',
+        '',
+        '🛡 Telegram domains &amp; IPs are always routed through the tunnel (Telegram Routing setting).'
+    ].join('\n');
+}
+
 // ---------- ارسال ----------
 
 /** sender تزریقی — true یعنی پیام با موفقیت تحویل شد */

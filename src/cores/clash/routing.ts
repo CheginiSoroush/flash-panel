@@ -1,10 +1,10 @@
 import { RuleProvider } from '#types/clash';
 import { getSettings } from '@settings';
 import { getGeoAssets } from './geo-assets';
-import { isIPv6, isIPv4, accRoutingRules, GeoAsset } from '@utils';
+import { isIPv6, isIPv4, accRoutingRules, GeoAsset, TELEGRAM_DOMAINS, TELEGRAM_IPS } from '@utils';
 
 export function buildRoutingRules(isWarp: boolean) {
-    const { blockUDP443 } = getSettings();
+    const { blockUDP443, telegramProxy } = getSettings();
     const geoAssets = getGeoAssets();
     const routingRules = accRoutingRules(geoAssets);
     const rules = [`GEOIP,lan,DIRECT,no-resolve`];
@@ -13,6 +13,13 @@ export function buildRoutingRules(isWarp: boolean) {
         rules.push('NETWORK,udp,REJECT');
     } else if (blockUDP443) {
         rules.push('AND,((NETWORK,udp),(DST-PORT,443)),REJECT');
+    }
+
+    // تلگرام — بعد از قانون UDP reject (تماس‌های UDP تغییری نمی‌کنند) و قبل از
+    // قوانین block/bypass تا bypass های کاربر (مثل bypassIran) تلگرام را به direct نفرستند
+    if (telegramProxy) {
+        rules.push(...TELEGRAM_DOMAINS.map(domain => `DOMAIN-SUFFIX,${domain},✅ Selector`));
+        rules.push(...TELEGRAM_IPS.map(ip => `${buildIpCidrRule(ip, '✅ Selector')},no-resolve`));
     }
 
     return [

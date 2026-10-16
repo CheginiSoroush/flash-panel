@@ -230,7 +230,7 @@
     <a class="logo" href="./" aria-label="Flash Panel home">
       <svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#2563eb"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="#000d2e"/><path d="M13.5 3 6 13.5h4.5L10 21l7.5-10.5H13L13.5 3z" fill="url(#lg)"/></svg>
       <span data-i18n="brand">Flash Panel</span>
-      <span class="beta" data-i18n="brandTag">v0.6.0</span>
+      <span class="beta" data-i18n="brandTag">v0.7.0</span>
     </a>
     <nav class="nav" aria-label="Main">
       <a href="#features" data-i18n="nav.features">Features</a>
@@ -252,9 +252,9 @@
 <main>
   <!-- HERO -->
   <section class="hero wrap">
-    <a class="release-badge reveal" href="https://github.com/CheginiSoroush/flash-panel/releases/tag/v0.6.0" target="_blank" rel="noopener">
+    <a class="release-badge reveal" href="https://github.com/CheginiSoroush/flash-panel/releases/tag/v0.7.0" target="_blank" rel="noopener">
       <span class="dot" aria-hidden="true"></span>
-      <span data-i18n="hero.badge">v0.6.0 released — the performance update</span>
+      <span data-i18n="hero.badge">v0.7.0 released — the Telegram update</span>
     </a>
     <h1 class="title reveal">
       <span data-i18n="hero.t1">The fastest</span> <span class="grad" data-i18n="hero.t2">proxy panel</span>
@@ -272,8 +272,8 @@
       </a>
     </div>
     <div class="stats-row reveal">
-      <div class="stat"><b>266</b><span data-i18n="stats.tests">tests passing</span></div>
-      <div class="stat"><b>127.9 KB</b><span data-i18n="stats.bundle">bundle (gzip)</span></div>
+      <div class="stat"><b>279</b><span data-i18n="stats.tests">tests passing</span></div>
+      <div class="stat"><b>128.7 KB</b><span data-i18n="stats.bundle">bundle (gzip)</span></div>
       <div class="stat"><b>0</b><span data-i18n="stats.deps">runtime dependencies</span></div>
       <div class="stat"><b>3</b><span data-i18n="stats.cores">config cores (Xray/Clash/sing-box)</span></div>
     </div>
@@ -382,7 +382,7 @@ cp deploy/settings.example.js deploy/settings.js
       "stats.tests": "tests passing", "stats.bundle": "bundle (gzip)", "stats.deps": "runtime dependencies", "stats.cores": "config cores (Xray/Clash/sing-box)",
       "feat.kicker": "Features",
       "feat.title": "Everything a panel should have. Nothing it shouldn't.",
-      "feat.sub": "Built like production software: 266 automated tests, a CI bundle-size gate, and a fully typed codebase.",
+      "feat.sub": "Built like production software: 279 automated tests, a CI bundle-size gate, and a fully typed codebase.",
       "feat.items": [
         ["Protocol core from scratch", "VLESS & Trojan parsers and writers hand-built in strict TypeScript — no runtime dependencies, fully auditable, zero-copy where it matters."],
         ["Multi-core config builders", "Native subscription output for Xray, Clash and sing-box — pick your client, get an optimized config instantly."],
@@ -396,6 +396,7 @@ cp deploy/settings.example.js deploy/settings.js
         ["Self-running automation", "Give any user an expiry date and the panel does the rest: links stop on time, you get a Telegram report, a daily digest lands in chat, and one click auto-selects the fastest ProxyIP — no babysitting."],
         ["Anti-403 Clean IP optimizer", "One click discovers fresh clean IPs from public aggregators, probes every endpoint, reorders healthy-first and redeploys — plus a “Clean IPs First” mode that makes blocked workers.dev regions connect again."],
         ["CPU & bandwidth optimizer", "Subscription bodies are cached per-ETag inside the isolate (zero CPU for repeat fetches) and served gzip-compressed (~75% smaller updates); QR codes are memoized too — less Cloudflare CPU time, less mobile data."],
+        ["Telegram always in the tunnel", "Explicit Telegram routing in every generated config — official domains plus all 13 datacenter CIDRs are forced through the tunnel before any bypass rule, plus a /tg setup guide in the bot. (Classic MTProto proxies can't run on Workers — the tunnel is the reliable way.)"],
         ["CI bundle-size gate", "Every commit is benchmarked in GitHub Actions; the build fails if the gzipped bundle ever crosses the 150 KB line."]
       ],
       "dep.kicker": "Deployment",
@@ -425,14 +426,14 @@ cp deploy/settings.example.js deploy/settings.js
       "meta.desc": "پنل پروکسی پرسرعت و سرورلس برای کلادفلر ورکرز. پیاده‌سازی از صفرِ VLESS و Trojan، کنترل با ربات تلگرام، ورود دومرحله‌ای TOTP و اشتراک چندکاربره.",
       "brand": "فلش پنل",
       "nav.features": "قابلیت‌ها", "nav.deploy": "نصب", "nav.shots": "تصاویر",
-      "hero.badge": "نسخه v0.6.0 منتشر شد — آپدیت کارایی و مصرف",
+      "hero.badge": "نسخه v0.7.0 منتشر شد — آپدیت تلگرام",
       "hero.t1": "سریع‌ترین", "hero.t2": "پنل پروکسی", "hero.t3": "برای کلادفلر ورکرز",
       "hero.tagline": "پنل پروکسی پرسرعت و سرورلس برای کلادفلر ورکرز — پیاده‌سازی از صفرِ پروتکل‌های VLESS و Trojan، کنترل کامل با ربات تلگرام، ورود دومرحله‌ای TOTP و اشتراک چندکاربره. بدون سرد شدن، بدون سرور، بدون دردسر.",
       "hero.cta1": "نصب در ۶۰ ثانیه", "hero.cta2": "مشاهده سورس",
       "stats.tests": "تست خودکار پاس‌شده", "stats.bundle": "حجم باندل (gzip)", "stats.deps": "وابستگی ران‌تایم", "stats.cores": "هسته خروجی (Xray/Clash/sing-box)",
       "feat.kicker": "قابلیت‌ها",
       "feat.title": "هر چیزی که یک پنل لازم دارد. و هیچ چیز اضافه‌ای.",
-      "feat.sub": "ساخته‌شده مثل نرم‌افزار عملیاتی: ۲۶۶ تست خودکار، گیت حجم باندل در CI و کدبیس کاملاً تایپ‌شده.",
+      "feat.sub": "ساخته‌شده مثل نرم‌افزار عملیاتی: ۲۷۹ تست خودکار، گیت حجم باندل در CI و کدبیس کاملاً تایپ‌شده.",
       "feat.items": [
         ["هسته پروتکل از صفر", "پارسر و رایتِ VLESS و Trojan به‌صورت دستی در TypeScript سخت‌گیرانه — بدون وابستگی ران‌تایم، کاملاً قابل ممیزی."],
         ["سازنده کانفیگ چندهسته‌ای", "خروجی اشتراک بومی برای Xray، Clash و sing-box — کلاینتت را انتخاب کن، کانفیگ بهینه را فوری بگیر."],
@@ -446,6 +447,7 @@ cp deploy/settings.example.js deploy/settings.js
         ["اتوماسیون خودگردان", "برای هر کاربر تاریخ انقضا بگذار و بقیه‌اش با پنل: لینک‌ها سر وقت می‌ایستند، گزارش تلگرام می‌گیری، خلاصه‌ی روزانه به چت می‌آید و یک کلیک سریع‌ترین ProxyIP را خودش انتخاب می‌کند — بدون نگهبانی."],
         ["بهینه‌ساز ضد ۴۰۳ Clean IP", "یک کلیک، IP های تمیز تازه از جمع‌کننده‌های عمومی می‌گیرد، همه‌ی اندپوینت‌ها را پروب می‌کند، ترتیب را «سالم‌ها اول» می‌چیند و redeploy می‌کند — به‌همراه حالت «Clean IPs First» برای مناطقی که workers.dev بلاک است."],
         ["بهینه‌ساز CPU و مصرف داده", "بدنه‌ی اشتراک بر اساس ETag در حافظه‌ی isolate کش می‌شود (صفر CPU برای واکشی‌های تکراری) و به‌صورت gzip فشرده سرو می‌شود (آپدیت‌ها ~۷۵٪ کوچک‌تر)؛ QR ها هم مموایز می‌شوند — CPU کمترِ کلادفلر، مصرف دیتای موبایل کمتر."],
+        ["تلگرام همیشه داخل تونل", "روتینگ صریح تلگرام در همه‌ی کانفیگ‌های تولیدی — دامنه‌های رسمی و هر ۱۳ رنج دیتاسنتر، قبل از قوانین bypass از تونل عبور می‌کنند؛ به‌علاوه دستور /tg در ربات برای راهنمای اتصال. (پروکسی MTProto کلاسیک روی ورکر ممکن نیست — تونل، راه مطمئن است.)"],
         ["گیت حجم باندل در CI", "هر کامیت در GitHub Actions بنچمارک می‌شود؛ اگر باندل gzip از ۱۵۰ کیلوبایت عبور کند، بیلد می‌سوزد."]
       ],
       "dep.kicker": "نصب و راه‌اندازی",

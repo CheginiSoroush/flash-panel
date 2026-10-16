@@ -15,6 +15,8 @@ export interface KvSettings {
     cleanIPs: string[];
     /** اولویت‌دادن به Clean IP ها در کانفیگ‌ها — ضد ۴۰۳ (پیش‌فرض: خاموش) */
     cleanIPsFirst: boolean;
+    /** قوانین روتینگ تلگرام در کانفیگ‌ها — تلگرام همیشه از تونل رد می‌شود (پیش‌فرض: روشن) */
+    telegramProxy: boolean;
     customCdnAddrs: string[];
     customCdnHost: string;
     customCdnSni: string;

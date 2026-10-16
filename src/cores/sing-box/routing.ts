@@ -1,10 +1,10 @@
 import { Route, RoutingRule, RuleSet } from '#types/sing-box';
 import { getGeoAssets } from './geo-assets';
-import { accRoutingRules, GeoAsset } from '@utils';
+import { accRoutingRules, GeoAsset, TELEGRAM_DOMAINS, TELEGRAM_IPS } from '@utils';
 import { getSettings } from '@settings';
 
 export function buildRoutingRules(isWarp: boolean): Route {
-    const { blockUDP443 } = getSettings();
+    const { blockUDP443, telegramProxy } = getSettings();
     const rules: RoutingRule[] = [
         {
             ip_cidr: '172.19.0.2',
@@ -35,6 +35,21 @@ export function buildRoutingRules(isWarp: boolean): Route {
         addRoutingRule(rules, 'reject', undefined, undefined, undefined, undefined, 'udp');
     } else if (blockUDP443) {
         addRoutingRule(rules, 'reject', undefined, undefined, undefined, undefined, 'udp', 'quic', 443);
+    }
+
+    // تلگرام — لیست صریح (بدون وابستگی به rule-set دانلودی)؛ UDP تلگرام
+    // عمداً رد می‌شود (ورکر UDP غیر-DNS حمل نمی‌کند) ولی TCP همیشه به تونل می‌رود
+    if (telegramProxy) {
+        rules.push({
+            domain_suffix: [...TELEGRAM_DOMAINS],
+            action: 'route',
+            outbound: '✅ Selector'
+        });
+        rules.push({
+            ip_cidr: [...TELEGRAM_IPS],
+            action: 'route',
+            outbound: '✅ Selector'
+        });
     }
 
     const geoAssets = getGeoAssets();

@@ -127,6 +127,7 @@ const SETTINGS_FIELDS: Array<
         ['chainProxyParams', 'chainProxy', extractProxyParams],
         ['cleanIPs'],
         ['cleanIPsFirst'],
+        ['telegramProxy'],
         ['customCdnAddrs'],
         ['customCdnHost'],
         ['customCdnSni'],

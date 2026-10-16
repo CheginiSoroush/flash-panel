@@ -88,6 +88,15 @@ A `403` means your connect address (usually `workers.dev`) is blocked by your IS
 - 🩺 **Per-endpoint health & latency** — every row shows success rate and TCP latency, so dead endpoints are visible at a glance
 - 📰 **Smart subscription headers** — `profile-update-interval`, `profile-web-page-url` and `subscription-userinfo` (auto expiry countdown for subscription users) are served to modern clients (Hiddify, v2rayNG, Streisand)
 
+### ✈️ Telegram — first-class through the tunnel
+
+No, a classic MTProto proxy can't run on Cloudflare Workers (Telegram apps connect to MTProto proxies over raw TCP — Workers only accept HTTP/WebSocket). Your subscription already tunnels Telegram the reliable way:
+
+- 🧲 **Telegram Routing (Always Tunnel)** — new setting (on by default): explicit rules in every generated config (Xray / sing-box / Clash) route Telegram's official domains **and all 13 datacenter CIDRs** (IPv4 + IPv6) through the tunnel — before any block/bypass rule, so even `bypass Iran/China` profiles can never send Telegram direct
+- 🧾 **Geo-file independent** — rules are plain domain/IP lists baked into the config: no geosite download needed, works on old client geo databases
+- 🤖 **`/tg` bot command** — step-by-step Telegram setup guide (v2rayNG / Hiddify / Streisand) straight from the bot
+- 📞 **Honest voice-call note** — normal configs carry messages, media and files (TCP); for voice/video calls use the **Warp** subscription type (UDP)
+
 ### 🤖 Telegram Bot — full panel control
 
 The panel URL is often filtered. Your Telegram isn't.
@@ -95,6 +104,7 @@ The panel URL is often filtered. Your Telegram isn't.
 ```
 /config    — get configs + QR codes
 /status    — live panel overview
+/tg        — Telegram setup guide
 /users     — per-user stats + expiry countdowns
 /digest    — daily summary on demand
 /settings  — 18 editable fields (DNS, protocols, clean IPs, routing rules...)

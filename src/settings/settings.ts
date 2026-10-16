@@ -262,6 +262,7 @@ const DEFAULT_KV_SETTINGS: KvSettings = {
     chainProxyParams: {},
     cleanIPs: ['www.speedtest.net'],
     cleanIPsFirst: false,
+    telegramProxy: true,
     ports: [443],
     fingerprint: 'chrome',
     bestPingInterval: 30,

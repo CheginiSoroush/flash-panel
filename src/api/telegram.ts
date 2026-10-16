@@ -5,6 +5,7 @@ import { getCfWorkerUsage } from './usage';
 import {
     BroadcastRecipient,
     buildBroadcastConfirmText,
+    buildTelegramGuideText,
     buildUserDetailText,
     buildUsersOverviewText,
     paginateUsers,
@@ -103,6 +104,7 @@ export async function setTelegramBot(path: string, token: string) {
                     { command: 'start', description: '🤖 Show welcome menu' },
                     { command: 'config', description: '🔗 Get configs' },
                     { command: 'clients', description: '📱 Get supported clients' },
+                    { command: 'tg', description: '✈️ Telegram setup guide' },
                     { command: 'usage', description: '📊 Monitor usage' },
                     { command: 'users', description: '👥 Subscription users & stats' },
                     { command: 'digest', description: '📋 Daily summary (usage + users)' },
@@ -1201,6 +1203,15 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
                     text: '📱 <b>Supported clients</b>\n\nChoose a client:',
                     parse_mode: 'HTML',
                     reply_markup: clientsKeyboard()
+                });
+                break;
+
+            case '/tg':
+                await tgFetch(botToken, 'sendMessage', {
+                    chat_id: chatId,
+                    text: buildTelegramGuideText(),
+                    parse_mode: 'HTML',
+                    reply_markup: mainKeyboard()
                 });
                 break;
 
