@@ -1239,3 +1239,154 @@ table tr:not(:last-child) {
         flex: 1;
     }
 }
+
+/* ---------- تاریخچه مصرف روزانه (Usage History) ---------- */
+
+.usage-history-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-sm);
+}
+
+.usage-history-caption {
+    color: var(--color-text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.usage-chart {
+    position: relative;
+    min-height: 180px;
+    background: var(--color-bg-input);
+    border: 1px solid var(--color-border-ui);
+    border-radius: var(--radius-ui);
+    padding: var(--space-sm);
+    overflow: hidden;
+}
+
+.usage-chart-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.chart-grid {
+    stroke: var(--color-border-ui);
+    stroke-width: 1;
+    stroke-dasharray: 3 4;
+    opacity: 0.55;
+}
+
+.chart-axis {
+    stroke: var(--color-text-muted);
+    stroke-width: 1;
+}
+
+.chart-quota {
+    stroke: var(--color-icon-red);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+    opacity: 0.8;
+}
+
+.chart-label-x,
+.chart-label-y {
+    fill: var(--color-text-muted);
+    font-family: 'Ubuntu', sans-serif;
+    font-size: 10px;
+}
+
+.chart-bar-total {
+    fill: var(--color-brand-primary);
+    opacity: 0.45;
+    transition: opacity 0.15s ease;
+}
+
+.chart-bar-worker {
+    fill: var(--color-brand-hover);
+    transition: opacity 0.15s ease;
+}
+
+.chart-bar-total:hover,
+.chart-bar-worker:hover {
+    opacity: 1;
+}
+
+.chart-bar-total.over {
+    fill: var(--color-icon-red);
+    opacity: 0.75;
+}
+
+.chart-gap-dot {
+    fill: var(--color-text-muted);
+    opacity: 0.5;
+}
+
+.usage-chart-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 170px;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: var(--space-md);
+}
+
+.usage-chart-tip {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    background: var(--color-bg-modal);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border-ui);
+    border-radius: var(--radius-ui);
+    padding: 0.35rem 0.6rem;
+    font-size: 0.72rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    z-index: 5;
+    direction: ltr;
+}
+
+.usage-chart-tip.visible {
+    opacity: 1;
+}
+
+.usage-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    margin-top: var(--space-sm);
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    direction: ltr;
+}
+
+.legend-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-inline-end: 0.35rem;
+    vertical-align: baseline;
+}
+
+.legend-total {
+    background: var(--color-brand-primary);
+    opacity: 0.55;
+}
+
+.legend-worker {
+    background: var(--color-brand-hover);
+}
+
+.legend-quota {
+    background: transparent;
+    border: 2px dashed var(--color-icon-red);
+    border-radius: 0;
+}

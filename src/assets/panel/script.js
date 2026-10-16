@@ -1525,3 +1525,192 @@ async function disableTotp(btn) {
         stopWaiting(icons);
     }
 }
+
+// ---------- تاریخچه مصرف روزانه (نمودار SVG بدون وابستگی) ----------
+
+const usageChartState = {
+    loaded: false,
+    loading: false
+};
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svgEl(tag, attrs = {}) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    return node;
+}
+
+/** گرد کردن به بالا به عدد «خوش‌خوان» برای محور عمودی */
+function niceCeil(value) {
+    if (value <= 0) return 1000;
+    const pow = Math.pow(10, Math.floor(Math.log10(value)));
+    const unit = value / pow;
+    const nice = unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10;
+    return nice * pow;
+}
+
+function formatCompact(n) {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(n % 1_000 ? 1 : 0)}K`;
+    return String(n);
+}
+
+function chartTooltip(anchor, text) {
+    const tip = document.getElementById('usageChartTip') || document.body.appendChild(
+        elm('div', { id: 'usageChartTip', className: 'usage-chart-tip' })
+    );
+    tip.textContent = text;
+    const host = document.getElementById('usageChart');
+    const hostRect = host.getBoundingClientRect();
+    const barRect = anchor.getBoundingClientRect();
+    tip.style.left = `${barRect.left - hostRect.left + barRect.width / 2}px`;
+    tip.style.top = `${barRect.top - hostRect.top - 6}px`;
+    tip.classList.add('visible');
+}
+
+function hideChartTooltip() {
+    document.getElementById('usageChartTip')?.classList.remove('visible');
+}
+
+function renderUsageHistory(days, quotaDaily) {
+    const host = document.getElementById('usageChart');
+    if (!host) return;
+    host.textContent = '';
+    hideChartTooltip();
+
+    const recorded = days.filter(Boolean);
+    if (!recorded.length) {
+        host.appendChild(elm('div', {
+            className: 'usage-chart-empty',
+            textContent: 'No history yet — open this panel daily and usage snapshots are recorded automatically.'
+        }));
+        return;
+    }
+
+    // ابعاد — viewBox ثابت تا ریسپانسیو با CSS کار کند
+    const W = 720, H = 260;
+    const PAD = { top: 14, right: 8, bottom: 26, left: 44 };
+    const plotW = W - PAD.left - PAD.right;
+    const plotH = H - PAD.top - PAD.bottom;
+
+    const maxVal = Math.max(
+        niceCeil(Math.max(...recorded.map(d => d.total), 1) * 1.08),
+        quotaDaily * 0.8
+    );
+    const yFor = v => PAD.top + plotH * (1 - v / maxVal);
+
+    const svg = svgEl('svg', {
+        viewBox: `0 0 ${W} ${H}`,
+        preserveAspectRatio: 'xMidYMid meet',
+        class: 'usage-chart-svg'
+    });
+
+    // خطوط راهنمای افقی + برچسب محور Y
+    const ySteps = 4;
+    for (let i = 0; i <= ySteps; i++) {
+        const v = maxVal * i / ySteps;
+        const y = yFor(v);
+        svg.appendChild(svgEl('line', {
+            x1: PAD.left, x2: W - PAD.right, y1: y, y2: y,
+            class: i === 0 ? 'chart-axis' : 'chart-grid'
+        }));
+        if (i > 0) {
+            const label = svgEl('text', {
+                x: PAD.left - 6, y: y + 3, class: 'chart-label-y', 'text-anchor': 'end'
+            });
+            label.textContent = formatCompact(v);
+            svg.appendChild(label);
+        }
+    }
+
+    // خط ۸۰٪ سهمیه (خط قرمز چین‌چین)
+    const quotaLine = quotaDaily * 0.8;
+    if (quotaLine <= maxVal) {
+        svg.appendChild(svgEl('line', {
+            x1: PAD.left, x2: W - PAD.right, y1: yFor(quotaLine), y2: yFor(quotaLine),
+            class: 'chart-quota'
+        }));
+    }
+
+    // میله‌ها — هر روز یک جفت (total پشت، worker جلو)
+    const slot = plotW / days.length;
+    const barW = Math.min(9, Math.max(3, slot * 0.3));
+    days.forEach((day, idx) => {
+        const cx = PAD.left + slot * idx + slot / 2;
+
+        if (day) {
+            const overQuota = day.total > quotaLine;
+            const totalBar = svgEl('rect', {
+                x: cx - barW - 0.5, y: yFor(day.total),
+                width: barW, height: Math.max(1, PAD.top + plotH - yFor(day.total)),
+                rx: 1.5, class: `chart-bar-total${overQuota ? ' over' : ''}`
+            });
+            const workerBar = svgEl('rect', {
+                x: cx + 0.5, y: yFor(day.worker),
+                width: barW, height: Math.max(1, PAD.top + plotH - yFor(day.worker)),
+                rx: 1.5, class: 'chart-bar-worker'
+            });
+
+            const dateLabel = `${day.date} — Total: ${day.total.toLocaleString('en-US')} (${day.samples} sample${day.samples > 1 ? 's' : ''}) · Flash: ${day.worker.toLocaleString('en-US')}`;
+            for (const bar of [totalBar, workerBar]) {
+                bar.addEventListener('mouseenter', () => chartTooltip(bar, dateLabel));
+                bar.addEventListener('mouseleave', hideChartTooltip);
+            }
+            svg.appendChild(totalBar);
+            svg.appendChild(workerBar);
+        } else {
+            // روز بدون داده — نقطه کم‌رنگ پایین محور
+            svg.appendChild(svgEl('circle', {
+                cx, cy: PAD.top + plotH - 1.5, r: 1.5, class: 'chart-gap-dot'
+            }));
+        }
+
+        // برچسب تاریخ هر ۵ روز + روز آخر
+        if (idx % 5 === 0 || idx === days.length - 1) {
+            const label = svgEl('text', {
+                x: cx, y: H - 8, class: 'chart-label-x', 'text-anchor': 'middle'
+            });
+            label.textContent = (day?.date ?? '').slice(5) || '—';
+            svg.appendChild(label);
+        }
+    });
+
+    host.appendChild(svg);
+}
+
+async function loadUsageHistory(event, force = false) {
+    event?.preventDefault();
+    event?.stopPropagation();
+
+    if (usageChartState.loading) return;
+    if (usageChartState.loaded && !force) return;
+
+    usageChartState.loading = true;
+    const host = document.getElementById('usageChart');
+    try {
+        const nocache = Date.now();
+        const res = await fetch(`./panel/usage/history?days=30&nocache=${nocache}`, { cache: 'no-store' });
+        const { success, status, message, body } = await res.json();
+        if (!success) throw new Error(`status ${status} - ${message}`);
+
+        usageChartState.loaded = true;
+        renderUsageHistory(body.days ?? [], body.quotaDaily ?? 100000);
+    } catch (error) {
+        console.error('Failed to load usage history:', error);
+        if (host) {
+            host.textContent = '';
+            host.appendChild(elm('div', {
+                className: 'usage-chart-empty',
+                textContent: 'Could not load usage history.'
+            }));
+        }
+    } finally {
+        usageChartState.loading = false;
+    }
+}
+
+// بارگذاری تنبل — اولین بازشدن آکاردئون
+document.getElementById('usageHistoryDetails')?.addEventListener('toggle', function () {
+    if (this.open) loadUsageHistory();
+});

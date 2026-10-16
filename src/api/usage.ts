@@ -1,6 +1,7 @@
 import { authenticate } from '@auth';
 import { HttpStatus, respond, safeError } from '@common';
 import { getGlobals } from '@settings';
+import { getUsageHistory, recordUsageSample } from '@settings/usage-history';
 
 interface CfUsageResult {
     success: boolean;
@@ -81,8 +82,35 @@ export async function getUsage(request: Request, env: Env) {
 
         const usage = await getCfWorkerUsage();
         if (!usage.success) return respond(false, HttpStatus.INTERNAL_SERVER_ERROR, 'Failed to fetch account usage.');
+
+        // ثبت نمونه برای سری زمانی روزانه — best-effort، هرگز پاس را خراب نمی‌کند
+        await recordUsageSample(env, usage.total ?? 0, usage.worker ?? 0);
+
         return respond(true, HttpStatus.OK, '', {total: usage.total, worker: usage.worker});
     } catch (error) {
         return respond(false, HttpStatus.INTERNAL_SERVER_ERROR, `Error occurred while fetching usage: ${safeError(error)}`);
+    }
+}
+
+/**
+ * تاریخچه مصرف روزانه برای نمودار پنل — GET panel/usage/history?days=30
+ * فقط سری KV خوانده می‌شود (بدون تماس GraphQL) — سریع و بدون سهمی‌گرفتن از API کلودفلر.
+ */
+export async function getUsageHistoryEndpoint(request: Request, env: Env) {
+    try {
+        const auth = await authenticate(request, env);
+        if (!auth) {
+            return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+        }
+
+        const { searchParams } = new URL(request.url);
+        const days = Number(searchParams.get('days')) || 30;
+        const history = await getUsageHistory(env, days);
+
+        return respond(true, HttpStatus.OK, '', history, {
+            'Cache-Control': 'no-store'
+        });
+    } catch (error) {
+        return respond(false, HttpStatus.INTERNAL_SERVER_ERROR, `Error occurred while fetching usage history: ${safeError(error)}`);
     }
 }

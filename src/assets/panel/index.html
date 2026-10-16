@@ -12,7 +12,7 @@
         href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add_circle,autorenew,cancel,check_circle,clock_loader_40,close,cloud_download,cloud_upload,code_xml,content_copy,dashboard,data_usage,delete,dns,download,draft,error,fingerprint,help,info,key_vertical,keyboard_arrow_down,link,logout,open_in_new,password_2,qr_code,refresh,save,settings,settings_backup_restore,share,shield,smart_toy,terminal,tune,upgrade,upload,verified,visibility,visibility_off&display=block" />
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add_circle,autorenew,bar_chart,cancel,check_circle,clock_loader_40,close,cloud_download,cloud_upload,code_xml,content_copy,dashboard,data_usage,delete,dns,download,draft,error,fingerprint,help,history,info,key_vertical,keyboard_arrow_down,link,logout,open_in_new,password_2,qr_code,refresh,save,settings,settings_backup_restore,share,shield,show_chart,smart_toy,terminal,tune,upgrade,upload,verified,visibility,visibility_off&display=block" />
     <link id="favicon" rel="icon" type="image/x-icon" href="data:image/x-icon;base64,__ICON__">
     <style>
         /* CSS_PLACEHOLDER */
@@ -60,6 +60,28 @@
                 <span><span class="material-symbols-rounded">data_usage</span>Total</span>
                 <span><b id="total-usage"></b><span class="separator"> | </span><span id="total-pct"></span>%</span>
             </div>
+        </div>
+
+        <div class="accordion-item">
+            <details id="usageHistoryDetails">
+                <summary>
+                    <h3><span class="material-symbols-rounded">bar_chart</span>Usage History</h3>
+                </summary>
+                <div class="section">
+                    <div class="usage-history-head">
+                        <span class="usage-history-caption">Daily requests — last 30 days (recorded on panel visits)</span>
+                        <button type="button" id="usageHistoryRefresh" class="panel-settings" title="Refresh history" onclick="loadUsageHistory(event, true)">
+                            <span class="material-symbols-rounded">refresh</span>
+                        </button>
+                    </div>
+                    <div id="usageChart" class="usage-chart" role="img" aria-label="Daily requests chart for the last 30 days"></div>
+                    <div class="usage-legend">
+                        <span><i class="legend-swatch legend-total"></i>Total</span>
+                        <span><i class="legend-swatch legend-worker"></i>Flash</span>
+                        <span><i class="legend-swatch legend-quota"></i>80% quota</span>
+                    </div>
+                </div>
+            </details>
         </div>
 
         <div class="accordion-item">

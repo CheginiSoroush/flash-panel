@@ -1,6 +1,6 @@
 import { PanelSettings, TelegramBot } from '#types/settings';
 import { deployPages, deletePagesProject } from '@api/pages';
-import { getUsage } from '@api/usage';
+import { getUsage, getUsageHistoryEndpoint } from '@api/usage';
 import { fetchWarpAccounts } from '@api/warp';
 import { deployWorkers, deleteWorker } from '@api/workers';
 import { resetPassword, logout, authenticate, invalidateTotpCache } from '@auth';
@@ -75,6 +75,9 @@ export async function handlePanel(request: Request, env: Env): Promise<Response>
 
         case 'panel/usage':
             return getUsage(request, env);
+
+        case 'panel/usage/history':
+            return getUsageHistoryEndpoint(request, env);
 
         case 'panel/logout':
             return logout();
