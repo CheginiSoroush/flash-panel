@@ -13,7 +13,7 @@
         href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=content_copy,flash_on&display=block" />
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=bolt,content_copy,flash_on,task_alt&display=block" />
     <style>/* CSS_PLACEHOLDER */</style>
 <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/Vazirmatn-font-face.css" rel="stylesheet" /><link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,__ICON__" /></head>
 
@@ -46,6 +46,32 @@
                     <td colspan="5">Loading...</td>
                 </tr>
             </tbody>
+        </table>
+    </div>
+
+    <div class="auto-toolbar">
+        <button id="testAllBtn" class="auto-btn test" type="button" title="Test every configured Proxy IP at once (2 attempts, concurrency-limited)">
+            <span class="material-symbols-rounded">bolt</span>
+            Test all
+        </button>
+        <button id="applyBestBtn" class="auto-btn apply" type="button" title="Test all, pick the fastest healthy IP and redeploy the worker with it">
+            <span class="material-symbols-rounded">task_alt</span>
+            Auto-apply best
+        </button>
+        <span id="autoStatus" class="auto-status" role="status" aria-live="polite"></span>
+    </div>
+
+    <div id="testResults" class="auto-results" hidden>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Target</th>
+                    <th>Health</th>
+                    <th>Avg latency</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
         </table>
     </div>
 

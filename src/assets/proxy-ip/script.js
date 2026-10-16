@@ -64,6 +64,107 @@ function copyToClipboard(text) {
         .catch(error => console.error('Failed to copy:', error));
 }
 
+// ---------- تست دسته‌ای + اعمال خودکار بهترین ----------
+
+const testAllBtn = document.getElementById('testAllBtn');
+const applyBestBtn = document.getElementById('applyBestBtn');
+const autoStatus = document.getElementById('autoStatus');
+const testResults = document.getElementById('testResults');
+
+function setAutoStatus(text, kind = '') {
+    autoStatus.textContent = text;
+    autoStatus.className = `auto-status ${kind}`.trim();
+}
+
+function renderTestResults(results, bestTarget) {
+    const tbody = testResults.querySelector('tbody');
+    tbody.innerHTML = '';
+    testResults.hidden = !results.length;
+
+    results.forEach((item, index) => {
+        const isBest = bestTarget && item.target === bestTarget && item.ok;
+
+        const indexCell = elm('td', { textContent: String(index + 1) });
+
+        const targetCell = elm('td', { className: 'mono' }, [
+            document.createTextNode(item.target),
+            isBest ? elm('span', { className: 'best-tag', textContent: ' ⚡ best' }) : null
+        ].filter(Boolean));
+
+        const healthCell = elm('td', {
+            className: item.ok ? 'ok' : 'bad',
+            textContent: item.ok ? item.successRate : 'unhealthy'
+        });
+
+        const latencyCell = elm('td', {
+            textContent: item.avgLatencyMs != null ? `${item.avgLatencyMs} ms` : '—'
+        });
+
+        const row = elm('tr', { className: isBest ? 'best-row' : '' },
+            [indexCell, targetCell, healthCell, latencyCell]);
+        tbody.appendChild(row);
+    });
+}
+
+async function runTestAll() {
+    testAllBtn.disabled = true;
+    setAutoStatus('Testing all targets…', 'busy');
+
+    try {
+        const res = await fetch('./proxy-ip/test-all', { cache: 'no-store' });
+        const { success, body, message } = await res.json();
+        if (!success) throw new Error(message || `status ${res.status}`);
+
+        renderTestResults(body.results || [], body.best);
+
+        if (body.best) {
+            setAutoStatus(`Best: ${body.best}`, 'ok');
+        } else {
+            setAutoStatus('No healthy target found', 'err');
+        }
+    } catch (error) {
+        setAutoStatus(`Test failed: ${error.message}`, 'err');
+    } finally {
+        testAllBtn.disabled = false;
+    }
+}
+
+async function runAutoApply() {
+    const proceed = confirm(
+        'Auto-apply will test every configured Proxy IP and redeploy the worker ' +
+        'with the fastest healthy one as the primary target.\n\nContinue?'
+    );
+    if (!proceed) return;
+
+    applyBestBtn.disabled = true;
+    setAutoStatus('Testing + redeploying… (up to ~1 min)', 'busy');
+
+    try {
+        const res = await fetch('./proxy-ip/auto-apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const { success, body, message } = await res.json();
+        if (body?.results) renderTestResults(body.results, body.best ?? null);
+
+        if (!success) {
+            setAutoStatus(message || 'Auto-apply failed', 'err');
+            return;
+        }
+
+        setAutoStatus(body.applied
+            ? `✅ Applied: ${body.best} — worker redeployed (takes a few seconds)`
+            : `✅ Already optimal: ${body.best} — no redeploy needed`, 'ok');
+    } catch (error) {
+        setAutoStatus(`Auto-apply failed: ${error.message}`, 'err');
+    } finally {
+        applyBestBtn.disabled = false;
+    }
+}
+
+if (testAllBtn) testAllBtn.addEventListener('click', runTestAll);
+if (applyBestBtn) applyBestBtn.addEventListener('click', runAutoApply);
+
 function testIp(ip, healthyCell, avgLatencyCell) {
     document.body.classList.add('is-loading');
     fetch(`./proxy-ip/test?target=${ip}`)

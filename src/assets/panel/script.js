@@ -1397,7 +1397,18 @@ function renderSubUserItem(user) {
         document.createTextNode(user.telegramChatId ? 'linked' : 'no chat')
     ]);
 
-    const statsRow = elm('div', { className: 'sub-user-stats' }, [fetchesElm, lastFetchElm, chatElm]);
+    // نشانگر انقضای خودکار — ⏳ شمارش معکوس یا ❌ منقضی
+    const expiryText = subUserExpiryLabel(user.expiresAt);
+    const expiryElm = expiryText ? elm('span', {
+        className: `sub-user-stat expiry ${expiryText.startsWith('❌') ? 'expired' : ''}`,
+        title: 'Auto-expiry'
+    }, [
+        createIcon('schedule'),
+        document.createTextNode(expiryText)
+    ]) : null;
+
+    const statsRow = elm('div', { className: 'sub-user-stats' },
+        expiryElm ? [fetchesElm, lastFetchElm, chatElm, expiryElm] : [fetchesElm, lastFetchElm, chatElm]);
 
     // ---------- ادیتور chat_id تلگرام ----------
     const chatInput = elm('input', {
@@ -1424,7 +1435,28 @@ function renderSubUserItem(user) {
 
     const chatEditor = elm('div', { className: 'sub-user-chat' }, [chatInput, chatSaveBtn, chatClearBtn]);
 
-    const meta = elm('div', { className: 'sub-user-meta' }, [statsRow, chatEditor]);
+    // ---------- ادیتور انقضای خودکار ----------
+    const expiryInput = elm('input', {
+        type: 'date',
+        title: 'Auto-expiry date — links stop at end of this day (UTC)',
+        value: user.expiresAt ? new Date(user.expiresAt).toISOString().slice(0, 10) : ''
+    });
+
+    const expirySaveBtn = elm('button', {
+        type: 'button',
+        title: 'Save auto-expiry date',
+        onclick: (e) => { e.preventDefault(); saveSubUserExpiry(user.id, expiryInput.value); }
+    }, createIcon('event_available'));
+
+    const expiryClearBtn = elm('button', {
+        type: 'button',
+        title: 'Remove expiry — no time limit',
+        onclick: (e) => { e.preventDefault(); expiryInput.value = ''; saveSubUserExpiry(user.id, ''); }
+    }, createIcon('all_inclusive'));
+
+    const expiryEditor = elm('div', { className: 'sub-user-chat sub-user-expiry' }, [expiryInput, expirySaveBtn, expiryClearBtn]);
+
+    const meta = elm('div', { className: 'sub-user-meta' }, [statsRow, chatEditor, expiryEditor]);
 
     const catalog = globalThis.subsCatalog || {};
     const tables = Object.entries(catalog).map(([type, { label, categories }]) => {
@@ -1456,6 +1488,62 @@ function formatRelativeTime(ts) {
     if (diff < 30 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
 
     return new Date(ts).toISOString().slice(0, 10);
+}
+
+/**
+ * برچسب انقضای خودکار — هم‌شکل ربات (telegram-broadcast.expiryBadge):
+ * منقضی ❌ / ≤۷۲ ساعت ⏳ Xh / بیشتر ⏳ Xd / بدون انقضا null
+ */
+function subUserExpiryLabel(expiresAt) {
+    if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt) || expiresAt <= 0) return null;
+
+    const diff = expiresAt - Date.now();
+    if (diff <= 0) return '❌ expired';
+
+    const hours = Math.ceil(diff / 3_600_000);
+    if (hours <= 72) return `⏳ ${hours}h left`;
+
+    return `⏳ ${Math.ceil(hours / 24)}d left`;
+}
+
+/**
+ * ذخیره/حذف انقضای خودکار — تاریخ → آخر همان روز UTC (ساعت ۲۳:۵۹:۵۹).
+ * '' یعنی حذف انقضا (بدون محدودیت زمانی).
+ */
+async function saveSubUserExpiry(userId, dateValue) {
+    const value = (dateValue || '').trim();
+
+    let epoch = '';
+    if (value) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+            notify('error', 'Subscription users', ['Invalid date — expected YYYY-MM-DD.']);
+            return;
+        }
+        const parsed = new Date(`${value}T23:59:59Z`).getTime();
+        if (!Number.isFinite(parsed) || parsed <= Date.now()) {
+            notify('error', 'Subscription users', ['Expiry must be a future date.']);
+            return;
+        }
+        epoch = parsed;
+    }
+
+    try {
+        const res = await fetch('./panel/sub-users', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: userId, expiresAt: epoch })
+        });
+        const { success, status, message } = await res.json();
+        if (!success) throw new Error(`status ${status} - ${message}`);
+
+        notify('success', 'Subscription users',
+            [value
+                ? `Auto-expiry set — links stop at end of ${value} (UTC).`
+                : 'Auto-expiry removed — no time limit.']);
+        await loadSubUsers();
+    } catch (error) {
+        notify('error', 'Subscription users', [`Failed to save expiry: ${error.message}`]);
+    }
 }
 
 /** ذخیره/حذف chat_id تلگرام یک کاربر — '' یعنی حذف لینک */

@@ -15,6 +15,8 @@ export interface BroadcastUser {
     fetchCount?: number;
     lastFetchedAt?: number;
     telegramChatId?: string;
+    /** انقضای خودکار — epoch ms (اختیاری) */
+    expiresAt?: number;
 }
 
 export interface BroadcastRecipient {
@@ -126,6 +128,26 @@ export function relativeTime(ts: number | undefined, now: number = Date.now()): 
     return new Date(ts).toISOString().slice(0, 10);
 }
 
+/**
+ * نشانگر انقضا برای نمایش در ربات/پنل — خالص و قابل‌تست.
+ *   بدون انقضا → ''   |   منقضی → '❌ expired'   |   ≤۷۲h → '⏳ Xh left'
+ *   بقیه → '⏳ Xd left'
+ */
+export function expiryBadge(
+    expiresAt: number | undefined,
+    now: number = Date.now()
+): string {
+    if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt) || expiresAt <= 0) return '';
+
+    const diff = expiresAt - now;
+    if (diff <= 0) return '❌ expired';
+
+    const hours = Math.ceil(diff / 3_600_000);
+    if (hours <= 72) return `⏳ ${hours}h left`;
+
+    return `⏳ ${Math.ceil(hours / 24)}d left`;
+}
+
 /** صفحه‌بندی لیست کاربران — صفحه‌ی خارج از بازه clamp می‌شود */
 export function paginateUsers<T>(
     items: T[],
@@ -149,6 +171,11 @@ export function buildUsersOverviewText(users: BroadcastUser[], now: number = Dat
     const activeLast24h = users.filter(
         u => typeof u.lastFetchedAt === 'number' && now - u.lastFetchedAt < 86_400_000
     ).length;
+    const expired = users.filter(u => u.active && typeof u.expiresAt === 'number' && u.expiresAt <= now).length;
+    const expiringSoon = users.filter(
+        u => u.active && typeof u.expiresAt === 'number'
+            && u.expiresAt > now && u.expiresAt - now <= 72 * 3_600_000
+    ).length;
 
     const top = [...users]
         .filter(u => (u.fetchCount || 0) > 0)
@@ -165,6 +192,10 @@ export function buildUsersOverviewText(users: BroadcastUser[], now: number = Dat
         `📈 Fetches recorded: <b>${totalFetches}</b> — Active in 24h: <b>${activeLast24h}</b>`
     ];
 
+    if (expired || expiringSoon) {
+        lines.push(`⏰ Expiry — ❌ ${expired} expired · ⏳ ${expiringSoon} within 72h`);
+    }
+
     if (top) {
         lines.push('', '🏆 Most active:', top);
     }
@@ -174,12 +205,19 @@ export function buildUsersOverviewText(users: BroadcastUser[], now: number = Dat
 
 /** متن جزئیات یک کاربر */
 export function buildUserDetailText(user: BroadcastUser, now: number = Date.now()): string {
-    const status = user.active ? '🟢 Active' : '🔴 Revoked';
+    const expiredNow = typeof user.expiresAt === 'number' && user.expiresAt <= now;
+    const status = user.active
+        ? (expiredNow ? '🟠 Active (expired — links stopped)' : '🟢 Active')
+        : '🔴 Revoked';
     const fetches = user.fetchCount || 0;
     const lastFetch = relativeTime(user.lastFetchedAt, now);
     const linked = user.telegramChatId
         ? `✅ <code>${escapeHtml(user.telegramChatId)}</code>`
         : '— not linked —';
+    const expiry = expiryBadge(user.expiresAt, now);
+    const expiryLine = expiry
+        ? `⏰ Auto-expiry: <b>${new Date(user.expiresAt!).toISOString().slice(0, 16).replace('T', ' ')} UTC</b> (${expiry})`
+        : '⏰ Auto-expiry: — none —';
 
     return [
         `👤 <b>${escapeHtml(user.name)}</b>`,
@@ -187,6 +225,7 @@ export function buildUserDetailText(user: BroadcastUser, now: number = Date.now(
         `${status}`,
         `📈 Recorded fetches: <b>${fetches}</b>`,
         `🕐 Last fetch: <b>${lastFetch}</b>`,
+        expiryLine,
         '',
         `💬 Telegram chat: ${linked}`,
         '',

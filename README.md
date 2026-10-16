@@ -58,6 +58,16 @@ Most BPB forks change the **brand**. Flash Panel rebuilt the **engine**:
 - 🔒 Login page / settings / subscriptions fully separated
 - ⚡ `workers.dev` route **auto-disabled** — scanner-proof by design
 
+### ⚙️ Automation — the panel runs itself
+
+Set the cron trigger once (`'0 * * * *'` in `wrangler.jsonc`) and the panel takes care of the rest:
+
+- ⏰ **Auto-expiry for subscription users** — give any user an expiry date; their links stop the second it passes (self-enforcing at resolve time, no cron needed), the hourly sweep marks them revoked in the panel, and you get a Telegram notification
+- 📋 **Daily digest** — one message per day: usage vs quota, active/expired/revoked counts, next expirations, top users (also on demand: `/digest`)
+- 🔴 **Usage alert** — a one-time warning when total requests cross 80% of the daily Free quota
+- 📊 **Usage sampling without visits** — the 31-day chart stays complete even on days nobody opens the panel
+- ⚡ **Auto best ProxyIP** — one click tests every configured Proxy IP (batched, 2 attempts each) and redeploys the worker with the fastest healthy one as primary
+
 ### 🤖 Telegram Bot — full panel control
 
 The panel URL is often filtered. Your Telegram isn't.
@@ -65,6 +75,8 @@ The panel URL is often filtered. Your Telegram isn't.
 ```
 /config    — get configs + QR codes
 /status    — live panel overview
+/users     — per-user stats + expiry countdowns
+/digest    — daily summary on demand
 /settings  — 18 editable fields (DNS, protocols, clean IPs, routing rules...)
 /restart   — instant cache reset
 ```

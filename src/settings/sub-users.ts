@@ -25,6 +25,12 @@ export interface SubUser {
      * فقط رقم — chat_id کاربر عادی تلگرام همیشه مثبت است.
      */
     telegramChatId?: string;
+    /**
+     * انقضای خودکار دسترسی (epoch ms، اختیاری) — بعد از این زمان لینک‌های کاربر
+     * خودبه‌خود می‌ایستند (resolve به‌صورت سلف-اجراکننده چک می‌کند) و cron
+     * sweep کاربر را غیرفعال علامت می‌زند و به ادمین خبر می‌دهد.
+     */
+    expiresAt?: number;
 }
 
 // حداقل/حداکثر منطقی برای جلوگیری از سوءاستفاده و پر شدن KV
@@ -58,6 +64,17 @@ export function normalizeSubUserChatId(raw: unknown): string | null {
     return str;
 }
 
+/**
+ * آیا دسترسی این کاربر منقضی شده؟ — undefined یعنی اصلاً انقضا ندارد.
+ * جدا از active — کاربر منقضی مثل کاربر revoke شده رفتار می‌کند.
+ */
+export function isSubUserExpired(u: SubUser, now: number = Date.now()): boolean {
+    return typeof u.expiresAt === 'number'
+        && Number.isFinite(u.expiresAt)
+        && u.expiresAt > 0
+        && u.expiresAt <= now;
+}
+
 /** اعمال فیلدهای آماری/اختیاری بعد از اعتبارسنجی ساختاری — ورودی KV خام ممکنه خراب باشه */
 function sanitizeStats(u: SubUser): SubUser {
     const count = Number(u.fetchCount);
@@ -71,6 +88,10 @@ function sanitizeStats(u: SubUser): SubUser {
     const chat = normalizeSubUserChatId(u.telegramChatId);
     if (chat) u.telegramChatId = chat;
     else delete u.telegramChatId;
+
+    const exp = Number(u.expiresAt);
+    if (Number.isFinite(exp) && exp > 0) u.expiresAt = Math.floor(exp);
+    else delete u.expiresAt;
 
     return u;
 }
@@ -119,7 +140,7 @@ export async function createSubUser(env: Env, rawName: unknown): Promise<SubUser
 export async function updateSubUser(
     env: Env,
     id: string,
-    patch: { name?: unknown; active?: unknown; telegramChatId?: unknown }
+    patch: { name?: unknown; active?: unknown; telegramChatId?: unknown; expiresAt?: unknown }
 ): Promise<SubUser | null> {
     const users = await getSubUsers(env);
     const user = users.find(u => u.id === id);
@@ -143,6 +164,17 @@ export async function updateSubUser(
         else user.telegramChatId = chat;
     }
 
+    if (patch.expiresAt !== undefined) {
+        // '' / null = حذف انقضا (بدون محدودیت زمانی)؛ عدد = epoch ms آینده
+        if (patch.expiresAt === '' || patch.expiresAt === null) {
+            delete user.expiresAt;
+        } else {
+            const exp = Number(patch.expiresAt);
+            if (!Number.isFinite(exp) || exp <= Date.now()) return null;
+            user.expiresAt = Math.floor(exp);
+        }
+    }
+
     await saveSubUsers(env, users);
     return user;
 }
@@ -158,14 +190,15 @@ export async function deleteSubUser(env: Env, id: string): Promise<boolean> {
 
 /**
  * پیدا کردن کاربر فعال برای مسیر اشتراک — undefined یعنی مسیر UUID نبوده
- * (لینک قدیمی ادمین)، null یعنی UUID هست ولی نامعتبر/غیرفعاله
+ * (لینک قدیمی ادمین)، null یعنی UUID هست ولی نامعتبر/غیرفعال/منقضی.
+ * انقضا سلف-اجراکننده است: حتی بدون cron، لینک منقضی همان لحظه می‌ایستد.
  */
-export async function resolveSubUser(env: Env, id: string): Promise<SubUser | null | undefined> {
+export async function resolveSubUser(env: Env, id: string, now: number = Date.now()): Promise<SubUser | null | undefined> {
     if (!isValidSubUserId(id)) return undefined;
 
     const users = await getSubUsers(env);
     const user = users.find(u => u.id === id);
-    return user && user.active ? user : null;
+    return user && user.active && !isSubUserExpired(user, now) ? user : null;
 }
 
 // ---------- آمار واکشی هر کاربر ----------
@@ -203,13 +236,13 @@ export async function resolveAndRecordSubUser(
         // هنوز باید اعتبار کاربر چک بشه — ولی خواندن KV برای resolve لازم است
         const users = await getSubUsers(env);
         const user = users.find(u => u.id === id);
-        return user && user.active ? user : null;
+        return user && user.active && !isSubUserExpired(user, now) ? user : null;
     }
 
     const users = await getSubUsers(env);
     const user = users.find(u => u.id === id);
     // همان قرارداد resolveSubUser: مسیر UUID همیشه null می‌دهد (نه undefined)
-    if (!user || !user.active) return null;
+    if (!user || !user.active || isSubUserExpired(user, now)) return null;
 
     const freshWindow = typeof user.lastFetchedAt === 'number' &&
         now - user.lastFetchedAt < SUB_USER_FETCH_THROTTLE_MS;
@@ -227,4 +260,62 @@ export async function resolveAndRecordSubUser(
     }
 
     return user;
+}
+
+// ---------- sweep خودکار انقضا (برای cron اتوماسیون) ----------
+
+export interface ExpirySweepResult {
+    /** کاربرانی که در این اجرا غیرفعال شدند — active=true و منقضی */
+    swept: SubUser[];
+    /** کاربرانی که تا ۷۲ ساعت آینده منقضی می‌شوند (هنوز فعال) — برای هشدار پیش از انقضا */
+    expiringSoon: SubUser[];
+    /** افق هشدار پیش از انقضا — ۷۲ ساعت */
+    soonWindowMs: number;
+}
+
+/**
+ * sweep انقضا — کاربران active که expiresAt شان گذشته را غیرفعال می‌کند.
+ *
+ * لینک منقضی حتی بدون این sweep از resolveSubUser رد می‌شود (سلف-اجراکننده)،
+ * اما این تابع وضعیت را در KV هم صادق می‌کند تا پنل/ربات «منقضی» را ببینند
+ * و ادمین بتواند بر اساس آن notify بگیرد. فقط کاربران active بررسی می‌شوند —
+ * پس اجرای مکرر cron هیچ duplicate notify یا write اضافه‌ای نمی‌سازد.
+ *
+ * best-effort: خطای write هرگز بالا نمی‌رود (برنامه‌ی cron خراب نمی‌شود).
+ */
+export async function sweepExpiredSubUsers(
+    env: Env,
+    now: number = Date.now(),
+    soonWindowMs: number = 72 * 60 * 60 * 1000
+): Promise<ExpirySweepResult> {
+    const result: ExpirySweepResult = { swept: [], expiringSoon: [], soonWindowMs };
+
+    try {
+        const users = await getSubUsers(env);
+        let changed = false;
+
+        for (const user of users) {
+            if (!user.active) continue;
+
+            if (isSubUserExpired(user, now)) {
+                user.active = false;
+                result.swept.push(user);
+                changed = true;
+            } else if (
+                typeof user.expiresAt === 'number'
+                && user.expiresAt > now
+                && user.expiresAt - now <= soonWindowMs
+            ) {
+                result.expiringSoon.push(user);
+            }
+        }
+
+        if (changed) {
+            await saveSubUsers(env, users);
+        }
+    } catch {
+        // sweep نباید cron را بشکند — دور بعد دوباره امتحان می‌شود
+    }
+
+    return result;
 }

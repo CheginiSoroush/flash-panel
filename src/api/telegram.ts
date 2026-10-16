@@ -12,6 +12,7 @@ import {
     sendBroadcast,
     USERS_PER_PAGE
 } from './telegram-broadcast';
+import { buildDigestForCommand } from './automation';
 import { authenticate } from '@auth';
 import { getDataset, invalidateDatasetCache } from '@kv';
 import { TelegramBot } from '#types/settings';
@@ -104,6 +105,7 @@ export async function setTelegramBot(path: string, token: string) {
                     { command: 'clients', description: '📱 Get supported clients' },
                     { command: 'usage', description: '📊 Monitor usage' },
                     { command: 'users', description: '👥 Subscription users & stats' },
+                    { command: 'digest', description: '📋 Daily summary (usage + users)' },
                     { command: 'broadcast', description: '📢 Message all linked users' },
                     { command: 'settings', description: '⚙️ Change panel settings' },
 
@@ -1204,6 +1206,15 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
 
             case '/users':
                 await sendUsersList(botToken, chatId, env, 1);
+                break;
+
+            case '/digest':
+                await tgFetch(botToken, 'sendMessage', {
+                    chat_id: chatId,
+                    text: await buildDigestForCommand(env),
+                    parse_mode: 'HTML',
+                    reply_markup: mainKeyboard()
+                });
                 break;
 
             case '/broadcast':

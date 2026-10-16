@@ -8,7 +8,7 @@ import { handleSubscriptions } from '@handlers/subscription';
 import { handleTelegram } from '@handlers/telegram';
 import { fallback, hardenResponse, robotsResponse } from '@handlers/utils';
 import { handleWebsocket } from '@handlers/websocket';
-import { sampleUsageNow } from '@api/usage';
+import { runScheduledAutomation } from '@api/automation';
 import { init, getGlobals } from '@settings';
 
 export default {
@@ -78,14 +78,13 @@ export default {
     },
 
     /**
-     * Cron trigger — نمونه‌گیری خودکار مصرف.
+     * Cron trigger — موتور اتوماسیون (نمونه‌گیری مصرف + sweep انقضا + هشدار + digest).
      *
-     * بدون این، سری زمانی usage فقط وقتی ثبت می‌شه که کسی پنل رو باز کنه —
-     * روزهای بدون بازدید توی نمودار مصرف خالی می‌مونن. با یک cron روزانه
-     * (پیشنهاد: '0 3 * * *' در wrangler.jsonc → triggers.crons) حتی بدون
-     * بازدید، نمونه‌ی روزانه ثبت می‌شه. best-effort — خطا هرگز throw نمی‌شه.
+     * پیشنهاد: ساعتی — '0 * * * *' در wrangler.jsonc → triggers.crons.
+     * همه‌ی مراحل best-effort اند و گارد روزانه در KV جلوی notify تکراری را می‌گیرد؛
+     * بدون بات تلگرام هم sweep و نمونه‌گیری کار می‌کنند (فقط پیامی ارسال نمی‌شود).
      */
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-        ctx.waitUntil(sampleUsageNow(env));
+        ctx.waitUntil(runScheduledAutomation(env));
     }
 }

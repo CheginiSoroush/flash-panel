@@ -134,3 +134,116 @@ td:nth-child(4) {
 .material-symbols-rounded:hover {
     scale: calc(1.2);
 }
+
+/* ---------- نوار ابزار تست دسته‌ای + اعمال خودکار ---------- */
+
+.auto-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0 var(--space-md) 0.4rem;
+}
+
+.auto-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--color-text-primary);
+    background: color-mix(in srgb, var(--color-brand-primary), #000328 62%);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-ui);
+    padding: 0.55rem 1.05rem;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.auto-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+    filter: brightness(1.12);
+}
+
+.auto-btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.auto-btn.apply {
+    background: color-mix(in srgb, #22c55e, #000328 70%);
+}
+
+.auto-btn .material-symbols-rounded {
+    font-size: 1.1rem;
+    color: currentcolor;
+    cursor: inherit;
+}
+
+.auto-status {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    min-height: 1.2em;
+}
+
+.auto-status.busy {
+    color: var(--color-text-primary);
+}
+
+.auto-status.ok {
+    color: #4ade80;
+}
+
+.auto-status.err {
+    color: #f87171;
+}
+
+.auto-results {
+    overflow-x: auto;
+    padding: 0.4rem var(--space-md) var(--space-md);
+}
+
+.auto-results table {
+    width: 100%;
+    max-width: 640px;
+}
+
+.auto-results .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--color-text-primary);
+}
+
+.auto-results .ok {
+    color: #4ade80;
+    font-weight: 700;
+}
+
+.auto-results .bad {
+    color: #f87171;
+    font-weight: 700;
+}
+
+.auto-results .best-row td {
+    background: color-mix(in srgb, var(--color-brand-primary), transparent 86%);
+}
+
+.auto-results .best-tag {
+    color: var(--color-brand-primary);
+    font-weight: 700;
+}
+
+@media only screen and (max-width: 599px) {
+    .auto-btn {
+        flex: 1;
+        justify-content: center;
+        min-height: 44px;
+    }
+
+    .auto-toolbar {
+        gap: 0.45rem;
+    }
+}
