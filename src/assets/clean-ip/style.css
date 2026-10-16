@@ -1,0 +1,285 @@
+:root {
+    --color-brand-primary: #3b82f6;
+    --color-bg-main: linear-gradient(90deg, #000328, #00458E);
+    --color-bg-card: rgba(15, 23, 42, 0.5);
+    --color-text-primary: #f1f5f9;
+    --color-text-secondary: #aec4e2;
+    --color-border: #60a5fa36;
+    --color-table-active: rgba(2, 6, 23, 0.5);
+
+    --shadow-header: 0.125rem 0.125rem 0.25rem #000328;
+    --shadow-table: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 2px 6px rgba(0, 0, 0, 0.06), 0 12px 30px rgba(0, 0, 0, 0.08);
+    
+    --space-sm: 0.5rem;
+    --space-md: 0.85rem;
+
+    --radius-ui: 0.75rem;
+}
+
+body {
+    font-family: "Twemoji Country Flags", "Ubuntu", system-ui;
+    text-align: center;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--color-bg-main);
+}
+
+body.is-loading {
+    cursor: wait;
+}
+
+body.is-loading * {
+    /* eslint-disable-next-line css/no-important */
+    cursor: wait !important;
+    pointer-events: none;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+h1 {
+    color: var(--color-text-primary);
+    text-shadow: var(--shadow-header);
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    gap: var(--space-sm);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.icon {
+    height: 2.5rem;
+}
+
+.panel-version {
+    align-self: flex-start;
+    font-size: large;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    width: 100%;
+    text-align: center;
+    padding: var(--space-md);
+}
+
+table {
+    display: inline-table;
+    border: 1px solid var(--color-border);
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: var(--radius-ui);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--color-bg-card), #000328 8%);
+    box-shadow: var(--shadow-table);
+}
+
+tbody {
+    color: var(--color-bg-card);
+}
+
+th,
+td {
+    text-align: center;
+    white-space: nowrap;
+    padding: 10px;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+}
+
+td:first-child,
+th {
+    background-color: var(--color-table-active);
+    font-weight: bold;
+    color: var(--color-text-primary);
+}
+
+td:first-child {
+    color: var(--color-text-secondary);
+}
+
+td:nth-child(2) {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-text-primary);
+    justify-content: space-between;
+}
+
+td:nth-child(3),
+td:nth-child(4) {
+    color: var(--color-text-primary);
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+
+.material-symbols-rounded {
+    color: var(--color-brand-primary);
+    cursor: pointer;
+    font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24
+}
+
+.material-symbols-rounded:hover {
+    scale: calc(1.2);
+}
+
+/* ---------- نوار ابزار تست دسته‌ای + اعمال خودکار ---------- */
+
+.auto-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0 var(--space-md) 0.4rem;
+}
+
+.auto-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--color-text-primary);
+    background: color-mix(in srgb, var(--color-brand-primary), #000328 62%);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-ui);
+    padding: 0.55rem 1.05rem;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.auto-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+    filter: brightness(1.12);
+}
+
+.auto-btn:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.auto-btn.apply {
+    background: color-mix(in srgb, #22c55e, #000328 70%);
+}
+
+.auto-btn .material-symbols-rounded {
+    font-size: 1.1rem;
+    color: currentcolor;
+    cursor: inherit;
+}
+
+.auto-status {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    min-height: 1.2em;
+}
+
+.auto-status.busy {
+    color: var(--color-text-primary);
+}
+
+.auto-status.ok {
+    color: #4ade80;
+}
+
+.auto-status.err {
+    color: #f87171;
+}
+
+.auto-results {
+    overflow-x: auto;
+    padding: 0.4rem var(--space-md) var(--space-md);
+}
+
+.auto-results table {
+    width: 100%;
+    max-width: 640px;
+}
+
+.auto-results .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--color-text-primary);
+}
+
+.auto-results .ok {
+    color: #4ade80;
+    font-weight: 700;
+}
+
+.auto-results .bad {
+    color: #f87171;
+    font-weight: 700;
+}
+
+.auto-results .best-row td {
+    background: color-mix(in srgb, var(--color-brand-primary), transparent 86%);
+}
+
+.auto-results .best-tag {
+    color: var(--color-brand-primary);
+    font-weight: 700;
+}
+
+@media only screen and (max-width: 599px) {
+    .auto-btn {
+        flex: 1;
+        justify-content: center;
+        min-height: 44px;
+    }
+
+    .auto-toolbar {
+        gap: 0.45rem;
+    }
+}
+/* ---------- Clean IP: برچسب منبع و چک‌باکس کشف ---------- */
+
+.src-tag {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--color-brand-primary);
+    background: color-mix(in srgb, var(--color-brand-primary), transparent 84%);
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+}
+
+.src-tag.cdn {
+    color: #fbbf24;
+    background: color-mix(in srgb, #fbbf24, transparent 84%);
+}
+
+.auto-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    user-select: none;
+    min-height: 44px;
+}
+
+.auto-check input[type="checkbox"] {
+    width: 1.05rem;
+    height: 1.05rem;
+    accent-color: var(--color-brand-primary);
+    cursor: pointer;
+}

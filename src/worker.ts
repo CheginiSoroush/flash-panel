@@ -3,6 +3,7 @@ import { renderError } from '@handlers/error';
 import { handleLogin } from '@handlers/login';
 import { handlePanel } from '@handlers/panel';
 import { handleProxyIPs } from '@handlers/proxy-ip';
+import { handleCleanIPs } from '@handlers/clean-ip';
 import { generateQRCode } from '@handlers/qrcode';
 import { handleSubscriptions } from '@handlers/subscription';
 import { handleTelegram } from '@handlers/telegram';
@@ -60,6 +61,10 @@ export default {
 
                 case 'proxy-ip':
                     response = await handleProxyIPs(request, env);
+                    break;
+
+                case 'clean-ip':
+                    response = await handleCleanIPs(request, env);
                     break;
 
                 case 'qrcode':

@@ -68,6 +68,15 @@ Set the cron trigger once (`'0 * * * *'` in `wrangler.jsonc`) and the panel take
 - 📊 **Usage sampling without visits** — the 31-day chart stays complete even on days nobody opens the panel
 - ⚡ **Auto best ProxyIP** — one click tests every configured Proxy IP (batched, 2 attempts each) and redeploys the worker with the fastest healthy one as primary
 
+### 🧭 Anti-403 — configs that just connect
+
+A `403` means your connect address (usually `workers.dev`) is blocked by your ISP. Flash Panel now fights back automatically:
+
+- 🧪 **Clean IP optimizer** (`/clean-ip` page) — one click **Auto-optimize**: discovers fresh candidate IPs from public aggregators, probes every configured Clean IP + candidate (TCP edge probe, 2 attempts), reorders the list **healthy-first, fastest on top**, adds up to 5 newly found healthy IPs and redeploys — the whole loop without touching the settings form
+- 🥇 **Clean IPs First (Anti-403)** — new setting: when enabled, Clean IPs become the *first* connect address in every generated config instead of the (often-blocked) worker domain
+- 🩺 **Per-endpoint health & latency** — every row shows success rate and TCP latency, so dead endpoints are visible at a glance
+- 📰 **Smart subscription headers** — `profile-update-interval`, `profile-web-page-url` and `subscription-userinfo` (auto expiry countdown for subscription users) are served to modern clients (Hiddify, v2rayNG, Streisand)
+
 ### 🤖 Telegram Bot — full panel control
 
 The panel URL is often filtered. Your Telegram isn't.

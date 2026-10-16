@@ -17,6 +17,7 @@ declare global {
     const PANEL_HTML_CONTENT: string;
     const LOGIN_HTML_CONTENT: string;
     const PROXY_IP_HTML_CONTENT: string;
+    const CLEAN_IP_HTML_CONTENT: string;
     const ICON_CONTENT: string;
     const _VL_: string;
     const _VL_CAP_: string;

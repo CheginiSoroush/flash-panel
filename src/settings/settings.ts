@@ -261,6 +261,7 @@ const DEFAULT_KV_SETTINGS: KvSettings = {
     chainProxy: '',
     chainProxyParams: {},
     cleanIPs: ['www.speedtest.net'],
+    cleanIPsFirst: false,
     ports: [443],
     fingerprint: 'chrome',
     bestPingInterval: 30,

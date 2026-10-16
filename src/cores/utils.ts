@@ -152,14 +152,16 @@ export function getProtocols() {
 }
 
 export async function getConfigAddresses(domain: string, isFragment: boolean): Promise<string[]> {
-    const { enableIPv6, customCdnAddrs, cleanIPs } = getSettings();
+    const { enableIPv6, customCdnAddrs, cleanIPs, cleanIPsFirst } = getSettings();
     const { ipv4, ipv6 } = await resolveDNS(domain, !enableIPv6);
-    const addrs = [
-        domain,
-        ...ipv4,
-        ...ipv6.map((ip: string) => `[${ip}]`),
-        ...cleanIPs
-    ];
+
+    // cleanIPsFirst: در مناطق ۴۰۳ (workers.dev بلاک)، آدرس تمیز باید اولین
+    // گزینه‌ی اتصال باشد — ترتیب آدرس‌ها ترتیب امتحان کلاینت است
+    const domainAddrs = [domain, ...ipv4, ...ipv6.map((ip: string) => `[${ip}]`)];
+    const cleanAddrs = cleanIPs;
+    const addrs = cleanIPsFirst
+        ? [...cleanAddrs, ...domainAddrs]
+        : [...domainAddrs, ...cleanAddrs];
 
     return addrs.concatIf(!isFragment, customCdnAddrs);
 }

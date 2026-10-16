@@ -13,6 +13,8 @@ export interface KvSettings {
     chainProxy: string;
     chainProxyParams: any;
     cleanIPs: string[];
+    /** اولویت‌دادن به Clean IP ها در کانفیگ‌ها — ضد ۴۰۳ (پیش‌فرض: خاموش) */
+    cleanIPsFirst: boolean;
     customCdnAddrs: string[];
     customCdnHost: string;
     customCdnSni: string;

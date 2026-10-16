@@ -4,6 +4,7 @@ import { getSbCustomConfig, getSbWarpConfig } from '@cores/sing-box/configs';
 import { getXrCustomConfigs, getXrWarpConfigs } from '@cores/xray/configs';
 import { setSettings, getGlobals, getSharedSettings, getSettings } from '@settings';
 import { isValidSubUserId, resolveAndRecordSubUser } from '@settings/sub-users';
+import { buildSubUserInfoHeader } from '@api/clean-ip';
 import { fallback } from './utils';
 import { getWireguardConfigs } from '@cores/wireguard';
 import { HttpStatus, respond } from '@common';
@@ -20,6 +21,7 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
     // اشتراک چندکاربره: <securePath>/sub/<userId>/<type>
     // UUID نامعتبر شکل‌اً (نه نوع ساب و نه UUID) → fallback مثل قبل
     let userId: string | null = null;
+    let subUserExpiresAt: number | null = null;
 
     if (isValidSubUserId(seg3)) {
         // resolve + ثبت آمار واکشی (best-effort، آستانه‌ی ۵ دقیقه‌ای) در یک خواندن KV
@@ -29,6 +31,9 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
             return respond(false, HttpStatus.UNAUTHORIZED, 'This subscription link has been revoked or is inactive.');
         }
         userId = user.id;
+        subUserExpiresAt = typeof user.expiresAt === 'number' && user.expiresAt > 0
+            ? user.expiresAt
+            : null;
     }
 
     // نوع ساب: حالت چندکاربره از seg4، حالت قدیمی ادمین از seg3
@@ -48,6 +53,17 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
     if (response) {
         response.headers.set('ETag', etag);
         if (userId) response.headers.set('X-Sub-User', userId);
+
+        // هدرهای کیفیت اشتراک — کلاینت‌های حرفه‌ای (Hiddify/v2rayNG/Streisand)
+        // از آن‌ها برای به‌روزرسانی دوره‌ای و نمایش انقضا استفاده می‌کنند
+        if (path !== 'share-settings') {
+            response.headers.set('profile-update-interval', '12');
+            response.headers.set('profile-web-page-url', new URL(request.url).origin);
+
+            const userinfo = buildSubUserInfoHeader({ expireMs: subUserExpiresAt });
+            if (userinfo) response.headers.set('subscription-userinfo', userinfo);
+        }
+
         return response;
     }
 

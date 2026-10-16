@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Flash Panel v__VERSION__</title>
+    <link id="favicon" rel="icon" type="image/x-icon" href="data:image/x-icon;base64,__ICON__">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=auto_fix_high,bolt,content_copy,flash_on,task_alt,travel_explore&display=block" />
+    <style>/* CSS_PLACEHOLDER */</style>
+<link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/Vazirmatn-font-face.css" rel="stylesheet" /><link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,__ICON__" /></head>
+
+<body>
+    <div class="header">
+        <img id="header-logo" src="data:image/x-icon;base64,__ICON__" alt="Flash Logo" width="48" height="48">
+        <h1>
+            Flash Panel
+            <span class="panel-version">
+                v__VERSION__
+            </span>
+        </h1>
+    </div>
+
+    <div class="table-wrapper">
+        <table id="endpoint-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Endpoint</th>
+                    <th>Source</th>
+                    <th>Health rate</th>
+                    <th>TCP Latency (ms)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="5">Loading...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="auto-toolbar">
+        <button id="testAllBtn" class="auto-btn test" type="button" title="Test every configured Clean IP at once (2 attempts, concurrency-limited)">
+            <span class="material-symbols-rounded">bolt</span>
+            Test all
+        </button>
+        <button id="optimizeBtn" class="auto-btn apply" type="button" title="Discover fresh clean IPs, test everything, reorder healthy-first, add up to 5 new healthy IPs and redeploy">
+            <span class="material-symbols-rounded">auto_fix_high</span>
+            Auto-optimize
+        </button>
+        <label class="auto-check" title="Let Auto-optimize fetch fresh candidate IPs from public aggregators and add the healthy ones">
+            <input type="checkbox" id="includeDiscovered" checked>
+            discover fresh IPs
+        </label>
+        <span id="autoStatus" class="auto-status" role="status" aria-live="polite"></span>
+    </div>
+
+    <div id="testResults" class="auto-results" hidden>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Target</th>
+                    <th>Health</th>
+                    <th>Avg latency</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <script type="module">
+        import { polyfillCountryFlagEmojis } from "https://cdn.skypack.dev/country-flag-emoji-polyfill";
+        polyfillCountryFlagEmojis();
+    </script>
+    <script>/* JS_PLACEHOLDER */</script>
+</body>
+
+</html>
