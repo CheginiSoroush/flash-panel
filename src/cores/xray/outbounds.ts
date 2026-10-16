@@ -353,7 +353,16 @@ function buildTransport(
             };
 
         case 'xhttp':
-            const xhttpExtra = JSON.parse(decodeURIComponent(extra ?? '{}'));
+            // extra از ورودی کاربر می‌آید — parse خراب نباید کل ساخت کانفیگ را بیندازد
+            let xhttpExtra: any = {};
+            try {
+                const parsed = JSON.parse(decodeURIComponent(extra ?? '{}'));
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    xhttpExtra = parsed;
+                }
+            } catch {
+                xhttpExtra = {};
+            }
             return {
                 xhttpSettings: {
                     host: host,
