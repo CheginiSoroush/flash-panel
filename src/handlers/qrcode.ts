@@ -3,6 +3,35 @@ import { getGlobals } from '@settings';
 import qrcode from 'qrcode-generator';
 import { fallback } from './utils';
 
+// ---------- کش PNG سطح isolate ----------
+// تولید QR (حلقه‌ی RGBA + deflate) برای هر درخواست چند میلی‌ثانیه CPU می‌برد؛
+// لینک‌های کانفیگ پایدارند و مودال QR در پنل بارها برای همان data باز می‌شود.
+// کلید = خود data (URL کامل) — تغییر هر پارامتر → کلید جدید → تولید تازه.
+
+const QR_CACHE_MAX = 16;
+
+const qrCache = new Map<string, ArrayBuffer>();
+
+function cacheQrPng(data: string, png: ArrayBuffer): void {
+    if (qrCache.size >= QR_CACHE_MAX && !qrCache.has(data)) {
+        const oldest = qrCache.keys().next().value;
+        if (oldest !== undefined) qrCache.delete(oldest);
+    }
+
+    qrCache.delete(data);
+    qrCache.set(data, png);
+}
+
+function getCachedQrPng(data: string): ArrayBuffer | null {
+    const cached = qrCache.get(data);
+    if (!cached) return null;
+
+    // تازه‌سازی ترتیب LRU
+    qrCache.delete(data);
+    qrCache.set(data, cached);
+    return cached;
+}
+
 function crc32(data: Uint8Array): number {
     let crc = 0xffffffff;
 
@@ -130,12 +159,15 @@ export async function generateQRCode(request: Request): Promise<Response> {
         return fallback(request);
     }
 
-    const png = await buildQrPng(data);
+    const png = getCachedQrPng(data) ?? await buildQrPng(data);
+    cacheQrPng(data, png);
 
     return new Response(png, {
         headers: {
             'Content-Type': 'image/png',
-            'Cache-Control': 'no-store'
+            // data به‌عنوان پارامتر URL کلید یکتاست — کش مرورگر امن است؛
+            // باز کردن دوباره‌ی مودال QR هیچ درخواستی به ورکر نمی‌زند
+            'Cache-Control': 'private, max-age=3600'
         }
     });
 }

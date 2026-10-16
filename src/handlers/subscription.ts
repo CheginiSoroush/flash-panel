@@ -9,6 +9,10 @@ import { fallback } from './utils';
 import { getWireguardConfigs } from '@cores/wireguard';
 import { HttpStatus, respond } from '@common';
 import { SharedSettings } from '#types/settings';
+import { gzipCompress, shouldGzip, subBodyCache } from './optimize';
+
+// انکودر سطح ماژول — ساختنش در هر درخواست هدرِ SHA-256 هدر کوچکی هم دارد
+const etagEncoder = new TextEncoder();
 
 export async function handleSubscriptions(request: Request, env: Env): Promise<Response> {
     await setSettings(env);
@@ -49,25 +53,57 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
         return new Response(null, { status: 304, headers: { ETag: etag } });
     }
 
-    const response = await routeSubscription(path, client);
-    if (response) {
-        response.headers.set('ETag', etag);
-        if (userId) response.headers.set('X-Sub-User', userId);
+    // ---------- مسیر سریع: کش بدنه‌ی اشتراک (سطح isolate) ----------
+    // کلید = ETag — تمام ورودی‌های تولید کانفیگ (نسخه/تنظیمات/کلاینت/کاربر) را
+    // پوشش می‌دهد؛ تغییر هر ورودی → کلید جدید → تولید تازه. درخواست تکراری در
+    // بازه‌ی TTL صفر CPU برای تولید کانفیگ خرج می‌کند (بدون DNS و JSON و btoa).
+    let entry = request.method === 'GET' ? subBodyCache.get(etag) : null;
 
-        // هدرهای کیفیت اشتراک — کلاینت‌های حرفه‌ای (Hiddify/v2rayNG/Streisand)
-        // از آن‌ها برای به‌روزرسانی دوره‌ای و نمایش انقضا استفاده می‌کنند
-        if (path !== 'share-settings') {
-            response.headers.set('profile-update-interval', '12');
-            response.headers.set('profile-web-page-url', new URL(request.url).origin);
+    if (!entry) {
+        const response = await routeSubscription(path, client);
+        if (!response) return fallback(request);
 
-            const userinfo = buildSubUserInfoHeader({ expireMs: subUserExpiresAt });
-            if (userinfo) response.headers.set('subscription-userinfo', userinfo);
-        }
+        const body = await response.text();
+        const headers: [string, string][] = [];
+        response.headers.forEach((value, key) => {
+            if (key.toLowerCase() !== 'content-length') headers.push([key, value]);
+        });
 
-        return response;
+        entry = { body, contentType: response.headers.get('Content-Type') ?? 'text/plain; charset=utf-8', headers, storedAt: Date.now() };
+        subBodyCache.put(etag, body, entry.contentType, headers);
     }
 
-    return fallback(request);
+    const responseHeaders = new Headers(entry.headers);
+    responseHeaders.set('ETag', etag);
+    if (userId) responseHeaders.set('X-Sub-User', userId);
+
+    // هدرهای کیفیت اشتراک — کلاینت‌های حرفه‌ای (Hiddify/v2rayNG/Streisand)
+    // از آن‌ها برای به‌روزرسانی دوره‌ای و نمایش انقضا استفاده می‌کنند
+    if (path !== 'share-settings') {
+        responseHeaders.set('profile-update-interval', '12');
+        responseHeaders.set('profile-web-page-url', new URL(request.url).origin);
+
+        const userinfo = buildSubUserInfoHeader({ expireMs: subUserExpiresAt });
+        if (userinfo) responseHeaders.set('subscription-userinfo', userinfo);
+    }
+
+    // فشرده‌سازی gzip — فقط برای کلاینت‌های پذیرنده و بدنه‌های بالای آستانه؛
+    // Vary تضمین می‌کند نسخه‌ی فشرده/خام قاطی نشوند
+    responseHeaders.set('Vary', 'Accept-Encoding');
+
+    let responseBody: BodyInit = entry.body;
+    if (
+        request.method === 'GET' &&
+        shouldGzip(request.headers.get('Accept-Encoding'), entry.body.length)
+    ) {
+        responseBody = await gzipCompress(entry.body);
+        responseHeaders.set('Content-Encoding', 'gzip');
+    }
+
+    return new Response(responseBody, {
+        status: HttpStatus.OK,
+        headers: responseHeaders
+    });
 }
 
 async function routeSubscription(path: string, client: string): Promise<Response | null> {
@@ -149,7 +185,7 @@ async function routeSubscription(path: string, client: string): Promise<Response
  */
 async function computeSubETag(path: string, client: string, userId: string | null = null): Promise<string> {
     const payload = JSON.stringify({ v: VERSION, path, client, u: userId, s: getSettings() });
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
+    const digest = await crypto.subtle.digest('SHA-256', etagEncoder.encode(payload));
     const bytes = new Uint8Array(digest).slice(0, 8);
 
     let hex = '';

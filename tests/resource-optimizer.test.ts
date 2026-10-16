@@ -1,0 +1,152 @@
+import { describe, it, expect } from 'vitest';
+import { gunzipSync } from 'node:zlib';
+import {
+    acceptsGzip,
+    gzipCompress,
+    shouldGzip,
+    SubBodyCache
+} from '@handlers/optimize';
+
+// =====================================================================
+// ۱) acceptsGzip / shouldGzip — مذاکره‌ی محتوا طبق RFC 7231
+// =====================================================================
+describe('acceptsGzip', () => {
+    it('پذیرش صریح gzip', () => {
+        expect(acceptsGzip('gzip')).toBe(true);
+        expect(acceptsGzip('gzip, deflate, br')).toBe(true);
+        expect(acceptsGzip('deflate, gzip;q=1.0, br')).toBe(true);
+        expect(acceptsGzip('GZIP')).toBe(true); // توکن‌ها case-insensitive
+    });
+
+    it('رد حالت‌های بدون gzip', () => {
+        expect(acceptsGzip(null)).toBe(false);
+        expect(acceptsGzip('')).toBe(false);
+        expect(acceptsGzip('deflate, br')).toBe(false);
+        expect(acceptsGzip('identity')).toBe(false);
+    });
+
+    it('q=0 صریح یعنی ممنوع', () => {
+        expect(acceptsGzip('gzip;q=0')).toBe(false);
+        expect(acceptsGzip('gzip;q=0.0')).toBe(false);
+        expect(acceptsGzip('gzip;q=0, br')).toBe(false);
+        expect(acceptsGzip('gzip;q=0.000')).toBe(false);
+    });
+
+    it('q غیرصفر پذیرفته می‌شود', () => {
+        expect(acceptsGzip('gzip;q=0.5')).toBe(true);
+        expect(acceptsGzip('gzip;q=1')).toBe(true);
+    });
+});
+
+describe('shouldGzip', () => {
+    it('آستانه‌ی اندازه رعایت می‌شود (۱۰۲۴ بایت)', () => {
+        expect(shouldGzip('gzip', 0)).toBe(false);
+        expect(shouldGzip('gzip', 1023)).toBe(false);
+        expect(shouldGzip('gzip', 1024)).toBe(true);
+        expect(shouldGzip('gzip', 50_000)).toBe(true);
+    });
+
+    it('کلاینت بدون gzip حتی بدنه‌ی بزرگ را فشرده نمی‌کند', () => {
+        expect(shouldGzip(null, 100_000)).toBe(false);
+        expect(shouldGzip('deflate', 100_000)).toBe(false);
+    });
+});
+
+describe('gzipCompress', () => {
+    it('گردش کامل — خروجی با zlib استاندارد باز می‌شود', async () => {
+        const body = '⚡ ' + 'vless://config '.repeat(200); // ~3KB متن تکراری
+        const compressed = await gzipCompress(body);
+
+        expect(compressed.length).toBeLessThan(body.length / 2); // فشرده‌سازی واقعی
+        expect(compressed[0]).toBe(0x1f); // magic number gzip
+        expect(compressed[1]).toBe(0x8b);
+
+        const roundtrip = gunzipSync(Buffer.from(compressed)).toString('utf-8');
+        expect(roundtrip).toBe(body);
+    });
+
+    it('متن یونیکد فارسی سالم برگردانده می‌شود', async () => {
+        const body = 'کانفیگ سریع و کم‌مصرف — Flash Panel ⚡'.repeat(50);
+        const compressed = await gzipCompress(body);
+        expect(gunzipSync(Buffer.from(compressed)).toString('utf-8')).toBe(body);
+    });
+});
+
+// =====================================================================
+// ۲) SubBodyCache — TTL، LRU، سقف اندازه
+// =====================================================================
+describe('SubBodyCache', () => {
+    it('hit/miss ساده', () => {
+        const cache = new SubBodyCache();
+        expect(cache.get('a')).toBeNull();
+
+        cache.put('a', '{"cfg":1}', 'application/json', [['x-test', '1']]);
+        const entry = cache.get('a');
+        expect(entry?.body).toBe('{"cfg":1}');
+        expect(entry?.contentType).toBe('application/json');
+        expect(entry?.headers).toEqual([['x-test', '1']]);
+        expect(cache.size).toBe(1);
+    });
+
+    it('انقضای TTL — بعد از پنج دقیقه برگرداندن null و حذف ورودی', () => {
+        const cache = new SubBodyCache(5_000); // TTL کوتاه برای تست
+        cache.put('k', 'body', 'text/plain', [], 0);
+
+        expect(cache.get('k', 4_999)).not.toBeNull();
+        expect(cache.get('k', 5_000)).toBeNull(); // مرز: >= TTL منقضی
+        expect(cache.size).toBe(0);
+
+        // دوباره put بعد از انقضا — بدون رشد غیرمعمول
+        cache.put('k', 'fresh', 'text/plain', [], 5_100);
+        expect(cache.get('k', 5_100)?.body).toBe('fresh');
+    });
+
+    it('LRU — قدیمی‌ترین دست‌نخورده حذف می‌شود، دست‌خورده می‌ماند', () => {
+        const cache = new SubBodyCache(60_000, 3);
+
+        cache.put('a', 'A', 'text/plain', []);
+        cache.put('b', 'B', 'text/plain', []);
+        cache.put('c', 'C', 'text/plain', []);
+
+        cache.get('a', 100); // a تازه می‌شود → b قدیمی‌ترین
+
+        cache.put('d', 'D', 'text/plain', [], 200); // باید b حذف شود
+        expect(cache.get('b', 200)).toBeNull();
+        expect(cache.get('a', 200)?.body).toBe('A');
+        expect(cache.get('c', 200)?.body).toBe('C');
+        expect(cache.get('d', 200)?.body).toBe('D');
+        expect(cache.size).toBe(3);
+    });
+
+    it('put تکراری همان کلید — مقدار جایگزین و رشد دوبرابر نمی‌شود', () => {
+        const cache = new SubBodyCache(60_000, 2);
+        cache.put('a', 'old', 'text/plain', []);
+        cache.put('b', 'B', 'text/plain', []);
+        cache.put('a', 'new', 'text/plain', []); // جایگزینی بدون evict
+
+        expect(cache.size).toBe(2);
+        expect(cache.get('a', 0)?.body).toBe('new');
+        expect(cache.get('b', 0)?.body).toBe('B');
+    });
+
+    it('بدنه‌های بزرگ‌تر از سقف کش نمی‌شوند (حفاظ حافظه)', () => {
+        const cache = new SubBodyCache(60_000, 10, 100); // سقف ۱۰۰ بایت
+        const big = 'x'.repeat(51); // ×2 بایت UTF-16 = 102 > 100
+
+        cache.put('big', big, 'text/plain', []);
+        expect(cache.get('big')).toBeNull();
+
+        const ok = 'x'.repeat(50); // دقیقاً ۱۰۰ بایت
+        cache.put('ok', ok, 'text/plain', []);
+        expect(cache.get('ok')?.body).toBe(ok);
+    });
+
+    it('clear همه را پاک می‌کند', () => {
+        const cache = new SubBodyCache();
+        cache.put('a', 'A', 'text/plain', []);
+        cache.put('b', 'B', 'text/plain', []);
+        cache.clear();
+        expect(cache.size).toBe(0);
+        expect(cache.get('a')).toBeNull();
+    });
+});

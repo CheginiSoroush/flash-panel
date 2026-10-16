@@ -68,6 +68,17 @@ Set the cron trigger once (`'0 * * * *'` in `wrangler.jsonc`) and the panel take
 - 📊 **Usage sampling without visits** — the 31-day chart stays complete even on days nobody opens the panel
 - ⚡ **Auto best ProxyIP** — one click tests every configured Proxy IP (batched, 2 attempts each) and redeploys the worker with the fastest healthy one as primary
 
+### ⚡ Performance — less CPU, less data
+
+v0.6.0 is a pure efficiency release — the worker does less work per request and subscription updates shrink dramatically:
+
+- 🧠 **Per-ETag subscription body cache** — generated configs (Xray JSON / Clash YAML / raw base64) are memoized inside the isolate keyed by their ETag, which already covers version + all settings + client + user. Repeat fetches within the 5-minute TTL skip config generation *entirely* — no DNS resolve, no JSON building, no btoa — near-zero CPU for the most-hit endpoint
+- 🗜️ **gzip subscription responses** — bodies ≥ 1 KB are compressed with the native `CompressionStream` when the client sends `Accept-Encoding: gzip` (v2rayNG, Hiddify, Streisand and friends all do). Config JSON/YAML compresses ~70–80% — directly less mobile data burned on every update, and `Vary: Accept-Encoding` keeps variants from mixing
+- 🖼️ **QR memoization** — the QR PNG encoder (RGBA loop + deflate) runs once per unique config link; the panel's QR modal re-opens now cost zero CPU. Browser cache headers (`max-age=3600`) prevent re-fetching altogether
+- 🔧 **Micro-hygiene** — module-level `TextEncoder` for ETag hashing, header snapshots stored with the cache instead of per-request rebuilds
+
+All of it is memory-bounded (LRU + size caps) and fully covered by 14 new unit tests — **266/266 green**.
+
 ### 🧭 Anti-403 — configs that just connect
 
 A `403` means your connect address (usually `workers.dev`) is blocked by your ISP. Flash Panel now fights back automatically:
