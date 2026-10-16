@@ -3,20 +3,40 @@ import { getURLConfigs } from '@cores/common';
 import { getSbCustomConfig, getSbWarpConfig } from '@cores/sing-box/configs';
 import { getXrCustomConfigs, getXrWarpConfigs } from '@cores/xray/configs';
 import { setSettings, getGlobals, getSharedSettings, getSettings } from '@settings';
+import { isValidSubUserId, resolveSubUser } from '@settings/sub-users';
 import { fallback } from './utils';
 import { getWireguardConfigs } from '@cores/wireguard';
-import { HttpStatus } from '@common';
+import { HttpStatus, respond } from '@common';
 import { SharedSettings } from '#types/settings';
 
 export async function handleSubscriptions(request: Request, env: Env): Promise<Response> {
     await setSettings(env);
     const { pathname, client } = getGlobals();
-    const path = pathname.split('/')[3];
+    const segments = pathname.split('/');
+    // <securePath>/sub/<seg3>/<seg4?> — seg3 می‌تونه نوع ساب یا UUID کاربر باشه
+    const seg3 = segments[3] ?? '';
+    const seg4 = segments[4] ?? '';
+
+    // اشتراک چندکاربره: <securePath>/sub/<userId>/<type>
+    // UUID نامعتبر شکل‌اً (نه نوع ساب و نه UUID) → fallback مثل قبل
+    let userId: string | null = null;
+
+    if (isValidSubUserId(seg3)) {
+        const user = await resolveSubUser(env, seg3);
+        if (!user) {
+            // کاربر حذف/غیرفعال شده — پاس صریح 401 (نه صفحه‌ی fallback)
+            return respond(false, HttpStatus.UNAUTHORIZED, 'This subscription link has been revoked or is inactive.');
+        }
+        userId = user.id;
+    }
+
+    // نوع ساب: حالت چندکاربره از seg4، حالت قدیمی ادمین از seg3
+    const path = userId ? seg4 : seg3;
 
     // ETag بر اساس «ورودی‌های» تولید کانفیگ (نه خروجی‌شون):
-    // نسخه پنل + کل تنظیمات KV + تنظیمات embedded + نوع ساب + کلاینت.
+    // نسخه پنل + کل تنظیمات KV + تنظیمات embedded + نوع ساب + کلاینت + شناسه کاربر.
     // getSettings() همه‌چیز رو داره: kvSettings + globalSettings (شامل client, hostname, origin)
-    const etag = await computeSubETag(path, client);
+    const etag = await computeSubETag(path, client, userId);
 
     // کلاینت قبلاً همین نسخه رو گرفته؟ کل تولید کانفیگ رد می‌شه → 304
     if (request.method === 'GET' && request.headers.get('If-None-Match') === etag) {
@@ -26,6 +46,7 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
     const response = await routeSubscription(path, client);
     if (response) {
         response.headers.set('ETag', etag);
+        if (userId) response.headers.set('X-Sub-User', userId);
         return response;
     }
 
@@ -109,8 +130,8 @@ async function routeSubscription(path: string, client: string): Promise<Response
 /**
  * هش SHA-256 از ورودی‌های تولید کانفیگ — ۸ بایت اول به‌صورت hex
  */
-async function computeSubETag(path: string, client: string): Promise<string> {
-    const payload = JSON.stringify({ v: VERSION, path, client, s: getSettings() });
+async function computeSubETag(path: string, client: string, userId: string | null = null): Promise<string> {
+    const payload = JSON.stringify({ v: VERSION, path, client, u: userId, s: getSettings() });
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
     const bytes = new Uint8Array(digest).slice(0, 8);
 

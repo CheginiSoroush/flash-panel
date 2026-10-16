@@ -9,6 +9,7 @@ import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
 import { getDataset, updateDataset } from '@kv';
 import { buildScript, updateMainSettings } from '@main';
 import { getGlobals, getMainSettings, getDefaultKvSettings, subscriptions, clients } from '@settings';
+import { createSubUser, deleteSubUser, getSubUsers, isValidSubUserId, updateSubUser } from '@settings/sub-users';
 import { validateSettings } from '@validators';
 import { buildQrPng } from './qrcode';
 import { fallback } from './utils';
@@ -89,6 +90,9 @@ export async function handlePanel(request: Request, env: Env): Promise<Response>
 
         case 'panel/totp/disable':
             return disableTotp(request, env);
+
+        case 'panel/sub-users':
+            return handleSubUsers(request, env);
 
         default:
             return fallback(request);
@@ -480,4 +484,91 @@ async function disableTotp(request: Request, env: Env): Promise<Response> {
     invalidateTotpCache(false);
 
     return respond(true, HttpStatus.OK, 'Two-factor authentication disabled!');
+}
+
+// ---------- اشتراک چندکاربره (per-user subscription UUID) ----------
+
+/**
+ * CRUD کاربران اشتراک — همهٔ متدها نیاز به session معتبر دارند.
+ *   GET            → لیست کاربران
+ *   POST {name}    → ساخت کاربر + UUID جدید
+ *   PUT {id, name?, active?} → تغییر نام یا فعال/غیرفعال‌سازی (لغو دسترسی)
+ *   DELETE {id}    → حذف کامل
+ */
+async function handleSubUsers(request: Request, env: Env): Promise<Response> {
+    const auth = await authenticate(request, env);
+    if (!auth) {
+        return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+    }
+
+    try {
+        switch (request.method) {
+            case 'GET': {
+                const users = await getSubUsers(env);
+                // تازه‌ترین‌ها اول — برای نمایش در پنل
+                return respond(true, HttpStatus.OK, undefined, { users: users.reverse() }, {
+                    'Cache-Control': 'no-store'
+                });
+            }
+
+            case 'POST': {
+                const data = await parseJsonBody(request);
+                const user = await createSubUser(env, data?.name);
+                if (!user) {
+                    return respond(false, HttpStatus.BAD_REQUEST,
+                        `Invalid name (1-40 chars) or user limit reached.`);
+                }
+
+                return respond(true, HttpStatus.CREATED, 'Subscription user created.', { user }, {
+                    'Cache-Control': 'no-store'
+                });
+            }
+
+            case 'PUT': {
+                const data = await parseJsonBody(request);
+                const id = typeof data?.id === 'string' ? data.id : '';
+                if (!isValidSubUserId(id)) {
+                    return respond(false, HttpStatus.BAD_REQUEST, 'Invalid user id.');
+                }
+
+                const patch: { name?: unknown; active?: unknown } = {};
+                if (data?.name !== undefined) patch.name = data.name;
+                if (data?.active !== undefined) patch.active = data.active;
+
+                const user = await updateSubUser(env, id, patch);
+                if (!user) {
+                    return respond(false, HttpStatus.NOT_FOUND, 'Subscription user not found.');
+                }
+
+                return respond(true, HttpStatus.OK, 'Subscription user updated.', { user }, {
+                    'Cache-Control': 'no-store'
+                });
+            }
+
+            case 'DELETE': {
+                const data = await parseJsonBody(request);
+                const id = typeof data?.id === 'string' ? data.id : '';
+                if (!isValidSubUserId(id)) {
+                    return respond(false, HttpStatus.BAD_REQUEST, 'Invalid user id.');
+                }
+
+                const removed = await deleteSubUser(env, id);
+                if (!removed) {
+                    return respond(false, HttpStatus.NOT_FOUND, 'Subscription user not found.');
+                }
+
+                return respond(true, HttpStatus.OK, 'Subscription user deleted — its links are revoked now.');
+            }
+
+            default:
+                return respond(false, HttpStatus.METHOD_NOT_ALLOWED, 'Method not allowed.');
+        }
+    } catch (error) {
+        console.log(error);
+        return respond(
+            false,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            `Error handling subscription users: ${safeError(error)}`
+        );
+    }
 }

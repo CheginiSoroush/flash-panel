@@ -19,6 +19,7 @@
             "@utils": ["./src/cores/utils"],
             "@handlers/*": ["./src/handlers/*"],
             "@settings": ["./src/settings/settings"],
+            "@settings/*": ["./src/settings/*"],
             "@validators": ["./src/settings/validators"],
             "@common": ["./src/common/common"],
             "@kv": ["./src/settings/kv"],

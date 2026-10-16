@@ -947,6 +947,22 @@
         <h2><span class="material-symbols-rounded">link</span> Subscriptions</h2>
     </div>
 
+    <div id="sub-users" class="form-container container">
+        <h2><span class="material-symbols-rounded">group</span> Subscription Users</h2>
+        <p class="sub-users-hint">
+            Each user gets a private subscription link with its own UUID — share it safely and
+            revoke it anytime without affecting anyone else.
+        </p>
+        <div class="value-container sub-users-add">
+            <input type="text" id="subUserName" maxlength="40" placeholder="User name (e.g. John — phone)" autocomplete="off">
+            <button type="button" id="addSubUserBtn" class="button" title="Create subscription user" onclick="addSubUser()">
+                <span class="material-symbols-rounded">person_add</span>
+                Add
+            </button>
+        </div>
+        <div id="subUsersList"></div>
+    </div>
+
     <div class="form-container container">
         <h2><span class="material-symbols-rounded">dns</span> DNS over HTTPS</h2>
         <div class="value-container">

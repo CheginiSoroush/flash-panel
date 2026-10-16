@@ -19,6 +19,7 @@ getUsage();
 initPanel();
 fetchIPInfo();
 initTotp();
+loadSubUsers();
 
 async function initPanel(settings, tgSettings, subscriptions, clients) {
     try {
@@ -144,7 +145,7 @@ function renderPanel(proxySettings, tgSettings, subscriptions, clients) {
         const key = elm.id;
         const element = document.getElementById(key);
         const value = proxySettings[key]?.join('\r\n');
-        const rowsCount = proxySettings[key].length;
+        const rowsCount = proxySettings[key]?.length ?? 0;
         element.style.height = 'auto';
         if (rowsCount) element.rows = rowsCount;
         element.value = value;
@@ -159,6 +160,9 @@ function renderPanel(proxySettings, tgSettings, subscriptions, clients) {
     renderSubscriptions(subscriptions);
     renderClients(clients);
 
+    // کاتالوگ ساب برای بخش «کاربران اشتراک» — هم‌شکل با نمایش اصلی
+    globalThis.subsCatalog = subscriptions;
+
     globalThis.initialFormData = new FormData(proxyForm);
     handleProxyFormChanges();
     proxyForm.addEventListener('input', handleProxyFormChanges);
@@ -171,7 +175,8 @@ function renderPanel(proxySettings, tgSettings, subscriptions, clients) {
         tgForm.addEventListener('input', () => handleTgFormChanges());
 
         for (const key in tgSettings) {
-            tgForm.elements[key].value = tgSettings[key];
+            const field = tgForm.elements[key];
+            if (field) field.value = tgSettings[key];
         }
     }
 }
@@ -266,7 +271,16 @@ async function fetchIPInfo() {
 }
 
 function generateSubUrl(type, core, tag) {
-    const url = new URL(`./sub/${type}`, window.location.href);
+    return generateSubLink(type, type, core, tag);
+}
+
+/** لینک اشتراک کاربر — <securePath>/sub/<userId>/<type> */
+function generateUserSubUrl(userId, type, core, tag) {
+    return generateSubLink(`${userId}/${type}`, type, core, tag);
+}
+
+function generateSubLink(subPath, type, core, tag) {
+    const url = new URL(`./sub/${subPath}`, window.location.href);
     url.searchParams.append('app', core);
     url.hash = `⚡ Flash ${tag}`;
 
@@ -1141,37 +1155,193 @@ function renderSubscriptions(subscriptions) {
         const header = elm('h3', { textContent: label });
         const summary = elm('summary', {}, header);
         const section = elm('details', {}, summary);
-        const table = elm('table', {}, categories.map(({ core, clients }) => {
-            const clientSection = elm('td', {}, clients.map(client => {
-                const icon = createIcon('verified');
-                const title = elm('span', { textContent: client });
-                const wrapper = elm('div', {}, [icon, title]);
-                return wrapper;
-            }));
-
-            const url = generateSubUrl(type, core, label);
-            const ctaSection = elm('td');
-
-            const wgCore = ['wireguard', 'amnezia'].includes(core);
-            if (!wgCore) {
-                const qrBtn = elm('button', { title: 'Display QR code', onclick: () => showQRCode(url) }, createIcon('qr_code'));
-                const copyBtn = elm('button', { title: 'Copy subscription URL', onclick: () => copyToClipboard(url) }, createIcon('content_copy'));
-                ctaSection.append(qrBtn, copyBtn);
-            }
-
-            if (type !== 'raw') {
-                const dlBtn = elm('button', { title: 'Download config', onclick: () => dlUrl(url) }, createIcon('download'));
-                ctaSection.appendChild(dlBtn);
-            }
-
-            return elm('tr', {}, [clientSection, ctaSection]);
-        }));
+        const table = buildSubTable(type, label, categories, (t, core, l) => generateSubUrl(t, core, l));
 
         const container = elm('div', { className: 'table-container' }, table);
         section.appendChild(container);
         const item = elm('div', { className: 'accordion-item' }, [section, help]);
         document.getElementById('subscriptions').appendChild(item);
     };
+}
+
+/**
+ * جدول دکمه‌های یک نوع ساب — مشترک بین «Subscriptions» و «Subscription Users»
+ * makeUrl(type, core, label) → لینک قابل اشتراک برای آن ردیف
+ */
+function buildSubTable(type, label, categories, makeUrl) {
+    return elm('table', {}, categories.map(({ core, clients }) => {
+        const clientSection = elm('td', {}, clients.map(client => {
+            const icon = createIcon('verified');
+            const title = elm('span', { textContent: client });
+            const wrapper = elm('div', {}, [icon, title]);
+            return wrapper;
+        }));
+
+        const url = makeUrl(type, core, label);
+        const ctaSection = elm('td');
+
+        const wgCore = ['wireguard', 'amnezia'].includes(core);
+        if (!wgCore) {
+            const qrBtn = elm('button', { title: 'Display QR code', onclick: () => showQRCode(url) }, createIcon('qr_code'));
+            const copyBtn = elm('button', { title: 'Copy subscription URL', onclick: () => copyToClipboard(url) }, createIcon('content_copy'));
+            ctaSection.append(qrBtn, copyBtn);
+        }
+
+        if (type !== 'raw') {
+            const dlBtn = elm('button', { title: 'Download config', onclick: () => dlUrl(url) }, createIcon('download'));
+            ctaSection.appendChild(dlBtn);
+        }
+
+        return elm('tr', {}, [clientSection, ctaSection]);
+    }));
+}
+
+// ---------- اشتراک چندکاربره (per-user subscription UUID) ----------
+
+async function loadSubUsers() {
+    const list = document.getElementById('subUsersList');
+    if (!list) return;
+
+    try {
+        const res = await fetch('./panel/sub-users', { cache: 'no-store' });
+        const { success, status, message, body } = await res.json();
+        if (!success) throw new Error(`status ${status} - ${message}`);
+
+        renderSubUsers(body.users || []);
+    } catch (error) {
+        console.error('Failed to load subscription users:', error);
+    }
+}
+
+function renderSubUsers(users) {
+    const list = document.getElementById('subUsersList');
+    if (!list) return;
+
+    list.textContent = '';
+
+    if (!users.length) {
+        const empty = elm('p', {
+            className: 'sub-users-empty',
+            textContent: 'No subscription users yet — add one above to create an independently revocable link.'
+        });
+        list.appendChild(empty);
+        return;
+    }
+
+    for (const user of users) {
+        list.appendChild(renderSubUserItem(user));
+    }
+}
+
+function renderSubUserItem(user) {
+    const nameEl = elm('span', { className: 'sub-user-name', textContent: user.name });
+    const badge = elm('span', {
+        className: `sub-user-badge ${user.active ? 'active' : 'revoked'}`,
+        textContent: user.active ? 'Active' : 'Revoked'
+    });
+    const title = elm('div', { className: 'sub-user-title' }, [nameEl, badge]);
+
+    const toggleIcon = user.active ? 'block' : 'check_circle';
+    const toggleTitle = user.active ? 'Revoke access' : 'Restore access';
+    const toggleBtn = elm('button', {
+        title: toggleTitle,
+        onclick: (e) => { e.preventDefault(); e.stopPropagation(); toggleSubUser(user.id, !user.active); }
+    }, createIcon(toggleIcon));
+
+    const delBtn = elm('button', {
+        title: 'Delete user permanently',
+        onclick: (e) => { e.preventDefault(); e.stopPropagation(); removeSubUser(user.id, user.name); }
+    }, createIcon('delete'));
+
+    const actions = elm('div', { className: 'sub-user-actions' }, [toggleBtn, delBtn]);
+    const summary = elm('summary', {}, [title, actions]);
+    const section = elm('details', {}, summary);
+
+    const catalog = globalThis.subsCatalog || {};
+    const tables = Object.entries(catalog).map(([type, { label, categories }]) => {
+        const table = buildSubTable(
+            type, label, categories,
+            (t, core, l) => generateUserSubUrl(user.id, t, core, `${l} — ${user.name}`)
+        );
+        const heading = elm('h4', { textContent: label });
+        return elm('div', { className: 'sub-user-subs' }, [heading, elm('div', { className: 'table-container' }, table)]);
+    });
+
+    const container = elm('div', { className: 'sub-user-body' }, tables);
+    section.appendChild(container);
+
+    return elm('div', {
+        className: `accordion-item sub-user-item ${user.active ? '' : 'revoked-item'}`
+    }, section);
+}
+
+async function addSubUser() {
+    const input = document.getElementById('subUserName');
+    const btn = document.getElementById('addSubUserBtn');
+    const name = (input.value || '').trim();
+
+    if (!name) {
+        notify('error', 'Subscription users', ['Please enter a name for the new user.']);
+        return;
+    }
+
+    btn.disabled = true;
+    try {
+        const res = await fetch('./panel/sub-users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const { success, status, message, body } = await res.json();
+        if (!success) throw new Error(`status ${status} - ${message}`);
+
+        input.value = '';
+        notify('success', 'Subscription users', [`User “${body.user.name}” created — share their links below.`]);
+        await loadSubUsers();
+    } catch (error) {
+        notify('error', 'Subscription users', [`Failed to create user: ${error.message}`]);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function toggleSubUser(userId, active) {
+    try {
+        const res = await fetch('./panel/sub-users', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: userId, active })
+        });
+        const { success, status, message } = await res.json();
+        if (!success) throw new Error(`status ${status} - ${message}`);
+
+        notify(active ? 'success' : 'info', 'Subscription users',
+            [active ? 'Access restored.' : 'Access revoked — their links stop working now.']);
+        await loadSubUsers();
+    } catch (error) {
+        notify('error', 'Subscription users', [`Failed to update user: ${error.message}`]);
+    }
+}
+
+async function removeSubUser(userId, name) {
+    const proceed = await notify('confirm', 'Delete subscription user',
+        [`Delete “${name}” permanently?`, 'All of their subscription links stop working immediately.']);
+    if (!proceed) return;
+
+    try {
+        const res = await fetch('./panel/sub-users', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: userId })
+        });
+        const { success, status, message } = await res.json();
+        if (!success) throw new Error(`status ${status} - ${message}`);
+
+        notify('success', 'Subscription users', [`User “${name}” deleted.`]);
+        await loadSubUsers();
+    } catch (error) {
+        notify('error', 'Subscription users', [`Failed to delete user: ${error.message}`]);
+    }
 }
 
 function renderClients(clients) {
