@@ -1,6 +1,7 @@
 import { HttpStatus, respond } from '@common';
 import { SignJWT, jwtVerify } from 'jose';
 import { getGlobals } from '@settings';
+import { verifyTotp } from './totp';
 
 // ---------- کش‌های سطح isolate ----------
 
@@ -106,6 +107,31 @@ return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try agai
         return respond(false, HttpStatus.UNAUTHORIZED, 'Wrong Credentials.');
     }
 
+    // ---------- ورود دومرحله‌ای TOTP (بعد از تأیید پسورد) ----------
+    // خطای TOTP هم در سهمیه‌ی rate-limit محاسبه می‌شه (همان ۵ تلاش در دقیقه)
+    if (await isTotpEnabled(env)) {
+        const totpSecret = await env.kv.get('totpSecret');
+        const code = typeof data.totp === 'string' ? data.totp : '';
+
+        if (!totpSecret || !code) {
+            recordFailedLogin(clientIP);
+            return respond(false, HttpStatus.UNAUTHORIZED, '2FA verification code required.');
+        }
+
+        const { ok, counter } = await verifyTotp(totpSecret, code);
+
+        // جلوگیری از replay — یک کد فقط یک‌بار مصرف می‌شه (بهترین تلاش روی KV نهایی‌المنطقه)
+        const lastUsedRaw = await env.kv.get('totpLastUsed');
+        const lastUsed = lastUsedRaw ? Number(lastUsedRaw) : 0;
+
+        if (!ok || counter === null || counter <= lastUsed) {
+            recordFailedLogin(clientIP);
+            return respond(false, HttpStatus.UNAUTHORIZED, 'Invalid 2FA code.');
+        }
+
+        await env.kv.put('totpLastUsed', String(counter));
+    }
+
     let secretKey = await getSecretKey(env);
     if (!secretKey) {
         secretKey = generateSecretKey();
@@ -129,6 +155,28 @@ return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try agai
         'Set-Cookie': `jwtToken=${jwtToken}; Path=/; HttpOnly; Secure; Max-Age=${24 * 60 * 60}; SameSite=Strict`,
         'Content-Type': 'text/plain',
     });
+}
+
+// ---------- وضعیت TOTP (تغییر نادر — TTL کش می‌تونه بلند باشه) ----------
+
+let cachedTotpEnabled = false;
+let totpLoadedAt = 0;
+const TOTP_CACHE_TTL = 15_000;
+
+export async function isTotpEnabled(env: Env): Promise<boolean> {
+    if (Date.now() - totpLoadedAt < TOTP_CACHE_TTL) {
+        return cachedTotpEnabled;
+    }
+
+    cachedTotpEnabled = (await env.kv.get('totpEnabled')) === 'true';
+    totpLoadedAt = Date.now();
+    return cachedTotpEnabled;
+}
+
+// invalidation محلی بعد از enable/disable در همان isolate
+export function invalidateTotpCache(enabled: boolean): void {
+    cachedTotpEnabled = enabled;
+    totpLoadedAt = Date.now();
 }
 
 function generateSecretKey(): string {

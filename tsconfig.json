@@ -26,6 +26,7 @@
             "@api/*": ["./src/api/*"],
             "@protocols/*": ["./src/protocols/*"],
             "@auth": ["./src/auth/auth"],
+            "@auth/*": ["./src/auth/*"],
             "@workers": ["./src/workers"],
             "#types/*": ["./src/types/*"]
         }

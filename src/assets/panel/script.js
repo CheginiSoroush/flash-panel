@@ -18,6 +18,7 @@ const [
 getUsage();
 initPanel();
 fetchIPInfo();
+initTotp();
 
 async function initPanel(settings, tgSettings, subscriptions, clients) {
     try {
@@ -1191,4 +1192,166 @@ function renderClients(clients) {
 
         document.getElementById('supported-clients').appendChild(row);
     });
+}
+
+// ---------- ورود دومرحله‌ای TOTP (2FA) ----------
+
+let totpEnabled = false;
+let totpSecretCache = '';
+
+function updateTotpUi() {
+    const badge = document.getElementById('totpStatusBadge');
+    const label = document.getElementById('totpActionLabel');
+    const btn = document.getElementById('totpActionBtn');
+
+    if (!badge || !label || !btn) return;
+
+    if (totpEnabled) {
+        badge.textContent = 'Enabled';
+        badge.style.color = 'var(--color-icon-green, #22c55e)';
+        label.textContent = 'Disable';
+        btn.classList.add('delete');
+    } else {
+        badge.textContent = 'Disabled';
+        badge.style.color = 'var(--color-icon-red, #ef4444)';
+        label.textContent = 'Enable';
+        btn.classList.remove('delete');
+    }
+}
+
+async function initTotp() {
+    try {
+        const res = await fetch(`./panel/totp/status?nocache=${Date.now()}`, { cache: 'no-store' });
+        const { success, body } = await res.json();
+
+        if (!success) return;
+        totpEnabled = Boolean(body?.enabled);
+        updateTotpUi();
+    } catch (error) {
+        console.error('TOTP status error:', error);
+    }
+}
+
+function closeTotpModal() {
+    document.getElementById('totpModal').hidden = true;
+    document.getElementById('totpError').textContent = '';
+    document.getElementById('totpDisableError').textContent = '';
+}
+
+async function openTotpModal(event) {
+    event?.preventDefault();
+
+    const btn = document.getElementById('totpActionBtn');
+    const icons = startWaiting(btn, '', 'clock_loader_40');
+
+    try {
+        if (totpEnabled) {
+            // حالت غیرفعال‌سازی — بدون درخواست اضافه
+            document.getElementById('totpSetupSection').style.display = 'none';
+            document.getElementById('totpDisableSection').style.display = '';
+            document.getElementById('totpModal').hidden = false;
+            return;
+        }
+
+        // حالت فعال‌سازی — ساخت secret و QR
+        const res = await fetch('./panel/totp/setup', { method: 'POST' });
+        const { success, status, message, body } = await res.json();
+
+        if (!success) throw new Error(`status ${status} - ${message}`);
+
+        totpSecretCache = body.secret;
+        document.getElementById('totpQrImg').src = body.qrDataUrl;
+        document.getElementById('totpSecretText').textContent = body.secret;
+        document.getElementById('totpEnableCode').value = '';
+        document.getElementById('totpSetupSection').style.display = '';
+        document.getElementById('totpDisableSection').style.display = 'none';
+        document.getElementById('totpModal').hidden = false;
+    } catch (error) {
+        notify('error', 'Two-Factor Auth', ['Failed to start 2FA setup, please try again.']);
+        console.error('TOTP setup error:', error);
+    } finally {
+        stopWaiting(icons);
+    }
+}
+
+async function copyTotpSecret(btn) {
+    try {
+        await navigator.clipboard.writeText(totpSecretCache);
+        notify('info', 'Two-Factor Auth', ['Secret copied to clipboard.']);
+    } catch {
+        notify('error', 'Two-Factor Auth', ['Clipboard unavailable — copy the code manually.']);
+    }
+}
+
+async function enableTotp(btn) {
+    const code = document.getElementById('totpEnableCode').value.trim();
+    const errorEl = document.getElementById('totpError');
+
+    if (!/^[0-9]{6}$/.test(code)) {
+        errorEl.textContent = 'Enter the 6-digit code from your authenticator app.';
+        return;
+    }
+
+    const icons = startWaiting(btn, '', 'clock_loader_40');
+
+    try {
+        const res = await fetch('./panel/totp/enable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+
+        const { success, status, message } = await res.json();
+        if (!success) throw new Error(message || `status ${status}`);
+
+        totpEnabled = true;
+        updateTotpUi();
+        closeTotpModal();
+        notify('success', 'Two-Factor Auth', ['2FA enabled! You will need your authenticator code on next login.']);
+    } catch (error) {
+        errorEl.textContent = error.message || 'Failed to enable 2FA.';
+        console.error('TOTP enable error:', error);
+    } finally {
+        stopWaiting(icons);
+    }
+}
+
+async function disableTotp(btn) {
+    const code = document.getElementById('totpDisableCode').value.trim();
+    const errorEl = document.getElementById('totpDisableError');
+
+    if (!/^[0-9]{6}$/.test(code)) {
+        errorEl.textContent = 'Enter the current 6-digit code to confirm.';
+        return;
+    }
+
+    const confirm = await notify('confirm', 'Disable 2FA', [
+        'Your panel will be protected by password only.',
+        'Are you sure?'
+    ]);
+
+    if (!confirm) return;
+
+    const icons = startWaiting(btn, '', 'clock_loader_40');
+
+    try {
+        const res = await fetch('./panel/totp/disable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+
+        const { success, status, message } = await res.json();
+        if (!success) throw new Error(message || `status ${status}`);
+
+        totpEnabled = false;
+        updateTotpUi();
+        closeTotpModal();
+        notify('success', 'Two-Factor Auth', ['2FA disabled.']);
+    } catch (error) {
+        errorEl.textContent = error.message || 'Failed to disable 2FA.';
+        console.error('TOTP disable error:', error);
+    } finally {
+        stopWaiting(icons);
+    }
 }

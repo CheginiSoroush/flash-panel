@@ -12,7 +12,7 @@
         href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add_circle,autorenew,cancel,check_circle,clock_loader_40,close,cloud_download,cloud_upload,code_xml,content_copy,dashboard,data_usage,delete,dns,download,draft,error,fingerprint,help,info,key_vertical,keyboard_arrow_down,link,logout,open_in_new,qr_code,refresh,save,settings,settings_backup_restore,share,smart_toy,terminal,tune,upgrade,upload,verified,visibility,visibility_off&display=block" />
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=add_circle,autorenew,cancel,check_circle,clock_loader_40,close,cloud_download,cloud_upload,code_xml,content_copy,dashboard,data_usage,delete,dns,download,draft,error,fingerprint,help,info,key_vertical,keyboard_arrow_down,link,logout,open_in_new,password_2,qr_code,refresh,save,settings,settings_backup_restore,share,shield,smart_toy,terminal,tune,upgrade,upload,verified,visibility,visibility_off&display=block" />
     <link id="favicon" rel="icon" type="image/x-icon" href="data:image/x-icon;base64,__ICON__">
     <style>
         /* CSS_PLACEHOLDER */
@@ -87,6 +87,13 @@
                         <button id="deletePanel" class="button delete" onclick="deletePanel(this)">
                             <span class="material-symbols-rounded">delete</span>
                             Delete
+                        </button>
+                    </div>
+                    <div class="dashboard-action">
+                        <span>Two-Factor Auth — <b id="totpStatusBadge">checking…</b></span>
+                        <button id="totpActionBtn" class="button" onclick="openTotpModal(event)">
+                            <span class="material-symbols-rounded">shield</span>
+                            <span id="totpActionLabel">Manage</span>
                         </button>
                     </div>
                 </div>
@@ -988,6 +995,61 @@
     </template>
 
     <div class="form-container container">
+
+        <div id="totpModal" class="modal" hidden>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="modal-title">Two-Factor Authentication</span>
+                    <span id="closeTotpModal" class="material-symbols-rounded modal-close" onclick="closeTotpModal()">
+                        close
+                    </span>
+                </div>
+
+                <div id="totpSetupSection">
+                    <p class="totp-note">
+                        Scan the QR with your authenticator app (Google Authenticator, Aegis, 1Password…)
+                        or enter the secret manually, then confirm with a 6-digit code.
+                    </p>
+                    <div class="totp-qr-wrap">
+                        <img id="totpQrImg" alt="2FA QR code" width="180" height="180">
+                    </div>
+                    <div class="totp-secret-row">
+                        <code id="totpSecretText"></code>
+                        <button type="button" class="button" onclick="copyTotpSecret(this)">
+                            <span class="material-symbols-rounded">content_copy</span>
+                            Copy
+                        </button>
+                    </div>
+                    <div class="form-control">
+                        <label for="totpEnableCode">Authenticator Code</label>
+                        <input type="text" id="totpEnableCode" inputmode="numeric" maxlength="6"
+                            autocomplete="one-time-code" placeholder="000000">
+                    </div>
+                    <div id="totpError" class="password-error"></div>
+                    <button type="button" class="button" id="totpEnableBtn" onclick="enableTotp(this)">
+                        <span class="material-symbols-rounded">check_circle</span>
+                        Enable 2FA
+                    </button>
+                </div>
+
+                <div id="totpDisableSection">
+                    <p class="totp-note">
+                        2FA is <b>enabled</b>. Enter a current 6-digit code from your authenticator
+                        app to disable it.
+                    </p>
+                    <div class="form-control">
+                        <label for="totpDisableCode">Authenticator Code</label>
+                        <input type="text" id="totpDisableCode" inputmode="numeric" maxlength="6"
+                            autocomplete="one-time-code" placeholder="000000">
+                    </div>
+                    <div id="totpDisableError" class="password-error"></div>
+                    <button type="button" class="button delete" id="totpDisableBtn" onclick="disableTotp(this)">
+                        <span class="material-symbols-rounded">shield</span>
+                        Disable 2FA
+                    </button>
+                </div>
+            </div>
+        </div>
 
         <div id="resetPassModal" class="modal" hidden>
             <div class="modal-content">

@@ -3,12 +3,14 @@ import { deployPages, deletePagesProject } from '@api/pages';
 import { getUsage } from '@api/usage';
 import { fetchWarpAccounts } from '@api/warp';
 import { deployWorkers, deleteWorker } from '@api/workers';
-import { resetPassword, logout, authenticate } from '@auth';
+import { resetPassword, logout, authenticate, invalidateTotpCache } from '@auth';
+import { buildOtpAuthUri, generateTotpSecret, verifyTotp } from '@auth/totp';
 import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
 import { getDataset, updateDataset } from '@kv';
 import { buildScript, updateMainSettings } from '@main';
 import { getGlobals, getMainSettings, getDefaultKvSettings, subscriptions, clients } from '@settings';
 import { validateSettings } from '@validators';
+import { buildQrPng } from './qrcode';
 import { fallback } from './utils';
 import { setTelegramBot } from '@api/telegram';
 
@@ -75,6 +77,18 @@ export async function handlePanel(request: Request, env: Env): Promise<Response>
 
         case 'panel/logout':
             return logout();
+
+        case 'panel/totp/status':
+            return getTotpStatus(request, env);
+
+        case 'panel/totp/setup':
+            return setupTotp(request, env);
+
+        case 'panel/totp/enable':
+            return enableTotp(request, env);
+
+        case 'panel/totp/disable':
+            return disableTotp(request, env);
 
         default:
             return fallback(request);
@@ -321,4 +335,149 @@ async function updateWarpConfigs(request: Request, env: Env): Promise<Response> 
             `An error occurred while updating Warp configs: ${safeError(error)}`
         );
     }
+}
+
+// ---------- ورود دومرحله‌ای TOTP ----------
+
+/**
+ * PNG → data URL — برای نمایش QR در مودال پنل بدون درخواست اضافه
+ */
+function pngToDataUrl(png: ArrayBuffer): string {
+    const bytes = new Uint8Array(png);
+    let binary = '';
+    const CHUNK = 0x8000;
+
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+
+    return `data:image/png;base64,${btoa(binary)}`;
+}
+
+async function parseJsonBody(request: Request): Promise<Record<string, any> | null> {
+    try {
+        return await request.json();
+    } catch {
+        return null;
+    }
+}
+
+async function getTotpStatus(request: Request, env: Env): Promise<Response> {
+    const auth = await authenticate(request, env);
+    if (!auth) {
+        return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+    }
+
+    const [enabled, pending] = await Promise.all([
+        env.kv.get('totpEnabled'),
+        env.kv.get('totpPendingSecret')
+    ]);
+
+    return respond(true, HttpStatus.OK, undefined, {
+        enabled: enabled === 'true',
+        pending: Boolean(pending)
+    }, {
+        'Cache-Control': 'no-store'
+    });
+}
+
+async function setupTotp(request: Request, env: Env): Promise<Response> {
+    if (request.method !== 'POST') {
+        return respond(false, HttpStatus.METHOD_NOT_ALLOWED, 'Method not allowed.');
+    }
+
+    const auth = await authenticate(request, env);
+    if (!auth) {
+        return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+    }
+
+    try {
+        const secret = generateTotpSecret();
+        const { accEmail, hostname } = getGlobals();
+        const otpauthUri = buildOtpAuthUri(secret, accEmail || hostname || 'admin', 'Flash Panel');
+
+        // secret تا زمان تأیید اولین کد، «در انتظار» می‌مونه — 2FA هنوز فعال نیست
+        await env.kv.put('totpPendingSecret', secret);
+
+        const qrDataUrl = pngToDataUrl(await buildQrPng(otpauthUri));
+
+        return respond(true, HttpStatus.OK, undefined, {
+            secret,
+            otpauthUri,
+            qrDataUrl
+        }, { 'Cache-Control': 'no-store' });
+    } catch (error) {
+        console.log(error);
+        return respond(
+            false,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            `Error generating 2FA setup: ${safeError(error)}`
+        );
+    }
+}
+
+async function enableTotp(request: Request, env: Env): Promise<Response> {
+    if (request.method !== 'POST') {
+        return respond(false, HttpStatus.METHOD_NOT_ALLOWED, 'Method not allowed.');
+    }
+
+    const auth = await authenticate(request, env);
+    if (!auth) {
+        return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+    }
+
+    const data = await parseJsonBody(request);
+    const code = typeof data?.code === 'string' ? data.code : '';
+
+    const pendingSecret = await env.kv.get('totpPendingSecret');
+    if (!pendingSecret) {
+        return respond(false, HttpStatus.BAD_REQUEST, 'No pending 2FA setup — run setup first.');
+    }
+
+    const { ok, counter } = await verifyTotp(pendingSecret, code);
+    if (!ok || counter === null) {
+        return respond(false, HttpStatus.BAD_REQUEST, 'Invalid verification code — check your authenticator app.');
+    }
+
+    await env.kv.put('totpSecret', pendingSecret);
+    await env.kv.put('totpEnabled', 'true');
+    await env.kv.put('totpLastUsed', String(counter));
+    await env.kv.delete('totpPendingSecret');
+    invalidateTotpCache(true);
+
+    return respond(true, HttpStatus.OK, 'Two-factor authentication enabled!');
+}
+
+async function disableTotp(request: Request, env: Env): Promise<Response> {
+    if (request.method !== 'POST') {
+        return respond(false, HttpStatus.METHOD_NOT_ALLOWED, 'Method not allowed.');
+    }
+
+    const auth = await authenticate(request, env);
+    if (!auth) {
+        return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+    }
+
+    const data = await parseJsonBody(request);
+    const code = typeof data?.code === 'string' ? data.code : '';
+
+    const activeSecret = await env.kv.get('totpSecret');
+    if (!activeSecret) {
+        return respond(false, HttpStatus.BAD_REQUEST, '2FA is not enabled.');
+    }
+
+    const { ok } = await verifyTotp(activeSecret, code);
+    if (!ok) {
+        return respond(false, HttpStatus.BAD_REQUEST, 'Invalid verification code.');
+    }
+
+    await Promise.all([
+        env.kv.delete('totpSecret'),
+        env.kv.delete('totpEnabled'),
+        env.kv.delete('totpLastUsed'),
+        env.kv.delete('totpPendingSecret')
+    ]);
+    invalidateTotpCache(false);
+
+    return respond(true, HttpStatus.OK, 'Two-factor authentication disabled!');
 }

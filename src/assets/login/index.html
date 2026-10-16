@@ -12,7 +12,7 @@
         href="https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap"
         rel="stylesheet">
     <link
-        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=login,visibility,visibility_off&display=block"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=login,password_2,visibility,visibility_off&display=block"
         rel="stylesheet" />
     <style>/* CSS_PLACEHOLDER */</style>
 <link href="https://cdn.jsdelivr.net/npm/vazirmatn@33.0.3/Vazirmatn-font-face.css" rel="stylesheet" /><link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,__ICON__" /></head>
@@ -41,6 +41,16 @@
                         <input type="password" id="password" name="password" required>
                         <span id="togglePassword" class="material-symbols-rounded toggle-password">
                             visibility_off
+                        </span>
+                    </div>
+                </div>
+                <div class="form-control" id="totpContainer" style="display: none;">
+                    <label for="totp">Two-Factor Code</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="totp" name="totp" inputmode="numeric" autocomplete="one-time-code"
+                            maxlength="6" pattern="[0-9]{6}" placeholder="000000">
+                        <span class="material-symbols-rounded">
+                            password_2
                         </span>
                     </div>
                 </div>

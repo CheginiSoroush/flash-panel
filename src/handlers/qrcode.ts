@@ -130,6 +130,21 @@ export async function generateQRCode(request: Request): Promise<Response> {
         return fallback(request);
     }
 
+    const png = await buildQrPng(data);
+
+    return new Response(png, {
+        headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'no-store'
+        }
+    });
+}
+
+/**
+ * ساخت PNG کیوآر برای داده‌های داخلی و مورد اعتماد (مثل otpauth:// برای 2FA)
+ * بدون چک same-origin — فقط از مسیرهای احراز هویت‌شده صدا زده بشه
+ */
+export async function buildQrPng(data: string): Promise<ArrayBuffer> {
     const qr = qrcode(0, 'M');
     qr.addData(data);
     qr.make();
@@ -174,10 +189,5 @@ export async function generateQRCode(request: Request): Promise<Response> {
         pixels
     );
 
-    return new Response(png, {
-        headers: {
-            'Content-Type': 'image/png',
-            'Cache-Control': 'no-store'
-        }
-    });
+    return png;
 }

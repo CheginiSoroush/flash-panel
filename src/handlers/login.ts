@@ -1,5 +1,5 @@
 import { generateJWTToken, authenticate } from '@auth';
-import { decompressGzipBase64 } from '@common';
+import { decompressGzipBase64, respond, HttpStatus } from '@common';
 import { getGlobals } from '@settings';
 import { fallback } from './utils';
 
@@ -38,6 +38,9 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
         case 'login/authenticate':
             return generateJWTToken(request, env);
 
+        case 'login/totp-status':
+            return getTotpStatus(request, env);
+
         default:
             return fallback(request);
     }
@@ -69,5 +72,21 @@ async function renderLogin(request: Request, env: Env): Promise<Response> {
             'ETag': etag,
             'Cache-Control': 'no-cache'
         }
+    });
+}
+
+/**
+ * وضعیت 2FA برای صفحه لاگین — عمومی ولی فقط یک boolean (بدون افشای secret)
+ * صفحه لاگین با این تصمیم می‌گیره فیلد کد رو نشون بده یا نه
+ */
+async function getTotpStatus(request: Request, env: Env): Promise<Response> {
+    if (request.method !== 'GET') {
+        return respond(false, HttpStatus.METHOD_NOT_ALLOWED, 'Method not allowed.');
+    }
+
+    const enabled = (await env.kv.get('totpEnabled')) === 'true';
+
+    return respond(true, HttpStatus.OK, undefined, { enabled }, {
+        'Cache-Control': 'no-store'
     });
 }

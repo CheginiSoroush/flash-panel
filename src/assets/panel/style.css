@@ -1058,3 +1058,55 @@ table tr:not(:last-child) {
         width: 30%;
     }
 }
+/* ---------- TOTP 2FA ---------- */
+
+.totp-note {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--color-text-2, #64748b);
+    margin: 0 0 1rem;
+}
+
+.totp-qr-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: #ffffff;
+    border-radius: 12px;
+}
+
+.totp-qr-wrap img {
+    display: block;
+    max-width: 180px;
+    height: auto;
+}
+
+.totp-secret-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.totp-secret-row code {
+    flex: 1;
+    font-size: 0.8rem;
+    word-break: break-all;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-bg-2, #f1f5f9);
+    color: #0f172a;
+    border-radius: 8px;
+    user-select: all;
+    direction: ltr;
+    text-align: center;
+    letter-spacing: 0.06em;
+}
+
+#totpEnableCode,
+#totpDisableCode {
+    font-size: 1.25rem;
+    letter-spacing: 0.35rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
