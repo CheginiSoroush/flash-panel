@@ -23,7 +23,7 @@ jobs:
       - name: Sanity check site assets
         run: |
           test -f site/index.html || { echo "::error::site/index.html missing"; exit 1; }
-          test -f site/assets/panel-overview.jpg || { echo "::error::missing panel screenshot"; exit 1; }
+          test -f site/assets/panel-dashboard.jpg || { echo "::error::missing dashboard screenshot"; exit 1; }
           echo "site OK: $(du -sh site | cut -f1)"
 
       - name: Deploy site/ to gh-pages branch
