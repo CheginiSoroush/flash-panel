@@ -9,11 +9,16 @@ import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
 import { getDataset, updateDataset } from '@kv';
 import { buildScript, updateMainSettings } from '@main';
 import { getGlobals, getMainSettings, getDefaultKvSettings, subscriptions, clients } from '@settings';
-import { createSubUser, deleteSubUser, getSubUsers, isValidSubUserId, updateSubUser } from '@settings/sub-users';
+import { createSubUser, deleteSubUser, getSubUsers, isValidSubUserId, saveSubUsers, updateSubUser } from '@settings/sub-users';
+import {
+    buildSettingsBackup,
+    parseSettingsBackup,
+    prepareImport
+} from '@api/settings-backup';
 import { validateSettings } from '@validators';
+import { setTelegramBot } from '@api/telegram';
 import { buildQrPng } from './qrcode';
 import { fallback } from './utils';
-import { setTelegramBot } from '@api/telegram';
 
 // ---------- کش سطح isolate برای HTML پنل ----------
 // PANEL_HTML_CONTENT و ICON_CONTENT ثابت‌ان — دیکمپرس + جایگزینی آیکون
@@ -57,6 +62,12 @@ export async function handlePanel(request: Request, env: Env): Promise<Response>
 
         case 'panel/reset-settings':
             return resetPanelSettings(request, env);
+
+        case 'panel/settings/export':
+            return exportSettingsBackup(request, env);
+
+        case 'panel/settings/import':
+            return importSettingsBackup(request, env);
 
         case 'panel/reset-password':
             return resetPassword(request, env);
@@ -287,6 +298,116 @@ async function resetPanelSettings(request: Request, env: Env): Promise<Response>
             false,
             HttpStatus.INTERNAL_SERVER_ERROR,
             `Error occurred while resetting settings: ${safeError(error)}`
+        );
+    }
+}
+
+// ---------- پشتیبان‌گیری و بازیابی تنظیمات ----------
+
+async function exportSettingsBackup(request: Request, env: Env): Promise<Response> {
+    if (request.method !== 'GET') {
+        return respond(false, HttpStatus.METHOD_NOT_ALLOWED, 'Method not allowed.');
+    }
+
+    const auth = await authenticate(request, env);
+    if (!auth) {
+        return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+    }
+
+    try {
+        const [{ settings, telegramBot }, users] = await Promise.all([
+            getDataset(env),
+            getSubUsers(env)
+        ]);
+
+        const backup = buildSettingsBackup({
+            settings,
+            main: getMainSettings(),
+            subUsers: users,
+            telegramBot,
+            version: VERSION
+        });
+
+        const date = backup._meta.exportedAt.slice(0, 10);
+
+        return new Response(JSON.stringify(backup, null, 2), {
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Disposition': `attachment; filename="flash-panel-backup-${date}.json"`,
+                'Cache-Control': 'no-store'
+            }
+        });
+    } catch (error) {
+        console.log(error);
+        return respond(
+            false,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            `Error occurred while exporting settings: ${safeError(error)}`
+        );
+    }
+}
+
+async function importSettingsBackup(request: Request, env: Env): Promise<Response> {
+    if (request.method !== 'POST') {
+        return respond(false, HttpStatus.METHOD_NOT_ALLOWED, 'Method not allowed.');
+    }
+
+    const auth = await authenticate(request, env);
+    if (!auth) {
+        return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+    }
+
+    try {
+        const parsed = parseSettingsBackup(await parseJsonBody(request));
+        if (!parsed) {
+            return respond(false, HttpStatus.BAD_REQUEST, 'Invalid backup file — expected a Flash Panel settings export.');
+        }
+
+        const { settings: currentSettings, telegramBot: currentBot } = await getDataset(env);
+        const prepared = prepareImport(parsed, currentSettings, getDefaultKvSettings());
+
+        // دروازه‌ی نهایی — همان اعتبارسنجی ذخیره‌ی عادی پنل
+        const errors = validateSettings(prepared.settings);
+        if (errors) return respond(false, HttpStatus.BAD_REQUEST, 'Validation Error', errors);
+
+        await Promise.all([
+            updateDataset(env, prepared.settings),
+            updateMainSettings(prepared.settings)
+        ]);
+
+        if (prepared.users) {
+            await saveSubUsers(env, prepared.users.users);
+        }
+
+        if (prepared.bot) {
+            await env.kv.put('telegramBot', JSON.stringify(prepared.bot));
+            if (prepared.bot.telegramBotToken) {
+                // وب‌هوک دوباره ست می‌شود — best-effort، خطای تلگرام بازیابی را خراب نمی‌کند
+                try {
+                    await setTelegramBot(prepared.settings.securePath, prepared.bot.telegramBotToken);
+                } catch (e) {
+                    console.log('Telegram webhook restore skipped:', e);
+                }
+            }
+        }
+
+        const previousBotActive = Boolean(currentBot?.telegramBotToken);
+
+        return respond(true, HttpStatus.OK, 'Settings restored from backup.', {
+            importedFields: prepared.importedFields,
+            skippedFields: prepared.skippedFields,
+            importedUsers: prepared.users?.users.length ?? 0,
+            skippedUsers: prepared.users?.skipped ?? 0,
+            botImported: Boolean(prepared.bot),
+            botReplaced: previousBotActive,
+            settings: prepared.settings
+        }, { 'Cache-Control': 'no-store' });
+    } catch (error) {
+        console.log(error);
+        return respond(
+            false,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            `Error occurred while importing settings: ${safeError(error)}`
         );
     }
 }

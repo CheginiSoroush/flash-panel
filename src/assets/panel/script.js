@@ -549,6 +549,122 @@ async function resetSettings(btn) {
     }
 }
 
+async function exportSettingsBackup(btn) {
+    const icons = startWaiting(btn, '', '', false);
+
+    try {
+        const res = await fetch('./panel/settings/export', {
+            method: 'GET',
+            credentials: 'include'
+        });
+
+        if (!res.ok) {
+            if (res.status === 401) {
+                window.location.href = './login';
+                return;
+            }
+            throw new Error(`status ${res.status}`);
+        }
+
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] || 'flash-panel-backup.json';
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+
+        notify(
+            'success',
+            'Settings backup',
+            ['Backup downloaded.', 'It includes secrets (UUID, passwords, bot token) — keep the file safe.']
+        );
+    } catch (error) {
+        console.error('Exporting settings error:', error);
+        notify('error', 'Settings backup', ['Download failed — please try again.']);
+    } finally {
+        stopWaiting(icons);
+    }
+}
+
+async function importSettingsBackup(input) {
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    let backup;
+    try {
+        backup = JSON.parse(await file.text());
+    } catch {
+        notify('error', 'Restore settings', ['Invalid file — a Flash Panel backup JSON is required.']);
+        return;
+    }
+
+    const meta = backup?._meta;
+    const confirm = await notify(
+        'confirm',
+        'Restore settings',
+        [
+            'Current settings, subscription users and Telegram bot will be overwritten with:',
+            `+ Exported at: ${meta?.exportedAt ? new Date(meta.exportedAt).toLocaleString() : 'unknown date'}`,
+            `+ Panel version: ${meta?.version || 'unknown'}\n`,
+            'Your login password and 2FA are NOT restored — they stay as-is.',
+            'Are you sure?'
+        ]
+    );
+
+    if (!confirm) return;
+    const icons = startWaiting(null, 'applyButton', 'refresh');
+
+    try {
+        const res = await fetch('./panel/settings/import', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(backup)
+        });
+
+        const { success, status, message, body } = await res.json();
+
+        if (status === 401) {
+            notify('error', 'Restore settings', ['Session expired! Please login and try again.']);
+            window.location.href = './login';
+            return;
+        }
+
+        if (!success) {
+            if (Array.isArray(body)) {
+                body.forEach(error => notify('error', error.field, error.message));
+            } else {
+                notify('error', 'Restore settings', [message || 'Restore failed.']);
+            }
+            throw new Error(`status ${status} - ${message}`);
+        }
+
+        notify(
+            'success',
+            'Restore settings',
+            [
+                `Imported ${body.importedFields} settings fields` +
+                    (body.skippedFields.length ? `, skipped ${body.skippedFields.length}.` : '.'),
+                body.importedUsers
+                    ? `Subscription users restored: ${body.importedUsers}.`
+                    : 'Subscription users unchanged.',
+                'Please update your subscriptions.'
+            ]
+        );
+
+        renderPanel(body.settings);
+    } catch (error) {
+        console.error('Importing settings error:', error);
+    } finally {
+        stopWaiting(icons);
+    }
+}
+
 function updateSettings(event, data) {
     event.preventDefault();
     event.stopPropagation();

@@ -978,6 +978,22 @@
                         settings_backup_restore
                     </span>
                 </button>
+                <button type="button" class="panel-settings" id="exportBackupBtn"
+                    title="Download settings backup (JSON — includes secrets, keep it safe)"
+                    onclick="exportSettingsBackup(this)">
+                    <span class="material-symbols-rounded">
+                        cloud_download
+                    </span>
+                </button>
+                <input type="file" id="settingsBackupFile" accept="application/json,.json" hidden
+                    onchange="importSettingsBackup(this)">
+                <button type="button" class="panel-settings" id="importBackupBtn"
+                    title="Restore settings from a backup file"
+                    onclick="document.getElementById('settingsBackupFile').click()">
+                    <span class="material-symbols-rounded">
+                        cloud_upload
+                    </span>
+                </button>
             </div>
 
         </form>
