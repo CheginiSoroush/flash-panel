@@ -230,7 +230,7 @@
     <a class="logo" href="./" aria-label="Flash Panel home">
       <svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#2563eb"/></linearGradient></defs><rect width="24" height="24" rx="6" fill="#000d2e"/><path d="M13.5 3 6 13.5h4.5L10 21l7.5-10.5H13L13.5 3z" fill="url(#lg)"/></svg>
       <span data-i18n="brand">Flash Panel</span>
-      <span class="beta" data-i18n="brandTag">v0.5.0</span>
+      <span class="beta" data-i18n="brandTag">v0.5.1</span>
     </a>
     <nav class="nav" aria-label="Main">
       <a href="#features" data-i18n="nav.features">Features</a>
@@ -252,9 +252,9 @@
 <main>
   <!-- HERO -->
   <section class="hero wrap">
-    <a class="release-badge reveal" href="https://github.com/CheginiSoroush/flash-panel/releases/tag/v0.5.0" target="_blank" rel="noopener">
+    <a class="release-badge reveal" href="https://github.com/CheginiSoroush/flash-panel/releases/tag/v0.5.1" target="_blank" rel="noopener">
       <span class="dot" aria-hidden="true"></span>
-      <span data-i18n="hero.badge">v0.5.0 released — the automation update</span>
+      <span data-i18n="hero.badge">v0.5.1 released — the anti-403 update</span>
     </a>
     <h1 class="title reveal">
       <span data-i18n="hero.t1">The fastest</span> <span class="grad" data-i18n="hero.t2">proxy panel</span>
@@ -272,8 +272,8 @@
       </a>
     </div>
     <div class="stats-row reveal">
-      <div class="stat"><b>235</b><span data-i18n="stats.tests">tests passing</span></div>
-      <div class="stat"><b>121.5 KB</b><span data-i18n="stats.bundle">bundle (gzip)</span></div>
+      <div class="stat"><b>252</b><span data-i18n="stats.tests">tests passing</span></div>
+      <div class="stat"><b>127.3 KB</b><span data-i18n="stats.bundle">bundle (gzip)</span></div>
       <div class="stat"><b>0</b><span data-i18n="stats.deps">runtime dependencies</span></div>
       <div class="stat"><b>3</b><span data-i18n="stats.cores">config cores (Xray/Clash/sing-box)</span></div>
     </div>
@@ -375,14 +375,14 @@ cp deploy/settings.example.js deploy/settings.js
       "meta.desc": "High-performance, serverless proxy panel for Cloudflare Workers. VLESS & Trojan rewritten from scratch, Telegram bot control, TOTP 2FA, multi-user subscriptions.",
       "brand": "Flash Panel",
       "nav.features": "Features", "nav.deploy": "Deploy", "nav.shots": "Screenshots",
-      "hero.badge": "v0.5.0 released — the automation update",
+      "hero.badge": "v0.5.1 released — the anti-403 update",
       "hero.t1": "The fastest", "hero.t2": "proxy panel", "hero.t3": "for Cloudflare Workers",
       "hero.tagline": "A high-performance serverless proxy panel for Cloudflare Workers — VLESS & Trojan protocols rewritten from scratch, full Telegram bot control, TOTP 2FA and multi-user subscriptions. No cold starts, no VMs, no drama.",
       "hero.cta1": "Deploy in 60 seconds", "hero.cta2": "View source",
       "stats.tests": "tests passing", "stats.bundle": "bundle (gzip)", "stats.deps": "runtime dependencies", "stats.cores": "config cores (Xray/Clash/sing-box)",
       "feat.kicker": "Features",
       "feat.title": "Everything a panel should have. Nothing it shouldn't.",
-      "feat.sub": "Built like production software: 235 automated tests, a CI bundle-size gate, and a fully typed codebase.",
+      "feat.sub": "Built like production software: 252 automated tests, a CI bundle-size gate, and a fully typed codebase.",
       "feat.items": [
         ["Protocol core from scratch", "VLESS & Trojan parsers and writers hand-built in strict TypeScript — no runtime dependencies, fully auditable, zero-copy where it matters."],
         ["Multi-core config builders", "Native subscription output for Xray, Clash and sing-box — pick your client, get an optimized config instantly."],
@@ -394,6 +394,7 @@ cp deploy/settings.example.js deploy/settings.js
         ["WebSocket guardian", "Actively reaps zombie connections after NAT death while a bidirectional activity registry guarantees active downloads are never cut."],
         ["Settings backup & restore", "One-click JSON export/import with whitelisted merge — secrets are warned about, unknown fields are skipped, version migration is automatic."],
         ["Self-running automation", "Give any user an expiry date and the panel does the rest: links stop on time, you get a Telegram report, a daily digest lands in chat, and one click auto-selects the fastest ProxyIP — no babysitting."],
+        ["Anti-403 Clean IP optimizer", "One click discovers fresh clean IPs from public aggregators, probes every endpoint, reorders healthy-first and redeploys — plus a “Clean IPs First” mode that makes blocked workers.dev regions connect again."],
         ["CI bundle-size gate", "Every commit is benchmarked in GitHub Actions; the build fails if the gzipped bundle ever crosses the 150 KB line."]
       ],
       "dep.kicker": "Deployment",
@@ -423,14 +424,14 @@ cp deploy/settings.example.js deploy/settings.js
       "meta.desc": "پنل پروکسی پرسرعت و سرورلس برای کلادفلر ورکرز. پیاده‌سازی از صفرِ VLESS و Trojan، کنترل با ربات تلگرام، ورود دومرحله‌ای TOTP و اشتراک چندکاربره.",
       "brand": "فلش پنل",
       "nav.features": "قابلیت‌ها", "nav.deploy": "نصب", "nav.shots": "تصاویر",
-      "hero.badge": "نسخه v0.5.0 منتشر شد — آپدیت اتوماسیون",
+      "hero.badge": "نسخه v0.5.1 منتشر شد — آپدیت ضد ۴۰۳",
       "hero.t1": "سریع‌ترین", "hero.t2": "پنل پروکسی", "hero.t3": "برای کلادفلر ورکرز",
       "hero.tagline": "پنل پروکسی پرسرعت و سرورلس برای کلادفلر ورکرز — پیاده‌سازی از صفرِ پروتکل‌های VLESS و Trojan، کنترل کامل با ربات تلگرام، ورود دومرحله‌ای TOTP و اشتراک چندکاربره. بدون سرد شدن، بدون سرور، بدون دردسر.",
       "hero.cta1": "نصب در ۶۰ ثانیه", "hero.cta2": "مشاهده سورس",
       "stats.tests": "تست خودکار پاس‌شده", "stats.bundle": "حجم باندل (gzip)", "stats.deps": "وابستگی ران‌تایم", "stats.cores": "هسته خروجی (Xray/Clash/sing-box)",
       "feat.kicker": "قابلیت‌ها",
       "feat.title": "هر چیزی که یک پنل لازم دارد. و هیچ چیز اضافه‌ای.",
-      "feat.sub": "ساخته‌شده مثل نرم‌افزار عملیاتی: ۲۳۵ تست خودکار، گیت حجم باندل در CI و کدبیس کاملاً تایپ‌شده.",
+      "feat.sub": "ساخته‌شده مثل نرم‌افزار عملیاتی: ۲۵۲ تست خودکار، گیت حجم باندل در CI و کدبیس کاملاً تایپ‌شده.",
       "feat.items": [
         ["هسته پروتکل از صفر", "پارسر و رایتِ VLESS و Trojan به‌صورت دستی در TypeScript سخت‌گیرانه — بدون وابستگی ران‌تایم، کاملاً قابل ممیزی."],
         ["سازنده کانفیگ چندهسته‌ای", "خروجی اشتراک بومی برای Xray، Clash و sing-box — کلاینتت را انتخاب کن، کانفیگ بهینه را فوری بگیر."],
@@ -442,6 +443,7 @@ cp deploy/settings.example.js deploy/settings.js
         ["نگهبان اتصال WS", "پاکسازی فعال اتصال‌های زامبی بعد از مرگ NAT، درحالی‌که رجیستری فعالیت دوموطرفه تضمین می‌کند دانلود فعال هرگز قطع نشود."],
         ["پشتیبان‌گیری تنظیمات", "خروجی/ورودی JSON یک‌کلیکی با ادغام سفیدلیستی — رازها هشدار می‌گیرند، فیلد ناشناس رد می‌شود و مهاجرت نسخه خودکار است."],
         ["اتوماسیون خودگردان", "برای هر کاربر تاریخ انقضا بگذار و بقیه‌اش با پنل: لینک‌ها سر وقت می‌ایستند، گزارش تلگرام می‌گیری، خلاصه‌ی روزانه به چت می‌آید و یک کلیک سریع‌ترین ProxyIP را خودش انتخاب می‌کند — بدون نگهبانی."],
+        ["بهینه‌ساز ضد ۴۰۳ Clean IP", "یک کلیک، IP های تمیز تازه از جمع‌کننده‌های عمومی می‌گیرد، همه‌ی اندپوینت‌ها را پروب می‌کند، ترتیب را «سالم‌ها اول» می‌چیند و redeploy می‌کند — به‌همراه حالت «Clean IPs First» برای مناطقی که workers.dev بلاک است."],
         ["گیت حجم باندل در CI", "هر کامیت در GitHub Actions بنچمارک می‌شود؛ اگر باندل gzip از ۱۵۰ کیلوبایت عبور کند، بیلد می‌سوزد."]
       ],
       "dep.kicker": "نصب و راه‌اندازی",
