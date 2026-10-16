@@ -102,13 +102,19 @@ export async function setCustomDomain(customDomain: string) {
 export async function buildScript(upgradePanel: boolean, settings?: MainSettings): Promise<string> {
     let script = '';
 
-    if (!settings) {
+    if (settings && typeof SOURCE_CONTENT === 'string') {
+        // بازسازی از سورس خود ورکر (فقط برای باندل‌های قدیمی که هنوز SOURCE_CONTENT دارند)
+        script = await decompressGzipBase64(SOURCE_CONTENT);
+    } else {
+        // مسیر استاندارد به‌روزرسانی: دریافت آخرین ریلیز از گیت‌هاب
+        // (باندل‌های جدید دیگر SOURCE_CONTENT حمل نمی‌کنند — کاهش ~۷۶KB gzip)
         const source = `${_repo_}/releases/latest/download/worker.js`;
         const res = await fetch(source);
+        if (!res.ok) {
+            throw new Error(`Failed to fetch latest release: status ${res.status}`);
+        }
         script = await res.text();
-        settings = getSettings();
-    } else {
-        script = await decompressGzipBase64(SOURCE_CONTENT);
+        settings = settings ?? getSettings();
     }
 
     const { accID, accEmail, apiToken, mainDomain } = getGlobals();
@@ -128,7 +134,7 @@ export async function buildScript(upgradePanel: boolean, settings?: MainSettings
     };
 
     const embededContents = {
-        SOURCE_CONTENT,
+        ...(typeof SOURCE_CONTENT === 'string' ? { SOURCE_CONTENT } : {}),
         PANEL_HTML_CONTENT,
         LOGIN_HTML_CONTENT,
         ERROR_HTML_CONTENT,

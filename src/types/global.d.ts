@@ -8,7 +8,9 @@ declare global {
         readonly TR_PASS?: string;
     }
 
-    const SOURCE_CONTENT: string;
+    // باندل تولیدشده دیگر SOURCE_CONTENT را حمل نمی‌کند (کد مرده — ~۷۶KB gzip)
+    // برای سازگاری با ورکرهای قدیمی، optional نگه داشته می‌شود
+    const SOURCE_CONTENT: string | undefined;
     const EMBEDED_SETTINGS: EmbededSettings;
     const VERSION: string;
     const ERROR_HTML_CONTENT: string;

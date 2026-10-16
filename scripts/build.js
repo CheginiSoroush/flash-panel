@@ -47,7 +47,16 @@ async function processHtmlPages() {
             const css = readFileSync(base('style.css'), 'utf8');
 
             const script = readFileSync(base('script.js'), 'utf8');
-            const { code } = await jsMinify(script);
+            // فشرده‌سازی قوی‌تر JS پنل (dead_code + passes بیشتر) — کاهش حجم embed
+            const { code } = await jsMinify(script, {
+                compress: {
+                    dead_code: true,
+                    unused: true,
+                    booleans_as_integers: false,
+                    passes: 2
+                },
+                mangle: true
+            });
 
             // CSS اصلی + تم Flash — تم بعد از CSS اصلی میاد تا override کنه
             html = html
@@ -104,10 +113,10 @@ async function buildWorker() {
     console.log(`${success} Worker minified successfully!`);
 
     const scriptBytes = Buffer.byteLength(script, 'utf8');
-    const base64Gzip = gzipSync(script, { level: 9 }).toString('base64');
 
+    // سورس ورکر دیگر داخل باندل embed نمی‌شود — SOURCE_CONTENT فقط کد مرده بود
+    // (مسیر به‌روزرسانی، آخرین ریلیز را از گیت‌هاب می‌گیرد → کاهش ~۱۰۰KB)
     const embededContents = {
-        SOURCE_CONTENT: base64Gzip,
         PANEL_HTML_CONTENT: htmls['panel'],
         LOGIN_HTML_CONTENT: htmls['login'],
         ERROR_HTML_CONTENT: htmls['error'],
@@ -120,11 +129,23 @@ async function buildWorker() {
     mkdirSync(DIST_PATH, { recursive: true });
     writeFileSync(WORKER_PATH, worker, 'utf8');
 
-    reportSize(worker, scriptBytes, base64Gzip, embededContents);
+    // متادیتای بیلد برای ابزارهای خارجی (Development Hub)
+    const buildInfo = {
+        version: pkg.version,
+        gzipKb: Number(gzipSync(worker, { level: 9 }).length / 1024).toFixed(1),
+        rawKb: Number(Buffer.byteLength(worker, 'utf8') / 1024).toFixed(1),
+        limitFreeKb: SIZE_LIMIT_FREE / 1024,
+        limitPaidKb: SIZE_LIMIT_PAID / 1024,
+        builtAt: new Date().toISOString(),
+        sourceContentEmbedded: false
+    };
+    writeFileSync(join(DIST_PATH, 'build-info.json'), JSON.stringify(buildInfo, null, 2), 'utf8');
+
+    reportSize(worker, scriptBytes, embededContents, buildInfo);
     console.log(`${success} Done! → ${WORKER_PATH}`);
 }
 
-function reportSize(worker, scriptBytes, sourceContent, embededContents) {
+function reportSize(worker, scriptBytes, embededContents, buildInfo) {
     const rawBytes = Buffer.byteLength(worker, 'utf8');
     const gzipBytes = gzipSync(worker, { level: 9 }).length;
 
@@ -134,7 +155,7 @@ function reportSize(worker, scriptBytes, sourceContent, embededContents) {
 
     console.log('\n📊 Bundle size report:');
     console.log(`   worker code    : ${kb(scriptBytes)}`);
-    console.log(`   SOURCE_CONTENT : ${kb(Buffer.byteLength(sourceContent, 'utf8'))}`);
+    console.log(`   SOURCE_CONTENT : removed (dead code — served from GitHub on update)`);
     console.log(`   HTML embeds    : ${kb(htmlBytes)}`);
     console.log(`   ─────────────────────────────`);
     console.log(`   total (raw)    : ${kb(rawBytes)}`);
