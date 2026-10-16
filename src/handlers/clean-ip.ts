@@ -1,6 +1,6 @@
 import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
 import { authenticate } from '@auth';
-import { getGlobals, getSettings } from '@settings';
+import { getGlobals, getSettings, setSettings } from '@settings';
 import { updateDataset } from '@kv';
 import { updateMainSettings } from '@main';
 import { validateSettings } from '@validators';
@@ -22,6 +22,10 @@ export async function handleCleanIPs(request: Request, env: Env): Promise<Respon
         const url = new URL('./login', request.url)
         return Response.redirect(url, 302);
     }
+
+    // snapshot ماژول kvSettings باید از KV تازه شود — در غیر این صورت
+    // getSettings() پیش‌فرض‌ها را می‌دهد و add/auto-apply تنظیمات ذخیره‌شده را بازنویسی می‌کنند
+    await setSettings(env);
 
     const parts = pathname.split('/');
     const path = parts.slice(2).join('/');

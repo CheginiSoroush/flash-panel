@@ -289,16 +289,41 @@ function validateChainProxy(form: PanelSettings, errors: ValidationError[]) {
         });
     }
 
-    const config = new URL(chainProxy);
+    // new URL / JSON.parse روی ورودی خام کرش می‌کنند — به‌جای 500 باید ValidationError بدهیم
+    let config: URL;
+    try {
+        config = new URL(chainProxy);
+    } catch {
+        errors.push({
+            field: 'Chain Proxy',
+            message: [
+                'Invalid Config!',
+                'The chain proxy URL could not be parsed.'
+            ]
+        });
+        return;
+    }
+
     let { protocol, username } = config;
     let security = config.searchParams.get('security');
     let type = config.searchParams.get('type');
 
     if (isVMess) {
-        const vmConfig = JSON.parse(atob(config.host));
-        username = vmConfig.id;
-        security = vmConfig.tls;
-        type = vmConfig.net;
+        try {
+            const vmConfig = JSON.parse(atob(config.host));
+            username = vmConfig.id;
+            security = vmConfig.tls;
+            type = vmConfig.net;
+        } catch {
+            errors.push({
+                field: 'Chain Proxy',
+                message: [
+                    'Invalid Config!',
+                    'The VMess config is not a valid base64 JSON.'
+                ]
+            });
+            return;
+        }
     }
 
     if ([`${_VL_}:`, `${_TR_}:`, `${_VM_}:`].includes(protocol)) {
@@ -391,8 +416,15 @@ function validateKnockerNoise(form: PanelSettings, errors: ValidationError[]) {
 
 function validateXrayNoises(form: PanelSettings, errors: ValidationError[]) {
     form.xrayUdpNoises.forEach(({ type, packet, delay }) => {
-        const [delayMin, delayMax] = delay.split('-').map(Number);
-        if (delayMin > delayMax) {
+        const parts = String(delay ?? '').split('-').map(Number);
+        const [delayMin, delayMax] = parts;
+
+        if (!parts.every(n => Number.isFinite(n))) {
+            errors.push({
+                field: 'Xray Noise Delay',
+                message: ['Delay should be a range like 1-5!']
+            });
+        } else if (delayMin > delayMax) {
             errors.push({
                 field: 'Xray Noise Delay',
                 message: ['Minimum cannot be bigger than Maximum!']
@@ -454,6 +486,12 @@ function validateXrayNoises(form: PanelSettings, errors: ValidationError[]) {
                 }
 
                 break;
+            }
+            default: {
+                errors.push({
+                    field: 'Xray Noise Type',
+                    message: ['Noise type should be one of: base64, rand, hex or array.']
+                });
             }
         }
     });

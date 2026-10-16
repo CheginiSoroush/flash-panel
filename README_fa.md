@@ -10,9 +10,9 @@
 
 ![Cloudflare Workers](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-22%20passing-34d399?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-289%20passing-34d399?style=flat-square)
 ![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)
-![Size](https://img.shields.io/badge/Bundle-176KB%20gzipped-9333ea?style=flat-square)
+![Size](https://img.shields.io/badge/Bundle-129.7KB%20gzipped-9333ea?style=flat-square)
 
 </div>
 
@@ -53,7 +53,7 @@
 | تولید دوباره‌ی کانفیگ در هر fetch | ETag/304 — سرو آنی وقتی چیزی عوض نشده |
 | JSON با تورفتگی (~۲۰MB) | فشرده — **ساب‌ها ۹۴٪ کوچیک‌تر** |
 
-### 🛡️ امنیت — نه به‌عنوان بعدthought
+### 🛡️ امنیت — نه به‌عنوان فکر ثانوی
 
 - 🔐 **محدودسازی نرخ لاگین** + مقایسه‌ی constant-time
 - 🤖 **اعتبارسنجی webhook تلگرام** — رد آپدیت‌های جعلی
@@ -114,7 +114,7 @@ URL پنل معمولاً فیلتره. تلگرامت نه.
 
 ### 🧪 مهندسی — مثل نرم‌افزار واقعی
 
-- **۲۲ تست واحد** روی پارسرهای پروتکل
+- **۲۸۹ تست واحد** — پارسرهای پروتکل، اعتبارسنج‌های تنظیمات، مهاجرت KV، کاربران اشتراک، موتور آپدیت
 - **CI روی هر push**
 - **Release خودکار** — tag → build → publish
 - **آپدیت خودکار از پنل** — بدون downtime، حالا با موتور ۳ آینه‌ای
@@ -142,11 +142,34 @@ URL پنل معمولاً فیلتره. تلگرامت نه.
 
 > ⚠️ **حتماً دامنه‌ی شخصی استفاده کن.** اسکنرها `*.workers.dev` را ۲۴ ساعته می‌پایند و گزارش خودکار می‌دهند — اکانت‌ها اینطوری ساسپند شدن. یه دامنه‌ی $۳ در سال روی Cloudflare تو رو از رادار خارج می‌کنه.
 
+### نصب دستی
+
+```bash
+npm install
+cp wrangler.jsonc.example wrangler.jsonc
+# فایل را ویرایش کن: account_id و شناسه‌ی KV namespace، بعد بیلد و deploy:
+npm run check && npm run test && npm run build
+npx wrangler deploy
+```
+
+اعتبارنامه‌ها (`EMBEDED_SETTINGS`) در زمان deploy توسط **فلش ویزارد** تزریق می‌شوند. برای نصب کاملاً دستی، این بلاک را به ابتدای `dist/worker.js` اضافه کن (مقادیر را با مال خودت عوض کن):
+
+```js
+Object.assign(globalThis, { EMBEDED_SETTINGS: {
+    accID: "<شناسه اکانت>", accEmail: "<ایمیل اکانت>", apiToken: "<توکن اسکوپ‌دار>",
+    vlUUID: "<uuid>", trPass: "<رمز تروجان>", securePath: "<مسیر مخفی>",
+    proxyIpMode: "proxyip", proxyIPs: [], prefixes: [],
+    mainDomain: "<دامنه تو>", fallback: "www.speedtest.net", dohUrl: ""
+}});
+```
+
+> ویزارد همه‌ی این‌ها را خودکار انجام می‌دهد — نصب دستی برای CI و حالت‌های خاص است.
+
 ---
 
 ## 📖 مستندات
 
-- [نصب دستی و مشکلات رایج](#)
+- 🇬🇧 [مستندات انگلیسی](README.md)
 - 🪄 [فلش ویزارد](https://github.com/CheginiSoroush/flash-wizard) — ابزار نصب
 
 ## 🙏 اعتبار

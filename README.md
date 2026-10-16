@@ -10,9 +10,9 @@
 
 ![Cloudflare Workers](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-22%20passing-34d399?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-289%20passing-34d399?style=flat-square)
 ![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)
-![Size](https://img.shields.io/badge/Bundle-176KB%20gzipped-9333ea?style=flat-square)
+![Size](https://img.shields.io/badge/Bundle-129.7KB%20gzipped-9333ea?style=flat-square)
 
 </div>
 
@@ -113,7 +113,7 @@ The panel URL is often filtered. Your Telegram isn't.
 
 ### 🧪 Engineering — built like production software
 
-- **22 unit tests** on protocol parsers (VLESS/Trojan header edge cases)
+- **289 unit tests** — protocol parsers, settings validators, KV migrations, sub-users, update engine
 - **CI on every push** — check, test, build
 - **Automated releases** — tag → build → publish
 - **Self-update from panel** — zero-downtime upgrades, now with a 3-mirror engine
@@ -146,11 +146,23 @@ The one-click **Update panel** button fetches the latest `worker.js` and redeplo
 ```bash
 npm install
 cp wrangler.jsonc.example wrangler.jsonc
-cp deploy/settings.example.js deploy/settings.js
-# fill in your settings, then:
+# edit wrangler.jsonc: account_id + KV namespace id, then build & deploy:
 npm run check && npm run test && npm run build
 npx wrangler deploy
 ```
+
+Credentials (`EMBEDED_SETTINGS`) are injected at deploy time by **Flash Wizard**. For a fully manual deploy, prepend this block to `dist/worker.js` (replace the values with yours):
+
+```js
+Object.assign(globalThis, { EMBEDED_SETTINGS: {
+    accID: "<account id>", accEmail: "<account email>", apiToken: "<scoped api token>",
+    vlUUID: "<uuid>", trPass: "<trojan password>", securePath: "<secret path>",
+    proxyIpMode: "proxyip", proxyIPs: [], prefixes: [],
+    mainDomain: "<your domain>", fallback: "www.speedtest.net", dohUrl: ""
+}});
+```
+
+> The wizard handles all of this automatically — manual mode is for CI pipelines and edge cases.
 
 ---
 

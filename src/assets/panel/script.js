@@ -1063,7 +1063,9 @@ function notify(type, title, text) {
         modal.hidden = false;
 
         modal.querySelector('.message-title').textContent = title;
-        modal.querySelector('.message-text').innerHTML = text.join('\n');
+        // textContent — نه innerHTML؛ پیام‌های خطای سرور (اعتبارسنجی) ممکن است
+        // مقدار کاربر را echo کنند — رندر HTML در همین origin یعنی XSS ادمین
+        modal.querySelector('.message-text').textContent = text.join('\n');
 
         const icon = modal.querySelector('.message-icon');
         const isOk = type === 'success' || type === 'info';

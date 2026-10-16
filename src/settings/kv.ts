@@ -2,7 +2,7 @@ import { DnsHost, KvSettings, PanelSettings, TelegramBot, WarpAccount } from '#t
 import { extractProxyParams, extractUpstreamParams, getDomain, resolveDNS } from '@utils';
 import { fetchWarpAccounts } from '@api/warp';
 import { safeError } from '@common';
-import { getKvSettings } from '@settings';
+import { getKvSettings, syncKvSettings } from '@settings';
 import { setCustomDomain } from '@main';
 
 export interface Dataset {
@@ -235,6 +235,9 @@ async function mergeDataset(
 
         await env.kv.put('proxySettings', JSON.stringify(updatedSettings));
         invalidateDatasetCache(); // بعد از ذخیره، کش همیشه تازه‌ست
+        // همگام‌سازی snapshot ماژول — وگرنه handlerهای بدون setSettings
+        // (مثل clean-ip) مقدار پیش‌فرض/کهنه را می‌خوانند و روی KV پس‌می‌نویسند
+        syncKvSettings(updatedSettings);
         return updatedSettings;
     } catch (error) {
         console.log(error);

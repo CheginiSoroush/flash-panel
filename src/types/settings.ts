@@ -125,6 +125,12 @@ export interface SharedSettings extends
         | 'remoteSettings'
         | 'customDomain'
         | 'panelVersion'
+        // اعتبارنامه‌های وابسته به دیپلوی — هرگز از لینک share-settings عبور نکنند
+        // (هر کسی لینک ساب را داشته باشد به این endpoint می‌رسد)
+        | 'chainProxy'
+        | 'chainProxyParams'
+        | 'upstreamProxy'
+        | 'upstreamParams'
     > { }
 
 export interface PanelSettings extends KvSettings, MainSettings { };

@@ -259,6 +259,12 @@ export function parseImportedUsers(raw: unknown): ImportedUsers | null {
             user.lastFetchedAt = Math.floor(lastFetchedAt);
         }
 
+        // انقضای خودکار — بدون این، restore همه‌ی تاریخ‌های انقضا را حذف می‌کرد
+        const expiresAt = Number(record.expiresAt);
+        if (Number.isFinite(expiresAt) && expiresAt > 0) {
+            user.expiresAt = Math.floor(expiresAt);
+        }
+
         users.push(user);
     }
 

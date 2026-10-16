@@ -123,6 +123,11 @@ export function initForScheduled(env: Env): void {
 export const getGlobals = (): EmbededSettings & ReqSettings => globalSettings;
 export const getWarpAccounts = (): WarpAccount[] => warpAccounts;
 export const getKvSettings = (): KvSettings => kvSettings;
+
+/** همگام‌سازی ماژول kvSettings بعد از هر نوشتن موفق KV (جلوگیری از snapshot کهنه) */
+export function syncKvSettings(settings: KvSettings): void {
+    kvSettings = settings;
+}
 export function getMainSettings(): MainSettings {
     const { accID, accEmail, apiToken, mainDomain, ...mainSettings } = EMBEDED_SETTINGS;
     return mainSettings;
@@ -133,6 +138,11 @@ export function getSharedSettings(): SharedSettings {
         remoteSettings,
         customDomain,
         panelVersion,
+        // اعتبارنامه‌های وابسته به دیپلوی — از لینک share حذف می‌شوند
+        chainProxy,
+        chainProxyParams,
+        upstreamProxy,
+        upstreamParams,
         ...proxySettings
     } = kvSettings;
 

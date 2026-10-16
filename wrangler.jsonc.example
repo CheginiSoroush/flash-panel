@@ -1,6 +1,6 @@
 {
     "name": "flash-panel",
-    "main": "dist/panel-full.js",
+    "main": "dist/worker.js",
     "account_id": "YOUR_ACCOUNT_ID",
     "compatibility_date": "2025-06-01",
     "compatibility_flags": ["nodejs_compat"],
