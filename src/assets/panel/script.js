@@ -658,6 +658,11 @@ async function importSettingsBackup(input) {
         );
 
         renderPanel(body.settings);
+
+        // کاربران اشتراک از بکاپ بازگردیده‌اند — لیست دوباره بارگذاری می‌شود
+        if (body.usersSection) {
+            loadSubUsers();
+        }
     } catch (error) {
         console.error('Importing settings error:', error);
     } finally {

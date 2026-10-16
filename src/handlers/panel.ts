@@ -398,6 +398,7 @@ async function importSettingsBackup(request: Request, env: Env): Promise<Respons
             skippedFields: prepared.skippedFields,
             importedUsers: prepared.users?.users.length ?? 0,
             skippedUsers: prepared.users?.skipped ?? 0,
+            usersSection: prepared.users !== null,
             botImported: Boolean(prepared.bot),
             botReplaced: previousBotActive,
             settings: prepared.settings
