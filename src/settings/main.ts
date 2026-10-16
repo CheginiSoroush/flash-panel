@@ -3,6 +3,7 @@ import { deployPages, getPagesDomains, setPagesDomain } from '@api/pages';
 import { deployWorkers, getWorkerDomains, setWorkerDomain, setWorkersDevRoute } from '@api/workers';
 import { getGlobals, getMainSettings, getSettings } from '@settings';
 import { createCNAME, listZones } from '@api/dns';
+import { fetchLatestWorkerScript } from '@api/fetch-latest';
 import { decompressGzipBase64, safeError } from '@common';
 
 export async function updateMainSettings(newSettings: PanelSettings | null): Promise<Partial<EmbededSettings>> {
@@ -108,12 +109,10 @@ export async function buildScript(upgradePanel: boolean, settings?: MainSettings
     } else {
         // مسیر استاندارد به‌روزرسانی: دریافت آخرین ریلیز از گیت‌هاب
         // (باندل‌های جدید دیگر SOURCE_CONTENT حمل نمی‌کنند — کاهش ~۷۶KB gzip)
-        const source = `${_repo_}/releases/latest/download/worker.js`;
-        const res = await fetch(source);
-        if (!res.ok) {
-            throw new Error(`Failed to fetch latest release: status ${res.status}`);
-        }
-        script = await res.text();
+        // موتور آینه‌ای: releases → Pages → jsDelivr با retry/backoff — مقاوم به 403/429 گیت‌هاب
+        const latest = await fetchLatestWorkerScript();
+        console.log(`Update engine: worker.js fetched from "${latest.source}" (${Math.round(latest.script.length / 1024)}KB)`);
+        script = latest.script;
         settings = settings ?? getSettings();
     }
 

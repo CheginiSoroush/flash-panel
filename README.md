@@ -116,7 +116,20 @@ The panel URL is often filtered. Your Telegram isn't.
 - **22 unit tests** on protocol parsers (VLESS/Trojan header edge cases)
 - **CI on every push** — check, test, build
 - **Automated releases** — tag → build → publish
-- **Self-update from panel** — zero-downtime upgrades
+- **Self-update from panel** — zero-downtime upgrades, now with a 3-mirror engine
+
+### 🔄 Panel self-update — built to survive GitHub 403s
+
+The one-click **Update panel** button fetches the latest `worker.js` and redeploys it with your settings intact. Server-side downloads of GitHub release assets used to fail from shared Cloudflare edge IPs (`403`/`429` rate limits) — the update engine now:
+
+- **3 mirrors with automatic fallback** — GitHub Releases → GitHub Pages mirror (`site/download/worker.js`, republished on every release) → jsDelivr CDN
+- **Retries with backoff** on `403`/`429`/`5xx`/timeouts; `404` short-circuits to the next mirror
+- **Content validation** — an HTML error page or truncated body is never deployed (length + `export default` checks)
+- **10-minute edge cache + request coalescing** — repeated clicks cost zero extra fetches
+- **Honest errors** — the panel toast now shows the real reason (GitHub 403 / token permission / quota) instead of a blind *"please try again"*
+- **Client-side version check fallback** — `raw.githubusercontent.com` first, jsDelivr second
+
+> 💡 If your panel is older than **v0.7.1** and the update button fails, retry in a few minutes (the 403 is transient) or upload `worker.js` manually via the Cloudflare dashboard / Flash Wizard — after that, every future update uses the mirror engine.
 
 ---
 

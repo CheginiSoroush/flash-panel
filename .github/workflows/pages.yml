@@ -24,6 +24,8 @@ jobs:
         run: |
           test -f site/index.html || { echo "::error::site/index.html missing"; exit 1; }
           test -f site/assets/panel-dashboard.jpg || { echo "::error::missing dashboard screenshot"; exit 1; }
+          # آینه‌ی worker.js برای به‌روزرسانی خودکار پنل — از ریلیز v0.7.1 به بعد الزامی
+          test -f site/download/worker.js || echo "::warning::site/download/worker.js missing — panel update mirror #2 will 404 until next release"
           echo "site OK: $(du -sh site | cut -f1)"
 
       - name: Deploy site/ to gh-pages branch

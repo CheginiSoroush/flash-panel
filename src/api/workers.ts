@@ -1,6 +1,23 @@
 import { safeError } from '@common';
 import { getGlobals } from '@settings';
 
+/**
+ * پیام‌های خطای Cloudflare API را به راهنمای عملی تبدیل می‌کند —
+ * کاربر به‌جای «please try again» بداند دقیقاً چه چیزی را باید درست کند.
+ */
+function humanizeDeployError(message: string): string {
+    if (/authentication|authorization|invalid api token|code:? ?10000|forbidden/i.test(message)) {
+        return `${message} — hint: your API token needs "Workers Scripts:Edit" permission for panel updates.`;
+    }
+    if (/quota|exceeded|rate limit|too many requests/i.test(message)) {
+        return `${message} — hint: free plan daily limit hit; retry after the quota resets.`;
+    }
+    if (/too large|size limit|10027/i.test(message)) {
+        return `${message} — hint: script size limit for your plan; use the latest optimized release.`;
+    }
+    return message;
+}
+
 export async function deployWorkers(script: string) {
     const { accID, apiToken, mainDomain } = getGlobals();
     const metadata = {
@@ -22,7 +39,7 @@ export async function deployWorkers(script: string) {
         });
 
         const data: any = await res.json();
-        if (!data.success) throw new Error(data?.errors?.[0]?.message);
+        if (!data.success) throw new Error(humanizeDeployError(data?.errors?.[0]?.message ?? `HTTP ${res.status}`));
     } catch (error) {
         throw new Error(`Failed to deploy worker: ${safeError(error)}`);
     }

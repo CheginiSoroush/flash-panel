@@ -26,3 +26,21 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/worker.js
+
+      # آینه‌ی دانلود برای به‌روزرسانی خودکار پنل:
+      # worker.js به site/download/ commit می‌شود → gh-pages سرو می‌کند
+      # → آینه‌ی دوم (github.io) و سوم (jsDelivr) موتور به‌روزرسانی زنده می‌مانند
+      # حتی وقتی گیت‌هاب Releases روی IPهای اشتراکی 403/429 می‌دهد
+      - name: Publish worker.js mirror to site/download
+        run: |
+          mkdir -p site/download
+          cp dist/worker.js site/download/worker.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/download/worker.js
+          if git diff --cached --quiet; then
+            echo "Mirror unchanged — skipping commit"
+          else
+            git commit -m "chore: publish worker.js mirror (${GITHUB_REF_NAME}) for panel auto-update"
+            git push origin main
+          fi

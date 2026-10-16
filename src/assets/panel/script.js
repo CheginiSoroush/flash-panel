@@ -83,25 +83,27 @@ async function getUsage() {
 }
 
 async function checkVersion(panelVersion) {
-    try {
-        const res = await fetch('https://raw.githubusercontent.com/CheginiSoroush/flash-panel/refs/heads/main/package.json', {
-            cache: 'no-store'
-        });
+    // آینه‌ی دوم: raw.githubusercontent در بعضی شبکه‌ها سنگین‌گیری/فیلتر می‌شود — jsDelivr پشتیبان است
+    const sources = [
+        'https://raw.githubusercontent.com/CheginiSoroush/flash-panel/refs/heads/main/package.json',
+        'https://cdn.jsdelivr.net/gh/CheginiSoroush/flash-panel@main/package.json'
+    ];
 
-        if (!res.ok) {
-            throw new Error(`status ${res.status}`);
-        }
+    for (const source of sources) {
+        try {
+            const res = await fetch(source, { cache: 'no-store' });
+            if (!res.ok) throw new Error(`status ${res.status}`);
 
-        const pkg = await res.json();
-        const latest = pkg.version;
-        const updateAvailable = isNewerVersion(latest, panelVersion);
-        if (updateAvailable) {
-            globalThis.latestVersion = latest;
-            const upgradeBtn = document.getElementById('updatePanel');
-            upgradeBtn.disabled = false;
+            const pkg = await res.json();
+            const latest = pkg.version;
+            if (isNewerVersion(latest, panelVersion)) {
+                globalThis.latestVersion = latest;
+                document.getElementById('updatePanel').disabled = false;
+            }
+            return;
+        } catch (error) {
+            console.error(`Get latest version error (${source}):`, error);
         }
-    } catch (error) {
-        console.error('Get latest version error:', error);
     }
 }
 
@@ -1017,14 +1019,16 @@ async function updatePanel(btn) {
     fetch('./panel/update-panel', { method: 'POST' })
         .then(res => res.json())
         .then(({ success, status, message }) => {
-            if (!success) throw new Error(`status ${status} - ${message}`);
+            if (!success) throw new Error(message || `status ${status}`);
             notify('success', 'Update panel', ['Your panel upgraded successfully!']);
             setTimeout(() => {
                 location.reload();
             }, 3000);
         })
         .catch(error => {
-            notify('error', 'Update panel', ['Failed to update your Flash Panel, please try again.']);
+            // دلیل واقعی خطا نمایش داده می‌شود (403 گیت‌هاب / دسترسی توکن / آینه‌ها) — نه فقط «try again»
+            const reason = String(error?.message || 'Unknown error').replace(/\s+/g, ' ').slice(0, 160);
+            notify('error', 'Update panel', ['Failed to update your Flash Panel.', reason]);
             console.error('Update panel error:', error)
         })
         .finally(() => stopWaiting(icons));
