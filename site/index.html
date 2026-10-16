@@ -7,7 +7,7 @@
 <meta name="description" data-i18n-attr="content:meta.desc" content="High-performance, serverless proxy panel for Cloudflare Workers. VLESS &amp; Trojan rewritten from scratch, Telegram bot control, TOTP 2FA, multi-user subscriptions.">
 <meta property="og:title" content="⚡ Flash Panel">
 <meta property="og:description" content="Serverless proxy panel for Cloudflare Workers — VLESS/Trojan from scratch, Telegram bot, TOTP 2FA, multi-user.">
-<meta property="og:image" content="assets/panel-overview.jpg">
+<meta property="og:image" content="assets/panel-dashboard.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2360a5fa'/%3E%3Cstop offset='1' stop-color='%232563eb'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='6' fill='%23000d2e'/%3E%3Cpath d='M13.5 3 6 13.5h4.5L10 21l7.5-10.5H13L13.5 3z' fill='url(%23g)'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -332,16 +332,16 @@ cp deploy/settings.example.js deploy/settings.js
     </div>
     <div class="shots">
       <figure class="shot reveal">
-        <img src="assets/panel-overview.jpg" alt="Flash Panel dashboard" loading="lazy">
+        <img src="assets/panel-dashboard.jpg" alt="Flash Panel dashboard" loading="lazy">
         <figcaption><b data-i18n="shot.1t">Main dashboard</b><span data-i18n="shot.1d"></span></figcaption>
       </figure>
       <figure class="shot reveal">
-        <img src="assets/wizard-web.jpg" alt="Flash Wizard web installer" loading="lazy">
-        <figcaption><b data-i18n="shot.2t">Flash Wizard</b><span data-i18n="shot.2d"></span></figcaption>
+        <img src="assets/panel-usage.jpg" alt="Daily usage history chart" loading="lazy">
+        <figcaption><b data-i18n="shot.2t">Usage history</b><span data-i18n="shot.2d"></span></figcaption>
       </figure>
       <figure class="shot reveal">
-        <img src="assets/wizard-cli.jpg" alt="Flash Wizard CLI installer" loading="lazy">
-        <figcaption><b data-i18n="shot.3t">CLI installer</b><span data-i18n="shot.3d"></span></figcaption>
+        <img src="assets/panel-users.jpg" alt="Subscription users management" loading="lazy">
+        <figcaption><b data-i18n="shot.3t">Subscription users</b><span data-i18n="shot.3d"></span></figcaption>
       </figure>
     </div>
   </section>
@@ -410,9 +410,9 @@ cp deploy/settings.example.js deploy/settings.js
       "dep.man.cta": "Full guide in README",
       "shot.kicker": "Screenshots",
       "shot.title": "A panel that feels like production software",
-      "shot.1t": "Main dashboard", "shot.1d": "Usage, settings, users and tools — bilingual and mobile-first.",
-      "shot.2t": "Flash Wizard", "shot.2d": "The web installer: from zero to a live worker in three steps.",
-      "shot.3t": "CLI installer", "shot.3d": "Prefer the terminal? The wizard has a CLI mode too.",
+      "shot.1t": "Main dashboard", "shot.1d": "Usage, settings, bot and tools — bilingual and mobile-first.",
+      "shot.2t": "Daily usage history", "shot.2d": "A dependency-free SVG chart with quota lines and over-quota days highlighted in red.",
+      "shot.3t": "Subscription users", "shot.3d": "A private UUID per user with instant revoke — Sister's tablet can't touch Office PC's link.",
       "foot.repo": "GitHub repo", "foot.releases": "Releases", "foot.wizard": "Flash Wizard", "foot.docs": "Documentation (English)", "foot.docsFa": "Documentation (فارسی)",
       "foot.note": "Released under the MIT License. Flash Panel is an independent open-source project — use responsibly and in accordance with your local laws and Cloudflare's ToS."
     },
@@ -457,9 +457,9 @@ cp deploy/settings.example.js deploy/settings.js
       "dep.man.cta": "راهنمای کامل در README",
       "shot.kicker": "تصاویر",
       "shot.title": "پنلی که حس نرم‌افزار عملیاتی می‌دهد",
-      "shot.1t": "داشبورد اصلی", "shot.1d": "مصرف، تنظیمات، کاربران و ابزارها — دوزبانه و موبایل‌محور.",
-      "shot.2t": "فلش ویزارد", "shot.2d": "نصاب وب: از صفر تا ورکر فعال در سه قدم.",
-      "shot.3t": "نصاب CLI", "shot.3d": "ترمینال را ترجیح می‌دهی؟ ویزارد حالت CLI هم دارد.",
+      "shot.1t": "داشبورد اصلی", "shot.1d": "مصرف، تنظیمات، ربات و ابزارها — دوزبانه و موبایل‌محور.",
+      "shot.2t": "نمودار مصرف روزانه", "shot.2d": "نمودار SVG بدون وابستگی با خط سهمیه و هایلایت قرمز روزهای تخطی.",
+      "shot.3t": "کاربران اشتراک", "shot.3d": "UUID خصوصی برای هر نفر با لغو فوری — لینک هر کاربر مستقل است.",
       "foot.repo": "مخزن گیت‌هاب", "foot.releases": "انتشارات", "foot.wizard": "فلش ویزارد", "foot.docs": "مستندات (English)", "foot.docsFa": "مستندات (فارسی)",
       "foot.note": "منتشرشده تحت مجوز MIT. فلش پنل یک پروژه متن‌باز مستقل است — مسئولانه و مطابق قوانین محلی و شرایط استفاده کلادفلر استفاده کن."
     }
