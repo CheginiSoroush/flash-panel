@@ -42,5 +42,6 @@ jobs:
             echo "Mirror unchanged — skipping commit"
           else
             git commit -m "chore: publish worker.js mirror (${GITHUB_REF_NAME}) for panel auto-update"
-            git push origin main
+            # checkout تگ است → detached HEAD — باید HEAD:main پوش شود نه main
+            git push origin HEAD:main
           fi
