@@ -1,6 +1,17 @@
 import { HttpStatus, respond, safeError } from '@common';
 import { clients, getGlobals, subscriptions } from '@settings';
+import { getSubUsers } from '@settings/sub-users';
 import { getCfWorkerUsage } from './usage';
+import {
+    BroadcastRecipient,
+    buildBroadcastConfirmText,
+    buildUserDetailText,
+    buildUsersOverviewText,
+    paginateUsers,
+    resolveBroadcastRecipients,
+    sendBroadcast,
+    USERS_PER_PAGE
+} from './telegram-broadcast';
 import { authenticate } from '@auth';
 import { getDataset, invalidateDatasetCache } from '@kv';
 import { TelegramBot } from '#types/settings';
@@ -92,6 +103,8 @@ export async function setTelegramBot(path: string, token: string) {
                     { command: 'config', description: '🔗 Get configs' },
                     { command: 'clients', description: '📱 Get supported clients' },
                     { command: 'usage', description: '📊 Monitor usage' },
+                    { command: 'users', description: '👥 Subscription users & stats' },
+                    { command: 'broadcast', description: '📢 Message all linked users' },
                     { command: 'settings', description: '⚙️ Change panel settings' },
 
                 ]
@@ -184,6 +197,10 @@ function mainKeyboard() {
             [{ text: '📱 Supported Clients', callback_data: 'clients' }],
             [{ text: '📊 Usage', callback_data: 'usage' }],
             [{ text: '⚙️ Settings', callback_data: 'settings' }],
+            [
+                { text: '👥 Users', callback_data: 'users' },
+                { text: '📢 Broadcast', callback_data: 'broadcast' }
+            ],
             [
                 { text: '📡 Status', callback_data: 'status' },
                 { text: '🔄 Restart', callback_data: 'restart' }
@@ -436,6 +453,16 @@ function buildSubUrl(type: string, app: string): URL {
     return url;
 }
 
+/** لینک اشتراک مخصوص یک کاربر چندکاربره — <securePath>/sub/<userId>/<type> */
+function buildUserSubUrl(userId: string, type: string, app: string): URL {
+    const { securePath, origin } = getGlobals();
+
+    const url = new URL(`/${securePath}/sub/${userId}/${type}`, origin);
+    url.searchParams.set('app', app);
+
+    return url;
+}
+
 function buildClientUrl(type: string, app: string, label: string): string {
     const url = buildSubUrl(type, app);
 
@@ -479,6 +506,256 @@ function buildDocUrl(type: string, app: string): string | null {
     docUrl.searchParams.set('nocache', Date.now().toString());
 
     return docUrl.href;
+}
+
+// ============================================================
+// 👥 کاربران اشتراک + 📢 broadcast — آمار per-user از KV
+// ============================================================
+
+async function sendUsersList(token: string, chatId: number, env: Env, page = 1): Promise<void> {
+    const users = await getSubUsers(env);
+    // تازه‌ترین‌ها اول — مثل ترتیب پنل
+    const ordered = [...users].reverse();
+    const { slice, page: safePage, totalPages } = paginateUsers(ordered, page, USERS_PER_PAGE);
+
+    const userButtons = slice.map(user => [{
+        text: `${user.active ? '🟢' : '🔴'} ${user.name}  (${user.fetchCount || 0}×)`,
+        callback_data: `u_${user.id}`
+    }]);
+
+    const navRow: { text: string; callback_data: string }[] = [];
+    if (safePage > 1) navRow.push({ text: '◀️ Prev', callback_data: `users_page_${safePage - 1}` });
+    if (safePage < totalPages) navRow.push({ text: 'Next ▶️', callback_data: `users_page_${safePage + 1}` });
+
+    const rows: { text: string; callback_data: string }[][] = [
+        ...userButtons,
+        ...(navRow.length ? [navRow] : []),
+        [{ text: '◀️ Back', callback_data: 'main' }]
+    ];
+
+    await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text: buildUsersOverviewText(ordered),
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: rows }
+    });
+}
+
+async function sendUserDetail(token: string, chatId: number, env: Env, userId: string): Promise<void> {
+    const users = await getSubUsers(env);
+    const user = users.find(u => u.id === userId);
+    if (!user) {
+        await tgFetch(token, 'sendMessage', {
+            chat_id: chatId,
+            text: '⚠️ User not found — it may have been deleted from the panel.',
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [[{ text: '◀️ Users', callback_data: 'users' }]] }
+        });
+        return;
+    }
+
+    await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text: buildUserDetailText(user),
+        parse_mode: 'HTML',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '🔗 Resend links', callback_data: `ulink_${user.id}` }],
+                [{ text: '◀️ Users', callback_data: 'users' }]
+            ]
+        }
+    });
+}
+
+/** ارسال دوباره‌ی لینک‌های یک کاربر — به chat خودش اگر لینک باشد، وگرنه به ادمین */
+async function sendUserLinks(token: string, adminChatId: number, env: Env, userId: string): Promise<void> {
+    const users = await getSubUsers(env);
+    const user = users.find(u => u.id === userId);
+    if (!user) {
+        await tgFetch(token, 'sendMessage', {
+            chat_id: adminChatId,
+            text: '⚠️ User not found.',
+            parse_mode: 'HTML'
+        });
+        return;
+    }
+
+    const normalUrl = buildUserSubUrl(user.id, 'normal', 'xray').href;
+    const rawUrl = buildUserSubUrl(user.id, 'raw', 'xray').href;
+    const text = [
+        `🔗 <b>Subscription links — ${user.name}</b>`,
+        '━━━━━━━━━━━━━━━━',
+        `📡 <b>Normal (Xray):</b>\n<code>${normalUrl}</code>`,
+        '',
+        `📄 <b>Raw:</b>\n<code>${rawUrl}</code>`,
+        '',
+        user.active ? '✅ This link is active.' : '🔴 This user is revoked — links return 401 until restored.'
+    ].join('\n');
+
+    const target = user.telegramChatId ? Number(user.telegramChatId) : adminChatId;
+    await tgFetch(token, 'sendMessage', {
+        chat_id: target,
+        text,
+        parse_mode: 'HTML',
+        reply_markup: { inline_keyboard: [[{ text: '◀️ Users', callback_data: 'users' }]] }
+    });
+
+    if (target !== adminChatId) {
+        await tgFetch(token, 'sendMessage', {
+            chat_id: adminChatId,
+            text: `✅ Links sent to <b>${user.name}</b>'s Telegram chat.`,
+            parse_mode: 'HTML'
+        });
+    }
+}
+
+/** شروع flow broadcast — پیام بعدی ادمین متن announcement است */
+async function promptBroadcast(token: string, chatId: number, env: Env, adminId: string): Promise<void> {
+    const users = await getSubUsers(env);
+    const recipients = resolveBroadcastRecipients(users, adminId, () => '');
+
+    if (recipients.length === 0) {
+        await tgFetch(token, 'sendMessage', {
+            chat_id: chatId,
+            text: '⚠️ <b>No recipients.</b>\n\nBroadcast needs at least the admin chat — this should never happen. Check the bot setup.',
+            parse_mode: 'HTML'
+        });
+        return;
+    }
+
+    await setPending(env, adminId, TG_BROADCAST_PENDING);
+    await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text: [
+            '📢 <b>Broadcast</b>',
+            '━━━━━━━━━━━━━━━━',
+            `👥 Recipients: <b>${recipients.length}</b> (admin + Telegram-linked users)`,
+            '',
+            '💬 Send the message to broadcast now.',
+            '',
+            '✨ Supported placeholders:',
+            '• <code>{name}</code> — user name',
+            '• <code>{link}</code> — their personal subscription URL',
+            '• <code>{uuid}</code> — their UUID',
+            '',
+            '<i>Send /settings or tap a menu button to cancel.</i>'
+        ].join('\n'),
+        parse_mode: 'HTML',
+        reply_markup: { force_reply: true, selective: true }
+    });
+}
+
+/** متن broadcast دریافت شد — ذخیره در pending + پیش‌نمایش برای تأیید */
+async function handleBroadcastTextInput(
+    token: string,
+    chatId: number,
+    env: Env,
+    adminId: string,
+    text: string
+): Promise<void> {
+    const users = await getSubUsers(env);
+    const recipients = resolveBroadcastRecipients(
+        users,
+        adminId,
+        (userId) => userId ? buildUserSubUrl(userId, 'normal', 'xray').href : buildSubUrl('normal', 'xray').href
+    );
+
+    // متن + پیشوند در یک کلید pending — بدون KV اضافه
+    await setPending(env, adminId, `${TG_BROADCAST_PREFIX}${text}`);
+
+    const sample = recipients[0] || { name: 'Admin', link: '', uuid: '' };
+    await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text: buildBroadcastConfirmText(text, recipients.length, sample),
+        parse_mode: 'HTML',
+        reply_markup: {
+            inline_keyboard: [[
+                { text: `✅ Send to ${recipients.length}`, callback_data: 'broadcast_confirm' },
+                { text: '❌ Cancel', callback_data: 'broadcast_cancel' }
+            ]]
+        }
+    });
+}
+
+/** fan-out نهایی — ارسال شخصی‌سازی‌شده به همه‌ی گیرنده‌ها با گزارش */
+async function confirmBroadcast(token: string, chatId: number, env: Env, adminId: string): Promise<void> {
+    const pending = await getPending(env, adminId);
+    if (!pending || !pending.startsWith(TG_BROADCAST_PREFIX)) {
+        await tgFetch(token, 'sendMessage', {
+            chat_id: chatId,
+            text: '⚠️ No pending broadcast — compose one with /broadcast first.',
+            parse_mode: 'HTML',
+            reply_markup: mainKeyboard()
+        });
+        return;
+    }
+
+    const template = pending.slice(TG_BROADCAST_PREFIX.length);
+    await clearPending(env, adminId); // جلوگیری از ارسال دوباره با tap های اتفاقی
+
+    const users = await getSubUsers(env);
+    const recipients = resolveBroadcastRecipients(
+        users,
+        adminId,
+        (userId) => userId ? buildUserSubUrl(userId, 'normal', 'xray').href : buildSubUrl('normal', 'xray').href
+    );
+
+    const status = await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text: `📤 Broadcasting to ${recipients.length} recipient(s)…`,
+        parse_mode: 'HTML'
+    });
+
+    const result = await sendBroadcast(recipients, template, async (recipientChatId, text) => {
+        const res: any = await tgFetch(token, 'sendMessage', {
+            chat_id: Number(recipientChatId),
+            text,
+            parse_mode: 'HTML',
+            link_preview_options: { is_disabled: true }
+        });
+        return Boolean(res?.ok);
+    });
+
+    // ویرایش پیام «در حال ارسال» به گزارش نهایی — با fallback به پیام جدید
+    const report = [
+        '📢 <b>Broadcast complete</b>',
+        '━━━━━━━━━━━━━━━━',
+        `✅ Sent: <b>${result.sent}</b>`,
+        `❌ Failed: <b>${result.failed}</b>`,
+        result.failedChats.length
+            ? `\n⚠️ Failed chats: <code>${result.failedChats.slice(0, 10).join(', ')}</code>`
+            : '',
+        '',
+        `${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`
+    ].join('\n');
+
+    const statusMsgId = (status as any)?.result?.message_id;
+    if (status?.ok && statusMsgId) {
+        await tgFetch(token, 'editMessageText', {
+            chat_id: chatId,
+            message_id: statusMsgId,
+            text: report,
+            parse_mode: 'HTML',
+            reply_markup: mainKeyboard()
+        });
+    } else {
+        await tgFetch(token, 'sendMessage', {
+            chat_id: chatId,
+            text: report,
+            parse_mode: 'HTML',
+            reply_markup: mainKeyboard()
+        });
+    }
+}
+
+async function cancelBroadcast(token: string, chatId: number, env: Env, adminId: string): Promise<void> {
+    await clearPending(env, adminId);
+    await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text: '❌ Broadcast cancelled — nothing was sent.',
+        parse_mode: 'HTML',
+        reply_markup: mainKeyboard()
+    });
 }
 
 async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number, env: Env): Promise<void> {
@@ -526,6 +803,23 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
             });
             break;
 
+        // ---------- 👥 کاربران اشتراک + 📢 broadcast ----------
+        case 'users':
+            await sendUsersList(token, chatId, env, 1);
+            break;
+
+        case 'broadcast':
+            await promptBroadcast(token, chatId, env, cq.from.id.toString());
+            break;
+
+        case 'broadcast_confirm':
+            await confirmBroadcast(token, chatId, env, cq.from.id.toString());
+            break;
+
+        case 'broadcast_cancel':
+            await cancelBroadcast(token, chatId, env, cq.from.id.toString());
+            break;
+
         case 'usage':
         case 'usage_refresh':
             const result = await getUsageCached();
@@ -570,8 +864,18 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
             break;
 
         default:
-                        // ---------- Settings ----------
-            if (data.startsWith('set_')) {
+            // ---------- Users: صفحه‌بندی، جزئیات، ارسال لینک ----------
+            // ترتیب مهم است: users_page_ و ulink_ قبل از u_ چک بشن
+            if (data.startsWith('users_page_')) {
+                const page = parseInt(data.slice(11), 10);
+                await sendUsersList(token, chatId, env, Number.isFinite(page) ? page : 1);
+            } else if (data.startsWith('ulink_')) {
+                await sendUserLinks(token, chatId, env, data.slice(6));
+            } else if (data.startsWith('u_')) {
+                await sendUserDetail(token, chatId, env, data.slice(2));
+            }
+            // ---------- Settings ----------
+            else if (data.startsWith('set_')) {
                 const field = data.slice(4) as EditableField;
                 const config = EDITABLE_SETTINGS[field];
                 if (!config) break;
@@ -711,6 +1015,12 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
         const data = cq.data || '';
 
         if (data === 'main') {
+            // لغو flow های در انتظار broadcast با بازگشت به منوی اصلی
+            const pending = await getPending(env, cq.from.id.toString());
+            if (pending && (pending === TG_BROADCAST_PENDING || pending.startsWith(TG_BROADCAST_PREFIX))) {
+                await clearPending(env, cq.from.id.toString());
+            }
+
             await tgFetch(botToken, 'sendMessage', {
                 chat_id: chatId,
                 text: `🤖 <b>${_project_} Panel Bot</b>\n\nChoose an option:`,
@@ -751,6 +1061,14 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
 
         if (!settingsField && text && !text.startsWith('/')) {
             const pending = await getPending(env, update.message.from.id.toString());
+
+            // ---------- 📢 Broadcast: در انتظار متن announcement ----------
+            if (pending === TG_BROADCAST_PENDING) {
+                await handleBroadcastTextInput(botToken, chatId, env, update.message.from.id.toString(), text);
+                await checkCfUsageWarning(botToken, chatId);
+                return new Response(null, { status: 200 });
+            }
+
             if (pending && pending in EDITABLE_SETTINGS) settingsField = pending;
         }
 
@@ -805,6 +1123,14 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
             }
         }
 
+        // دستور جدید = لغو هر flow در انتظار (متن broadcast آماده‌ی تأیید هم پاک می‌شود)
+        if (text.startsWith('/')) {
+            const stalePending = await getPending(env, update.message.from.id.toString());
+            if (stalePending && (stalePending === TG_BROADCAST_PENDING || stalePending.startsWith(TG_BROADCAST_PREFIX))) {
+                await clearPending(env, update.message.from.id.toString());
+            }
+        }
+
         switch (text) {
             case '/usage':
                 const result = await getUsageCached();
@@ -847,6 +1173,14 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
                     parse_mode: 'HTML',
                     reply_markup: clientsKeyboard()
                 });
+                break;
+
+            case '/users':
+                await sendUsersList(botToken, chatId, env, 1);
+                break;
+
+            case '/broadcast':
+                await promptBroadcast(botToken, chatId, env, update.message.from.id.toString());
                 break;
 
             case '/config':
@@ -942,6 +1276,12 @@ async function checkCfUsageWarning(botToken: string, chatId: number): Promise<vo
 // رو قبول می‌کنیم هم پیام تکی رو (اگه user توی حالت انتظار باشه)
 
 const TG_PENDING_PREFIX = 'tg-pending-';
+
+// flow broadcast از همان مکانیزم pending استفاده می‌کند:
+//   مقدار TG_BROADCAST_PENDING = «در انتظار متن announcement»
+//   مقدار TG_BROADCAST_PREFIX + text = «متن آماده‌ی ارسال، منتظر تأیید»
+const TG_BROADCAST_PENDING = 'broadcast';
+const TG_BROADCAST_PREFIX = 'broadcast:';
 
 async function setPending(env: Env, userId: string, field: string) {
     await env.kv.put(TG_PENDING_PREFIX + userId, field, { expirationTtl: 300 });

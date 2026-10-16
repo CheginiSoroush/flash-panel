@@ -534,9 +534,11 @@ async function handleSubUsers(request: Request, env: Env): Promise<Response> {
                     return respond(false, HttpStatus.BAD_REQUEST, 'Invalid user id.');
                 }
 
-                const patch: { name?: unknown; active?: unknown } = {};
+                const patch: { name?: unknown; active?: unknown; telegramChatId?: unknown } = {};
                 if (data?.name !== undefined) patch.name = data.name;
                 if (data?.active !== undefined) patch.active = data.active;
+                // لینک chat_id تلگرام برای broadcast ربات — '' یعنی حذف لینک
+                if (data?.telegramChatId !== undefined) patch.telegramChatId = data.telegramChatId;
 
                 const user = await updateSubUser(env, id, patch);
                 if (!user) {

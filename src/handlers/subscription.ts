@@ -3,7 +3,7 @@ import { getURLConfigs } from '@cores/common';
 import { getSbCustomConfig, getSbWarpConfig } from '@cores/sing-box/configs';
 import { getXrCustomConfigs, getXrWarpConfigs } from '@cores/xray/configs';
 import { setSettings, getGlobals, getSharedSettings, getSettings } from '@settings';
-import { isValidSubUserId, resolveSubUser } from '@settings/sub-users';
+import { isValidSubUserId, resolveAndRecordSubUser } from '@settings/sub-users';
 import { fallback } from './utils';
 import { getWireguardConfigs } from '@cores/wireguard';
 import { HttpStatus, respond } from '@common';
@@ -22,7 +22,8 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
     let userId: string | null = null;
 
     if (isValidSubUserId(seg3)) {
-        const user = await resolveSubUser(env, seg3);
+        // resolve + ثبت آمار واکشی (best-effort، آستانه‌ی ۵ دقیقه‌ای) در یک خواندن KV
+        const user = await resolveAndRecordSubUser(env, seg3);
         if (!user) {
             // کاربر حذف/غیرفعال شده — پاس صریح 401 (نه صفحه‌ی fallback)
             return respond(false, HttpStatus.UNAUTHORIZED, 'This subscription link has been revoked or is inactive.');

@@ -1213,6 +1213,66 @@ table tr:not(:last-child) {
     margin-top: 0.5rem;
 }
 
+/* ---------- آمار واکشی + ادیتور تلگرام هر کاربر ---------- */
+
+.sub-user-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.sub-user-stats {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+}
+
+.sub-user-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    direction: ltr;
+    padding: 0.2rem 0.55rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-text-secondary), transparent 92%);
+}
+
+.sub-user-stat .material-symbols-rounded {
+    font-size: 0.95rem;
+}
+
+.sub-user-stat.linked {
+    color: var(--color-icon-green);
+    background: color-mix(in srgb, var(--color-icon-green), transparent 88%);
+}
+
+.sub-user-chat {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.sub-user-chat input {
+    flex: 1;
+    min-width: 0;
+    direction: ltr;
+    text-align: left;
+    font-size: 0.85rem;
+    padding: 0.45rem 0.65rem;
+}
+
+.sub-user-chat button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0.4rem;
+}
+
 .sub-user-subs h4 {
     color: var(--color-text-secondary);
     font-size: 0.85rem;

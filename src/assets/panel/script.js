@@ -1257,6 +1257,54 @@ function renderSubUserItem(user) {
     const summary = elm('summary', {}, [title, actions]);
     const section = elm('details', {}, summary);
 
+    // ---------- آمار واکشی + لینک تلگرام (برای broadcast ربات) ----------
+    const fetchesElm = elm('span', { className: 'sub-user-stat', title: 'Recorded fetches (5-min throttle)' }, [
+        createIcon('bar_chart'),
+        document.createTextNode(String(user.fetchCount || 0))
+    ]);
+
+    const lastFetchElm = elm('span', { className: 'sub-user-stat', title: 'Last recorded fetch' }, [
+        createIcon('history'),
+        document.createTextNode(formatRelativeTime(user.lastFetchedAt))
+    ]);
+
+    const chatElm = elm('span', {
+        className: `sub-user-stat ${user.telegramChatId ? 'linked' : ''}`,
+        title: user.telegramChatId ? `Telegram chat: ${user.telegramChatId}` : 'No Telegram chat linked'
+    }, [
+        createIcon('smart_toy'),
+        document.createTextNode(user.telegramChatId ? 'linked' : 'no chat')
+    ]);
+
+    const statsRow = elm('div', { className: 'sub-user-stats' }, [fetchesElm, lastFetchElm, chatElm]);
+
+    // ---------- ادیتور chat_id تلگرام ----------
+    const chatInput = elm('input', {
+        type: 'text',
+        inputMode: 'numeric',
+        autoComplete: 'off',
+        spellcheck: false,
+        placeholder: 'Telegram chat ID (for bot broadcasts)',
+        value: user.telegramChatId || '',
+        onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); saveSubUserChat(user.id, chatInput.value); } }
+    });
+
+    const chatSaveBtn = elm('button', {
+        type: 'button',
+        title: 'Save Telegram chat ID',
+        onclick: (e) => { e.preventDefault(); saveSubUserChat(user.id, chatInput.value); }
+    }, createIcon('save'));
+
+    const chatClearBtn = elm('button', {
+        type: 'button',
+        title: 'Unlink Telegram chat',
+        onclick: (e) => { e.preventDefault(); chatInput.value = ''; saveSubUserChat(user.id, ''); }
+    }, createIcon('close'));
+
+    const chatEditor = elm('div', { className: 'sub-user-chat' }, [chatInput, chatSaveBtn, chatClearBtn]);
+
+    const meta = elm('div', { className: 'sub-user-meta' }, [statsRow, chatEditor]);
+
     const catalog = globalThis.subsCatalog || {};
     const tables = Object.entries(catalog).map(([type, { label, categories }]) => {
         const table = buildSubTable(
@@ -1267,12 +1315,52 @@ function renderSubUserItem(user) {
         return elm('div', { className: 'sub-user-subs' }, [heading, elm('div', { className: 'table-container' }, table)]);
     });
 
-    const container = elm('div', { className: 'sub-user-body' }, tables);
+    const container = elm('div', { className: 'sub-user-body' }, [meta, ...tables]);
     section.appendChild(container);
 
     return elm('div', {
         className: `accordion-item sub-user-item ${user.active ? '' : 'revoked-item'}`
     }, section);
+}
+
+/** زمان نسبی خوانا برای lastFetchedAt — هم‌شکل گزارش ربات */
+function formatRelativeTime(ts) {
+    if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) return '—';
+
+    const diff = Date.now() - ts;
+    if (diff < 0) return '—';
+    if (diff < 60_000) return 'just now';
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+    if (diff < 30 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+
+    return new Date(ts).toISOString().slice(0, 10);
+}
+
+/** ذخیره/حذف chat_id تلگرام یک کاربر — '' یعنی حذف لینک */
+async function saveSubUserChat(userId, rawValue) {
+    const value = (rawValue || '').trim();
+
+    if (value && !/^\d{5,20}$/.test(value)) {
+        notify('error', 'Subscription users', ['Telegram chat ID must be 5-20 digits (e.g. 123456789).']);
+        return;
+    }
+
+    try {
+        const res = await fetch('./panel/sub-users', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: userId, telegramChatId: value })
+        });
+        const { success, status, message } = await res.json();
+        if (!success) throw new Error(`status ${status} - ${message}`);
+
+        notify('success', 'Subscription users',
+            [value ? 'Telegram chat linked — this user is broadcast-ready.' : 'Telegram chat unlinked.']);
+        await loadSubUsers();
+    } catch (error) {
+        notify('error', 'Subscription users', [`Failed to save chat ID: ${error.message}`]);
+    }
 }
 
 async function addSubUser() {

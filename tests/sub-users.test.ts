@@ -1,16 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
     createSubUser,
     deleteSubUser,
     getSubUsers,
     isValidSubUserId,
+    normalizeSubUserChatId,
     parseSubUsers,
     resolveSubUser,
+    resolveAndRecordSubUser,
     sanitizeSubUserName,
     SUB_USERS_LIMIT,
     SUB_USER_NAME_MAX,
+    SUB_USER_FETCH_THROTTLE_MS,
     updateSubUser,
-    SubUser
+    SubUser,
+    _resetSubUserFetchState
 } from '../src/settings/sub-users';
 
 // ---------- KV mock — رفتار واقعی: مقدار رشته، type:json پارس می‌شود ----------
@@ -236,5 +240,227 @@ describe('resolveSubUser', () => {
 
         expect(await resolveSubUser(env, a.id)).toBeNull();   // A لغو شد
         expect((await resolveSubUser(env, b.id))!.id).toBe(b.id); // B مستقل کار می‌کنه
+    });
+});
+
+// ---------- normalizeSubUserChatId (لینک تلگرام برای broadcast) ----------
+
+describe('normalizeSubUserChatId', () => {
+    it('accepts plain digit strings of 5-20 chars', () => {
+        expect(normalizeSubUserChatId('123456789')).toBe('123456789');
+        expect(normalizeSubUserChatId('12345')).toBe('12345');
+        expect(normalizeSubUserChatId('12345678901234567890')).toBe('12345678901234567890');
+    });
+
+    it('trims surrounding whitespace and accepts numbers', () => {
+        expect(normalizeSubUserChatId('  987654321 ')).toBe('987654321');
+        expect(normalizeSubUserChatId(987654321)).toBe('987654321');
+        expect(normalizeSubUserChatId(987654321.7)).toBe('987654321'); // truncate
+    });
+
+    it('returns empty string as the explicit "unlink" signal', () => {
+        expect(normalizeSubUserChatId('')).toBe('');
+        expect(normalizeSubUserChatId('   ')).toBe('');
+        expect(normalizeSubUserChatId(null)).toBe('');
+    });
+
+    it('rejects non-numeric, short, long and wrong-typed inputs', () => {
+        expect(normalizeSubUserChatId('12a45')).toBeNull();
+        expect(normalizeSubUserChatId('-123456')).toBeNull();
+        expect(normalizeSubUserChatId('1234')).toBeNull();
+        expect(normalizeSubUserChatId('1'.repeat(21))).toBeNull();
+        expect(normalizeSubUserChatId(undefined)).toBeNull();
+        expect(normalizeSubUserChatId({ id: 1 })).toBeNull();
+        expect(normalizeSubUserChatId(true)).toBeNull();
+    });
+});
+
+// ---------- آمار واکشی + chat id در parse/KV ----------
+
+describe('sub-user stats fields', () => {
+    it('drops malformed stats but keeps valid ones when parsing raw KV', () => {
+        const id = crypto.randomUUID();
+        const [parsed] = parseSubUsers([{
+            id,
+            name: 'John',
+            active: true,
+            fetchCount: 'garbage',
+            lastFetchedAt: -5,
+            telegramChatId: 'not-digits!'
+        }]);
+
+        expect(parsed.fetchCount).toBeUndefined();
+        expect(parsed.lastFetchedAt).toBeUndefined();
+        expect(parsed.telegramChatId).toBeUndefined();
+
+        const good = crypto.randomUUID();
+        const [ok] = parseSubUsers([{
+            id: good,
+            name: 'Ali',
+            active: true,
+            fetchCount: 7,
+            lastFetchedAt: 1700000000000,
+            telegramChatId: '999888777'
+        }]);
+
+        expect(ok.fetchCount).toBe(7);
+        expect(ok.lastFetchedAt).toBe(1700000000000);
+        expect(ok.telegramChatId).toBe('999888777');
+    });
+
+    it('updates telegramChatId — set, clear with empty string, reject invalid', async () => {
+        const { kv } = createKvMock();
+        const env = { kv } as Env;
+
+        const user = (await createSubUser(env, 'John'))!;
+
+        const linked = await updateSubUser(env, user.id, { telegramChatId: '  111222333 ' });
+        expect(linked!.telegramChatId).toBe('111222333');
+
+        // عدد هم قابل قبول است
+        const numeric = await updateSubUser(env, user.id, { telegramChatId: 444555666 });
+        expect(numeric!.telegramChatId).toBe('444555666');
+
+        // '' = حذف لینک
+        const cleared = await updateSubUser(env, user.id, { telegramChatId: '' });
+        expect(cleared!.telegramChatId).toBeUndefined();
+
+        // نامعتبر → کل آپدیت رد می‌شه (null) و KV دست‌نخورده می‌مونه
+        expect(await updateSubUser(env, user.id, { telegramChatId: 'abc' })).toBeNull();
+        expect((await getSubUsers(env))[0].telegramChatId).toBeUndefined();
+    });
+
+    it('keeps other fields intact when only chat id changes', async () => {
+        const { kv } = createKvMock();
+        const env = { kv } as Env;
+
+        const user = (await createSubUser(env, 'John'))!;
+        await updateSubUser(env, user.id, { telegramChatId: '111222333' });
+
+        const all = await getSubUsers(env);
+        expect(all[0].name).toBe('John');
+        expect(all[0].active).toBe(true);
+        expect(all[0].id).toBe(user.id);
+    });
+});
+
+// ---------- resolveAndRecordSubUser (آمار واکشی با آستانه) ----------
+
+describe('resolveAndRecordSubUser', () => {
+    beforeEach(() => {
+        _resetSubUserFetchState();
+    });
+
+    it('keeps the resolve semantics: undefined for legacy, null for revoked/unknown', async () => {
+        const { kv } = createKvMock();
+        const env = { kv } as Env;
+
+        expect(await resolveAndRecordSubUser(env, 'normal')).toBeUndefined();
+        expect(await resolveAndRecordSubUser(env, crypto.randomUUID())).toBeNull();
+
+        const user = (await createSubUser(env, 'John'))!;
+        await updateSubUser(env, user.id, { active: false });
+        expect(await resolveAndRecordSubUser(env, user.id)).toBeNull();
+    });
+
+    it('counts the first fetch and stores lastFetchedAt', async () => {
+        const { kv } = createKvMock();
+        const env = { kv } as Env;
+        const user = (await createSubUser(env, 'John'))!;
+
+        const now = Date.now();
+        const resolved = await resolveAndRecordSubUser(env, user.id, now);
+
+        expect(resolved).not.toBeNull();
+        expect(resolved!.fetchCount).toBe(1);
+        expect(resolved!.lastFetchedAt).toBe(now);
+
+        const all = await getSubUsers(env);
+        expect(all[0].fetchCount).toBe(1);
+        expect(all[0].lastFetchedAt).toBe(now);
+    });
+
+    it('same-isolate bursts within the window do not increment and skip the write', async () => {
+        const { kv } = createKvMock();
+        let puts = 0;
+        const countingKv = {
+            get: kv.get.bind(kv),
+            put: async (key: string, value: string) => { puts++; await kv.put(key, value); },
+            delete: kv.delete.bind(kv)
+        } as unknown as KVNamespace;
+        const env = { kv: countingKv } as Env;
+
+        const user = (await createSubUser(env, 'John'))!; // ۱ put برای ساخت
+        puts = 0;
+
+        const t0 = Date.now();
+        await resolveAndRecordSubUser(env, user.id, t0);                          // ثبت — ۱ write
+        await resolveAndRecordSubUser(env, user.id, t0 + 30_000);                 // کش isolate — بدون write
+        await resolveAndRecordSubUser(env, user.id, t0 + SUB_USER_FETCH_THROTTLE_MS - 1_000);
+
+        expect(puts).toBe(1);
+        const all = await getSubUsers(env);
+        expect(all[0].fetchCount).toBe(1);
+        expect(all[0].lastFetchedAt).toBe(t0);
+    });
+
+    it('increments again after the throttle window passes', async () => {
+        const { kv } = createKvMock();
+        const env = { kv } as Env;
+        const user = (await createSubUser(env, 'John'))!;
+
+        const t0 = Date.now();
+        await resolveAndRecordSubUser(env, user.id, t0);
+        await resolveAndRecordSubUser(env, user.id, t0 + SUB_USER_FETCH_THROTTLE_MS + 60_000);
+        await resolveAndRecordSubUser(env, user.id, t0 + 2 * (SUB_USER_FETCH_THROTTLE_MS + 60_000));
+
+        const all = await getSubUsers(env);
+        expect(all[0].fetchCount).toBe(3);
+    });
+
+    it('revoked users get no fetch recording', async () => {
+        const { kv } = createKvMock();
+        const env = { kv } as Env;
+        const user = (await createSubUser(env, 'John'))!;
+        await updateSubUser(env, user.id, { active: false });
+
+        await resolveAndRecordSubUser(env, user.id, Date.now());
+
+        const all = await getSubUsers(env);
+        expect(all[0].fetchCount).toBeUndefined();
+    });
+
+    it('still resolves the user when the stats write fails (best-effort)', async () => {
+        const { kv, store } = createKvMock();
+        const env = { kv } as Env;
+        const user = (await createSubUser(env, 'John'))!;
+        _resetSubUserFetchState();
+
+        // put برای آمار شکست می‌خورد — ولی resolve باید سالم برگردد
+        const failingKv = {
+            get: kv.get.bind(kv),
+            put: async () => { throw new Error('KV write quota exceeded'); },
+            delete: kv.delete.bind(kv)
+        } as unknown as KVNamespace;
+
+        const resolved = await resolveAndRecordSubUser({ kv: failingKv } as Env, user.id, Date.now());
+        expect(resolved).not.toBeNull();
+        expect(resolved!.id).toBe(user.id);
+        // store دست‌نخورده — آمار نوشته نشده
+        expect(JSON.parse(store.get('subUsers')!)[0].fetchCount).toBeUndefined();
+    });
+
+    it('uses the isolate cache: consecutive calls within throttle still resolve correctly', async () => {
+        const { kv } = createKvMock();
+        const env = { kv } as Env;
+        const user = (await createSubUser(env, 'John'))!;
+
+        const t0 = Date.now();
+        const first = await resolveAndRecordSubUser(env, user.id, t0);
+        const second = await resolveAndRecordSubUser(env, user.id, t0 + 60_000);
+
+        expect(first!.fetchCount).toBe(1);
+        expect(second!.fetchCount).toBe(1); // داخل آستانه — بدون افزایش
+        expect(second!.lastFetchedAt).toBe(t0); // رکورد KV همان t0 است (write جدیدی نشده)
     });
 });

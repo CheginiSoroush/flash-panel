@@ -16,6 +16,15 @@ export interface SubUser {
     name: string;
     createdAt: number;
     active: boolean;
+    /** تعداد واکشی‌های ثبت‌شده‌ی لینک اشتراک (با آستانه‌ی ۵ دقیقه‌ای — ببین recordSubUserFetch) */
+    fetchCount?: number;
+    /** آخرین واکشی ثبت‌شده — epoch ms */
+    lastFetchedAt?: number;
+    /**
+     * chat_id تلگرام این کاربر (اختیاری) — برای broadcast شخصی‌سازی‌شده از ربات.
+     * فقط رقم — chat_id کاربر عادی تلگرام همیشه مثبت است.
+     */
+    telegramChatId?: string;
 }
 
 // حداقل/حداکثر منطقی برای جلوگیری از سوءاستفاده و پر شدن KV
@@ -36,6 +45,36 @@ export function sanitizeSubUserName(raw: unknown): string | null {
     return name;
 }
 
+/**
+ * پاکسازی chat_id تلگرام — فقط رقم (کاربر عادی)، طول ۵..۲۰.
+ * null یعنی ورودی نامعتبر؛ رشته‌ی خالی یعنی «حذف لینک».
+ */
+export function normalizeSubUserChatId(raw: unknown): string | null {
+    if (raw === null || raw === '') return '';
+    if (typeof raw !== 'string' && typeof raw !== 'number') return null;
+    const str = String(typeof raw === 'number' ? Math.trunc(raw) : raw.trim());
+    if (str === '') return '';
+    if (!/^\d{5,20}$/.test(str)) return null;
+    return str;
+}
+
+/** اعمال فیلدهای آماری/اختیاری بعد از اعتبارسنجی ساختاری — ورودی KV خام ممکنه خراب باشه */
+function sanitizeStats(u: SubUser): SubUser {
+    const count = Number(u.fetchCount);
+    if (Number.isFinite(count) && count > 0) u.fetchCount = Math.floor(count);
+    else delete u.fetchCount;
+
+    const at = Number(u.lastFetchedAt);
+    if (Number.isFinite(at) && at > 0) u.lastFetchedAt = Math.floor(at);
+    else delete u.lastFetchedAt;
+
+    const chat = normalizeSubUserChatId(u.telegramChatId);
+    if (chat) u.telegramChatId = chat;
+    else delete u.telegramChatId;
+
+    return u;
+}
+
 export function parseSubUsers(raw: unknown): SubUser[] {
     if (!Array.isArray(raw)) return [];
     return raw.filter(
@@ -44,7 +83,7 @@ export function parseSubUsers(raw: unknown): SubUser[] {
             typeof u === 'object' &&
             isValidSubUserId(String((u as SubUser).id)) &&
             typeof (u as SubUser).name === 'string'
-    );
+    ).map(sanitizeStats);
 }
 
 // ---------- عملیات KV ----------
@@ -80,7 +119,7 @@ export async function createSubUser(env: Env, rawName: unknown): Promise<SubUser
 export async function updateSubUser(
     env: Env,
     id: string,
-    patch: { name?: unknown; active?: unknown }
+    patch: { name?: unknown; active?: unknown; telegramChatId?: unknown }
 ): Promise<SubUser | null> {
     const users = await getSubUsers(env);
     const user = users.find(u => u.id === id);
@@ -94,6 +133,14 @@ export async function updateSubUser(
 
     if (patch.active !== undefined) {
         user.active = Boolean(patch.active);
+    }
+
+    if (patch.telegramChatId !== undefined) {
+        const chat = normalizeSubUserChatId(patch.telegramChatId);
+        // null = نامعتبر؛ '' = حذف لینک
+        if (chat === null) return null;
+        if (chat === '') delete user.telegramChatId;
+        else user.telegramChatId = chat;
     }
 
     await saveSubUsers(env, users);
@@ -119,4 +166,65 @@ export async function resolveSubUser(env: Env, id: string): Promise<SubUser | nu
     const users = await getSubUsers(env);
     const user = users.find(u => u.id === id);
     return user && user.active ? user : null;
+}
+
+// ---------- آمار واکشی هر کاربر ----------
+
+// آستانه‌ی ثبت — هر واکشی با فاصله‌ی کمتر از این از شمارش می‌افتد:
+// جلوگیری از burn شدن سهمیه‌ی write کلاینت‌هایی که پشت‌سرهم refresh می‌زنن.
+export const SUB_USER_FETCH_THROTTLE_MS = 5 * 60_000;
+
+// کش سطح isolate — اگه همین isolate تازه ثبت کرده، اصلاً KV خونده نمی‌شه
+// (تأثیر صفر روی تأخیر پاسخ اشتراک). بین isolate ها KV مرجع است.
+const fetchSeenAt = new Map<string, number>();
+
+/** ریست حالت isolate — فقط برای تست‌ها */
+export function _resetSubUserFetchState(): void {
+    fetchSeenAt.clear();
+}
+
+/**
+ * resolve + ثبت آمار واکشی — best-effort؛ هرگز پاس اشتراک را خراب نمی‌کند.
+ * آستانه‌ی ۵ دقیقه‌ای دو لایه است:
+ *   1. کش isolate — در بازه، اصلاً write نمی‌شود (خواندن KV برای چک revoke لازم است)
+ *   2. چک زمانی روی خود رکورد — isolate سرد هم شمارش تکراری نمی‌سازد
+ * ترکیب resolve + ثبت در یک خواندن KV (به‌جای دو بار خواندن).
+ */
+export async function resolveAndRecordSubUser(
+    env: Env,
+    id: string,
+    now: number = Date.now()
+): Promise<SubUser | null | undefined> {
+    if (!isValidSubUserId(id)) return undefined;
+
+    // در آستانه‌ی کش isolate؟ بدون write رد شو
+    const seen = fetchSeenAt.get(id);
+    if (seen !== undefined && now - seen < SUB_USER_FETCH_THROTTLE_MS) {
+        // هنوز باید اعتبار کاربر چک بشه — ولی خواندن KV برای resolve لازم است
+        const users = await getSubUsers(env);
+        const user = users.find(u => u.id === id);
+        return user && user.active ? user : null;
+    }
+
+    const users = await getSubUsers(env);
+    const user = users.find(u => u.id === id);
+    // همان قرارداد resolveSubUser: مسیر UUID همیشه null می‌دهد (نه undefined)
+    if (!user || !user.active) return null;
+
+    const freshWindow = typeof user.lastFetchedAt === 'number' &&
+        now - user.lastFetchedAt < SUB_USER_FETCH_THROTTLE_MS;
+
+    user.lastFetchedAt = now;
+    if (!freshWindow) {
+        user.fetchCount = (user.fetchCount || 0) + 1;
+    }
+
+    try {
+        await saveSubUsers(env, users);
+        fetchSeenAt.set(id, now);
+    } catch {
+        // write ناموفق — آمار مهم‌تر از دسترس‌پذیری اشتراک نیست
+    }
+
+    return user;
 }
