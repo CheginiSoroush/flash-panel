@@ -4,6 +4,59 @@ import { safeError } from '@common';
 import { getGlobals } from '@settings';
 import { touchWsRead, touchWsWrite } from './ws-guardian';
 
+// ---------- رجیستری سلامت ProxyIP (سطح isolate — بدون KV و write) ----------
+// انتخاب قبلی کاملاً تصادفی بود؛ یک ProxyIP مرده دوباره و دوباره امتحان می‌شد
+// و هر بار کل زنجیره‌ی اتصال → خطا → retry را برای کاربر گرون می‌کرد. حالا:
+// - موفقیت (رسیدن اولین داده‌ی واقعی) → IP سالم، جریمه صفر
+// - شکست (اتصال بدون داده بسته شد) → cooldown نمایی ۳۰s → ۱۰min
+// - اگر همه جریمه شدند → همان لیست کامل (شانس دوباره — وضعیت شبکه عوض شده)
+
+interface ProxyStat {
+    fails: number;
+    cooldownUntil: number;
+}
+
+const proxyHealth = new Map<string, ProxyStat>();
+const PROXY_COOLDOWN_BASE_MS = 30_000;
+const PROXY_COOLDOWN_MAX_MS = 10 * 60_000;
+const PROXY_HEALTH_MAX_ENTRIES = 100;
+
+function rememberProxy(key: string, stat: ProxyStat | undefined): void {
+    if (proxyHealth.size >= PROXY_HEALTH_MAX_ENTRIES && !proxyHealth.has(key)) {
+        const oldest = proxyHealth.keys().next().value;
+        if (oldest !== undefined) proxyHealth.delete(oldest);
+    }
+    if (stat) {
+        proxyHealth.delete(key);
+        proxyHealth.set(key, stat);
+    }
+}
+
+/**
+ * انتخاب ProxyIP با اولویت سالم‌ها — اگر همه در cooldown بودند، از لیست کامل
+ * انتخاب می‌شود (شبکه ممکن است برگردد) و cooldown آن‌ها منقضی‌شده در نظر گرفته می‌شود.
+ */
+export function pickProxyIP(proxyIPs: string[]): string {
+    if (proxyIPs.length === 0) return '';
+    const now = Date.now();
+    const healthy = proxyIPs.filter((ip) => (proxyHealth.get(ip)?.cooldownUntil ?? 0) <= now);
+    const pool = healthy.length ? healthy : proxyIPs;
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** اتصال موفق با جریان داده — جریمه پاک می‌شود */
+export function markProxyOk(proxyIP: string): void {
+    rememberProxy(proxyIP, { fails: 0, cooldownUntil: 0 });
+}
+
+/** اتصال بی‌داده — cooldown نمایی؛ هر شکست پشت‌سرهم دامنه را دوبرابر می‌کند */
+export function markProxyFail(proxyIP: string): void {
+    const prev = proxyHealth.get(proxyIP);
+    const fails = Math.min((prev?.fails ?? 0) + 1, 16);
+    const cooldown = Math.min(PROXY_COOLDOWN_BASE_MS * 2 ** (fails - 1), PROXY_COOLDOWN_MAX_MS);
+    rememberProxy(proxyIP, { fails, cooldownUntil: Date.now() + cooldown });
+}
+
 export const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
 
@@ -63,13 +116,14 @@ export async function handleTCPOutBound(
     async function retry() {
         const { proxyIpMode, proxyIPs, prefixes } = getGlobals();
         const getRandomValue = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+        let lastProxyIP = '';
 
         // کل منطق retry داخل try — دیگه unhandled rejection نداریم
         try {
             if (proxyIpMode === 'proxyip') {
                 log(`direct connection failed, trying to use Proxy IP for ${addressRemote}`);
-                const proxyIP = getRandomValue(proxyIPs);
-                const { host, port } = parseHostPort(proxyIP, true);
+                lastProxyIP = pickProxyIP(proxyIPs);
+                const { host, port } = parseHostPort(lastProxyIP, true);
                 if (host) addressRemote = host;
                 if (port) portRemote = port;
             } else if (proxyIpMode === 'prefix') {
@@ -96,8 +150,13 @@ export async function handleTCPOutBound(
                 .catch(error => console.log('retry TCP socket closed error', error))
                 .finally(() => safeCloseWebSocket(webSocket));
 
-            remoteSocketToWS(tcpSocket, webSocket, VLResponseHeader, null, log);
+            // سلامت ProxyIP: اگر در این تلاش داده‌ی واقعی برگشت → سالم؛
+            // اگر جریان بدون هیچ داده‌ای بسته شد → مرده و cooldown می‌خورد
+            remoteSocketToWS(tcpSocket, webSocket, VLResponseHeader, null, log, (hasData) => {
+                if (lastProxyIP) hasData ? markProxyOk(lastProxyIP) : markProxyFail(lastProxyIP);
+            });
         } catch (error) {
+            if (lastProxyIP) markProxyFail(lastProxyIP);
             console.error('Retry connection failed:', error);
             webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);
         }
@@ -117,7 +176,8 @@ async function remoteSocketToWS(
     webSocket: WebSocket,
     VLResponseHeader: Uint8Array | null,
     retry: (() => void) | null,
-    log: Logger
+    log: Logger,
+    onResult?: (hasData: boolean) => void
 ) {
     let vlHeader = VLResponseHeader;
     let hasIncomingData = false;
@@ -159,6 +219,9 @@ async function remoteSocketToWS(
         safeCloseTcpSocket(remoteSocket);
         safeCloseWebSocket(webSocket);
     }
+
+    // گزارش نتیجه برای رجیستری سلامت ProxyIP (فقط مسیر retry استفاده می‌کند)
+    onResult?.(hasIncomingData);
 
     if (hasIncomingData === false && retry) {
         log(`retry`);

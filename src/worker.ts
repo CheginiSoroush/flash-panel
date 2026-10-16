@@ -6,7 +6,7 @@ import { handleProxyIPs } from '@handlers/proxy-ip';
 import { generateQRCode } from '@handlers/qrcode';
 import { handleSubscriptions } from '@handlers/subscription';
 import { handleTelegram } from '@handlers/telegram';
-import { fallback } from '@handlers/utils';
+import { fallback, hardenResponse, robotsResponse } from '@handlers/utils';
 import { handleWebsocket } from '@handlers/websocket';
 import { sampleUsageNow } from '@api/usage';
 import { init, getGlobals } from '@settings';
@@ -23,6 +23,12 @@ export default {
 
             const { securePath, pathname } = getGlobals();
 
+            // robots.txt در ریشه‌ی دامنه — قبل از گارد securePath (استاندارد جایی
+            // است که خزنده‌ها سراغش می‌روند)؛ محتوایش هیچ اطلاعاتی افشا نمی‌کند
+            if (pathname === '/robots.txt') {
+                return robotsResponse();
+            }
+
             // روتینگ سگمنت‌محور — بدون join/splice و تخصیص‌های اضافه
             // معادل دقیق منطق قبلی: '/segment1/segment2/...' → مسیر ۳ سگمنتی
             const segments = pathname.split('/');
@@ -30,33 +36,44 @@ export default {
                 return fallback(request);
             }
 
+            let response: Response;
             switch (segments[2]) {
                 case 'panel':
-                    return handlePanel(request, env);
+                    response = await handlePanel(request, env);
+                    break;
 
                 case 'login':
-                    return handleLogin(request, env);
+                    response = await handleLogin(request, env);
+                    break;
 
                 case 'sub':
-                    return handleSubscriptions(request, env);
+                    response = await handleSubscriptions(request, env);
+                    break;
 
                 case 'telegram':
-                    return handleTelegram(request, env);
+                    response = await handleTelegram(request, env);
+                    break;
 
                 case 'dns-query':
-                    return handleDoH(request);
+                    response = await handleDoH(request);
+                    break;
 
                 case 'proxy-ip':
-                    return handleProxyIPs(request, env);
+                    response = await handleProxyIPs(request, env);
+                    break;
 
                 case 'qrcode':
-                    return generateQRCode(request);
+                    response = await generateQRCode(request);
+                    break;
 
                 default:
                     return fallback(request);
             }
+
+            // ضد شناسایی/نشتی روی همه‌ی پاسخ‌های مسیر امن (پنل/لاگین/اشتراک/…)
+            return hardenResponse(response);
         } catch (error) {
-            return renderError(error);
+            return hardenResponse(await renderError(error));
         }
     },
 

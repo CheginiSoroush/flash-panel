@@ -18,7 +18,86 @@ export interface GeoAsset {
     format?: string;
 }
 
+// ---------- کش DNS سطح isolate ----------
+// هر resolveDNS قبلاً یک رفت‌وبرگشت DoH کامل بود؛ در مسیر اتصال (حالت prefix)
+// و در تولید اشتراک (getConfigAddresses) یعنی تأخیر ۲۰–۸۰ms اضافه به‌ازای هر
+// اتصال/درخواست. کش با TTL واقعی رکورد + ادغام درخواست‌های همزمان (in-flight)
+// + «پاسخ کهنه در خطا» (اگر DoH موقتاً شکست خورد، آخرین پاسخ سالم برگردد —
+// اتصال هرگز به‌خاطر کش نمی‌میرد) + سقف ورودی LRU-سبک برای حافظه.
+
+interface DnsCacheEntry {
+    expires: number;
+    stale: DnsResult;
+}
+
+const dnsCache = new Map<string, DnsCacheEntry>();
+const dnsInFlight = new Map<string, Promise<DnsResult>>();
+
+const DNS_TTL_DEFAULT_MS = 5 * 60_000;   // وقتی رکورد TTL ندارد
+const DNS_TTL_MAX_MS = 30 * 60_000;      // سقف TTL رکورد
+const DNS_CACHE_MAX_ENTRIES = 100;       // سقف ورودی‌های کش (LRU-سبک)
+
+/** پاک‌سازی کش DNS — فقط برای تست‌ها */
+export function clearDnsCache(): void {
+    dnsCache.clear();
+    dnsInFlight.clear();
+}
+
+function dnsCacheKey(domain: string, onlyIPv4: boolean): string {
+    return onlyIPv4 ? `${domain}|v4` : `${domain}|v46`;
+}
+
+function dnsStore(key: string, result: DnsResult, ttlSeconds: number): void {
+    const ttlMs = Math.min(Math.max(ttlSeconds * 1000, DNS_TTL_DEFAULT_MS), DNS_TTL_MAX_MS);
+
+    // LRU-سبک: اگر سقف پر شد، قدیمی‌ترین (اولین Map) حذف می‌شود
+    if (!dnsCache.has(key) && dnsCache.size >= DNS_CACHE_MAX_ENTRIES) {
+        const oldest = dnsCache.keys().next().value;
+        if (oldest !== undefined) dnsCache.delete(oldest);
+    }
+
+    // درج مجدد برای تازگی LRU
+    dnsCache.delete(key);
+    dnsCache.set(key, { expires: Date.now() + ttlMs, stale: result });
+}
+
 export async function resolveDNS(domain: string, onlyIPv4 = false): Promise<DnsResult> {
+    const key = dnsCacheKey(domain, onlyIPv4);
+    const now = Date.now();
+
+    const cached = dnsCache.get(key);
+    if (cached) {
+        if (cached.expires > now) {
+            // تازه‌سازی LRU — ورودی‌های پرتکرار حذف نمی‌شوند
+            dnsCache.delete(key);
+            dnsCache.set(key, cached);
+            return cached.stale;
+        }
+        // منقضی — از همین لحظه «کهنه‌ی قابل‌بازگشت در خطا» است ولی دوباره resolve می‌کنیم
+    }
+
+    // ادغام درخواست‌های همزمان — یک DoH برای N فراخوان موازی
+    let pending = dnsInFlight.get(key);
+    if (!pending) {
+        pending = doResolveDNS(domain, onlyIPv4)
+            .then(({ result, ttl }) => {
+                dnsInFlight.delete(key);
+                dnsStore(key, result, ttl);
+                return result;
+            })
+            .catch((error) => {
+                dnsInFlight.delete(key);
+                // stale-on-error — پاسخ کهنه بهتر از قطع اتصال است
+                if (cached) return cached.stale;
+                throw error;
+            });
+        dnsInFlight.set(key, pending);
+    }
+
+    return pending;
+}
+
+async function doResolveDNS(domain: string, onlyIPv4: boolean): Promise<{ result: DnsResult; ttl: number }> {
     const dohBaseURL = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}`;
     const dohURLs = {
         ipv4: `${dohBaseURL}&type=A`,
@@ -26,24 +105,41 @@ export async function resolveDNS(domain: string, onlyIPv4 = false): Promise<DnsR
     };
 
     try {
-        const ipv4 = await fetchDNSRecords(dohURLs.ipv4, 1);
-        const ipv6 = onlyIPv4 ? [] : await fetchDNSRecords(dohURLs.ipv6, 28);
-        return { ipv4, ipv6 };
+        const v4 = await fetchDNSRecordsWithTTL(dohURLs.ipv4, 1);
+        const v6 = onlyIPv4 ? { records: [] as string[], ttl: DNS_TTL_DEFAULT_MS / 1000 } : await fetchDNSRecordsWithTTL(dohURLs.ipv6, 28);
+        return {
+            result: { ipv4: v4.records, ipv6: v6.records },
+            ttl: Math.min(v4.ttl, v6.ttl),
+        };
     } catch (error) {
         throw new Error(`Error resolving DNS for ${domain}: ${safeError(error)}`);
     }
 }
 
 export async function fetchDNSRecords(url: string, recordType: number): Promise<string[]> {
+    const { records } = await fetchDNSRecordsWithTTL(url, recordType);
+    return records;
+}
+
+async function fetchDNSRecordsWithTTL(url: string, recordType: number): Promise<{ records: string[]; ttl: number }> {
     try {
         const response = await fetch(url, { headers: { accept: 'application/dns-json' } });
         const data: any = await response.json();
 
-        if (!data.Answer) return [];
+        if (!data.Answer) return { records: [], ttl: DNS_TTL_DEFAULT_MS / 1000 };
 
-        return data.Answer
+        let minTtl = Number.POSITIVE_INFINITY;
+        const records = data.Answer
             .filter((record: any) => record.type === recordType)
-            .map((record: any) => record.data);
+            .map((record: any) => {
+                if (typeof record.TTL === 'number' && record.TTL < minTtl) minTtl = record.TTL;
+                return record.data;
+            });
+
+        return {
+            records,
+            ttl: Number.isFinite(minTtl) ? minTtl : DNS_TTL_DEFAULT_MS / 1000,
+        };
 
     } catch (error) {
         throw new Error(`Failed to fetch DNS records from ${url}: ${safeError(error)}`);
