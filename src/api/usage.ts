@@ -1,6 +1,6 @@
 import { authenticate } from '@auth';
 import { HttpStatus, respond, safeError } from '@common';
-import { getGlobals } from '@settings';
+import { getGlobals, initForScheduled } from '@settings';
 import { getUsageHistory, recordUsageSample } from '@settings/usage-history';
 
 interface CfUsageResult {
@@ -70,6 +70,27 @@ export async function getCfWorkerUsage(): Promise<CfUsageResult> {
         return { success: true, total: totalRequests, worker: workerRequests };
     } catch (error) {
         return { success: false, error: 'Error fetching usage data. Check your credentials.' };
+    }
+}
+
+/**
+ * نمونه‌گیری مستقل از درخواست — برای scheduled handler (cron trigger).
+ *
+ * بدون این، سری زمانی usage فقط وقتی پر می‌شه که کسی پنل رو باز کنه و
+ * روزهای بدون بازدید خالی می‌مونن. globals بدون Request مقداردهی می‌شن
+ * (فیلدهای وابسته به درخواست در مسیر GraphQL استفاده نمی‌شن) و هر خطا
+ * swallow می‌شه — cron هرگز نباید worker رو crash کنه.
+ */
+export async function sampleUsageNow(env: Env): Promise<void> {
+    try {
+        initForScheduled(env);
+
+        const usage = await getCfWorkerUsage();
+        if (usage.success) {
+            await recordUsageSample(env, usage.total ?? 0, usage.worker ?? 0);
+        }
+    } catch {
+        // best-effort — نبودِ نمونه بهتر از کرشِ scheduled handler است
     }
 }
 

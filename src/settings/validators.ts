@@ -26,6 +26,7 @@ const validators = [
     validateXrayNoises,
     validateCustomRules,
     validateEchConfig,
+    validateWsGuardian,
     validateUUID,
     validateTrPass,
     validateFallback,
@@ -456,6 +457,18 @@ function validateXrayNoises(form: PanelSettings, errors: ValidationError[]) {
             }
         }
     });
+}
+
+function validateWsGuardian(form: PanelSettings, errors: ValidationError[]) {
+    if (!form.wsGuardianEnabled) return;
+
+    const idle = Number(form.wsGuardianIdleSec);
+    if (!Number.isFinite(idle) || idle < 30 || idle > 3600) {
+        errors.push({
+            field: 'WS Guardian',
+            message: ['Idle timeout must be between 30 and 3600 seconds.']
+        });
+    }
 }
 
 function validateEchConfig(form: PanelSettings, errors: ValidationError[]) {

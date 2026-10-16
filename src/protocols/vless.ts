@@ -1,17 +1,19 @@
 import { getGlobals } from '@settings';
 import {
     safeCloseTcpSocket,
+    safeCloseWebSocket,
     handleTCPOutBound,
     makeReadableWebSocketStream,
     WS_READY_STATE_OPEN
 } from '@protocols/common';
 import type { RemoteSocketWrapper } from '@protocols/common';
+import { attachWsGuardian, WsGuardianConfig } from './ws-guardian';
 import { getUUIDBytes, parseVlHeader } from './parsers';
 
 // در حالت دیباگ true کنید تا لاگ‌ها فعال بشن
 const LOG_ENABLED = false;
 
-export async function VlOverWSHandler(request: Request): Promise<Response> {
+export async function VlOverWSHandler(request: Request, guardian?: WsGuardianConfig | null): Promise<Response> {
     const { vlUUID } = getGlobals();
     const userUUIDBytes = getUUIDBytes(vlUUID);
 
@@ -36,6 +38,15 @@ export async function VlOverWSHandler(request: Request): Promise<Response> {
     const remoteSocketWrapper: RemoteSocketWrapper = { value: null, writer: null };
     let udpStreamWrite: ((chunk: ArrayBuffer | Uint8Array<ArrayBuffer>) => Promise<void>) | null = null;
     let isDns = false;
+
+    // نگهبان اتصال — فقط وقتی در تنظیمات فعال باشه (پیش‌فرض: خاموش)
+    // بعد از wrapper ثبت می‌شه تا onClose به سوکت ریموت دسترسی داشته باشه
+    if (guardian?.enabled) {
+        attachWsGuardian(webSocket, () => {
+            safeCloseTcpSocket(remoteSocketWrapper.value);
+            safeCloseWebSocket(webSocket);
+        }, { idleMs: guardian.idleSec * 1_000 }, log);
+    }
 
     const writableStream = new WritableStream({
         async write(chunk: ArrayBuffer) {

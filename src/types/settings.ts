@@ -56,6 +56,10 @@ export interface KvSettings {
     customBypassRules: string[];
     customBlockRules: string[];
     customBypassSanctionRules: string[];
+    /** نگهبان اتصال WS — بستن فعال اتصال‌های زامبی شبکه موبایل (پیش‌فرض: خاموش) */
+    wsGuardianEnabled: boolean;
+    /** آستانه‌ی بی‌تفاوتی دوطرفه به ثانیه — ۳۰..۳۶۰۰ */
+    wsGuardianIdleSec: number;
     warpRemoteDNS: string;
     warpEndpoints: string[];
     warpBestPingInterval: number;

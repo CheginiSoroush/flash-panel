@@ -8,5 +8,10 @@
     "observability": { "enabled": true },
     "kv_namespaces": [
         { "binding": "kv", "id": "YOUR_KV_NAMESPACE_ID" }
-    ]
+    ],
+    // اختیاری — نمونه‌گیری خودکار مصرف روزانه برای نمودار Usage History.
+    // بدون بازدید پنل هم نمونه‌ی روزانه ثبت می‌شود (۰۳:۰۰ UTC).
+    "triggers": {
+        "crons": ["0 3 * * *"]
+    }
 }

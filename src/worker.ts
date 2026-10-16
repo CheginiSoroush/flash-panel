@@ -8,6 +8,7 @@ import { handleSubscriptions } from '@handlers/subscription';
 import { handleTelegram } from '@handlers/telegram';
 import { fallback } from '@handlers/utils';
 import { handleWebsocket } from '@handlers/websocket';
+import { sampleUsageNow } from '@api/usage';
 import { init, getGlobals } from '@settings';
 
 export default {
@@ -15,10 +16,9 @@ export default {
         try {
             init(request, env);
 
-            // طبق RFC 6455 مقایسه Upgrade باید case-insensitive باشه
-            // (کلاینتی که 'WebSocket' بفرسته قبلاً به مسیر پنل می‌افتاد)
+            // Upgrade باید case-insensitive باشه (RFC 6455)
             if ((request.headers.get('Upgrade') || '').toLowerCase() === 'websocket') {
-                return handleWebsocket(request);
+                return handleWebsocket(request, env);
             }
 
             const { securePath, pathname } = getGlobals();
@@ -58,5 +58,17 @@ export default {
         } catch (error) {
             return renderError(error);
         }
+    },
+
+    /**
+     * Cron trigger — نمونه‌گیری خودکار مصرف.
+     *
+     * بدون این، سری زمانی usage فقط وقتی ثبت می‌شه که کسی پنل رو باز کنه —
+     * روزهای بدون بازدید توی نمودار مصرف خالی می‌مونن. با یک cron روزانه
+     * (پیشنهاد: '0 3 * * *' در wrangler.jsonc → triggers.crons) حتی بدون
+     * بازدید، نمونه‌ی روزانه ثبت می‌شه. best-effort — خطا هرگز throw نمی‌شه.
+     */
+    async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+        ctx.waitUntil(sampleUsageNow(env));
     }
 }

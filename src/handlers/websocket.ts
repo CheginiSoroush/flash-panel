@@ -3,8 +3,41 @@ import { TrOverWSHandler } from '@protocols/trojan';
 import { VlOverWSHandler } from '@protocols/vless';
 import { getGlobals } from '@settings';
 import { fallback } from './utils';
+import { clampGuardianIdleSec, WsGuardianConfig } from '@protocols/ws-guardian';
+import { getDataset } from '@kv';
 
-export async function handleWebsocket(request: Request): Promise<Response> {
+// ----------
+// پیکربندی نگهبان با کش ۵ دقیقه‌ای isolate — تنظیمات به‌ندرت عوض می‌شن و
+// هر اتصال WS نباید هزینه‌ی خواندن KV داشته باشه (بعد از اولین fetch، صفر I/O).
+// خرابی خواندن → گاردینگ خاموش (پروکسی هرگز نباید وابسته به پنل بشه)
+// ----------
+
+const GUARDIAN_CACHE_TTL = 5 * 60_000;
+
+let guardianCache: { value: WsGuardianConfig; expiresAt: number } | null = null;
+
+async function resolveGuardianConfig(env: Env): Promise<WsGuardianConfig> {
+    if (guardianCache && Date.now() < guardianCache.expiresAt) {
+        return guardianCache.value;
+    }
+
+    let config: WsGuardianConfig = { enabled: false, idleSec: clampGuardianIdleSec(undefined) };
+
+    try {
+        const { settings } = await getDataset(env);
+        config = {
+            enabled: settings.wsGuardianEnabled === true,
+            idleSec: clampGuardianIdleSec(settings.wsGuardianIdleSec)
+        };
+    } catch {
+        // تنظیمات در دسترس نیست — پیش‌فرض امن (خاموش)
+    }
+
+    guardianCache = { value: config, expiresAt: Date.now() + GUARDIAN_CACHE_TTL };
+    return config;
+}
+
+export async function handleWebsocket(request: Request, env: Env): Promise<Response> {
     const { pathname } = getGlobals();
 
     // استخراج سگمنت اول بدون ساخت آرایه (در هر کانکشن اجرا می‌شه)
@@ -15,10 +48,10 @@ export async function handleWebsocket(request: Request): Promise<Response> {
     try {
         switch (protocol) {
             case 'vl':
-                return VlOverWSHandler(request);
+                return VlOverWSHandler(request, await resolveGuardianConfig(env));
 
             case 'tr':
-                return TrOverWSHandler(request);
+                return TrOverWSHandler(request, await resolveGuardianConfig(env));
 
             default:
                 return fallback(request);

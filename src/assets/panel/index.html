@@ -392,6 +392,24 @@
                                 </span>
                             </div>
                         </div>
+                        <div class="form-control">
+                            <label for="wsGuardianEnabled">WS Guardian</label>
+                            <div class="select-wrapper">
+                                <select id="wsGuardianEnabled" name="wsGuardianEnabled">
+                                    <option value="true">Enabled</option>
+                                    <option value="false">Disabled</option>
+                                </select>
+                                <span class="material-symbols-rounded">
+                                    keyboard_arrow_down
+                                </span>
+                            </div>
+                        </div>
+                        <div class="form-control">
+                            <label for="wsGuardianIdleSec">WS Guardian Timeout (seconds)</label>
+                            <div>
+                                <input type="number" id="wsGuardianIdleSec" name="wsGuardianIdleSec" min="30" max="3600">
+                            </div>
+                        </div>
                         <div class="container">
                             <div class="section">
                                 <h4><span class="material-symbols-rounded">tune</span> Proxy IP</h4>

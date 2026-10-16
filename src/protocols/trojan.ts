@@ -3,9 +3,11 @@ import { getGlobals } from '@settings';
 import {
     handleTCPOutBound,
     makeReadableWebSocketStream,
-    safeCloseTcpSocket
+    safeCloseTcpSocket,
+    safeCloseWebSocket
 } from '@protocols/common';
 import type { RemoteSocketWrapper } from '@protocols/common';
+import { attachWsGuardian, WsGuardianConfig } from './ws-guardian';
 import { parseTrHeader } from './parsers';
 
 // در حالت دیباگ true کنید تا لاگ‌ها فعال بشن
@@ -29,7 +31,7 @@ function getHashBytes(trPass: string): Uint8Array {
     return bytes;
 }
 
-export async function TrOverWSHandler(request: Request): Promise<Response> {
+export async function TrOverWSHandler(request: Request, guardian?: WsGuardianConfig | null): Promise<Response> {
     const { trPass } = getGlobals();
     const hashBytes = getHashBytes(trPass);
 
@@ -52,6 +54,14 @@ export async function TrOverWSHandler(request: Request): Promise<Response> {
 
     // wrapper با writer — از کش writer در common.ts استفاده می‌شه
     const remoteSocketWrapper: RemoteSocketWrapper = { value: null, writer: null };
+
+    // نگهبان اتصال — فقط وقتی در تنظیمات فعال باشه (پیش‌فرض: خاموش)
+    if (guardian?.enabled) {
+        attachWsGuardian(webSocket, () => {
+            safeCloseTcpSocket(remoteSocketWrapper.value);
+            safeCloseWebSocket(webSocket);
+        }, { idleMs: guardian.idleSec * 1_000 }, log);
+    }
 
     const writableStream = new WritableStream({
         async write(chunk: ArrayBuffer) {

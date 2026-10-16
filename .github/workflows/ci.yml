@@ -22,3 +22,85 @@ jobs:
       - run: npm run test
 
       - run: npm run build
+
+      # ---------- benchmark باندل — روی هر build ----------
+      # build-info.json توسط scripts/build.js تولید می‌شود (version/gzipKb/rawKb/limits)
+      - name: Bundle benchmark
+        run: |
+          node -e "
+            const fs = require('fs');
+            const info = JSON.parse(fs.readFileSync('dist/build-info.json', 'utf8'));
+            const gzip = Number(info.gzipKb);
+            const limit = 150; // هدف نقشه راه — سقف Free کلادفلر 3MB است
+            const pct = ((gzip / (info.limits?.freeKb ?? 3072)) * 100).toFixed(1);
+            const line = '| metric | value |\n|---|---|\n' +
+              '| version | ' + info.version + ' |\n' +
+              '| gzip | ' + gzip + ' KB |\n' +
+              '| raw | ' + info.rawKb + ' KB |\n' +
+              '| free-plan usage | ' + pct + '% |\n' +
+              '| gate (gzip ≤ ' + limit + ' KB) | ' + (gzip <= limit ? 'PASS ✅' : 'FAIL ❌') + ' |';
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, line);
+            console.log(line);
+            if (!(gzip <= limit)) {
+              console.error('Bundle size gate failed: ' + gzip + 'KB > ' + limit + 'KB');
+              process.exit(1);
+            }
+          "
+
+      - name: Upload bundle info
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-info
+          path: dist/build-info.json
+          if-no-files-found: warn
+
+  # ---------- benchmark کامل روی تگ‌های ریلیز ----------
+  # خروجی: summary با نتیجه تست‌ها و حجم باندل + آرتیفکت build-info
+  release-benchmark:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: check-test-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install --legacy-peer-deps
+
+      - name: Full pipeline
+        run: |
+          npm run check
+          npm run test 2>&1 | tee test-output.txt
+          npm run build
+
+      - name: Release benchmark summary
+        run: |
+          node -e "
+            const fs = require('fs');
+            const info = JSON.parse(fs.readFileSync('dist/build-info.json', 'utf8'));
+            const testOut = fs.existsSync('test-output.txt') ? fs.readFileSync('test-output.txt', 'utf8') : '';
+            const testMatch = testOut.match(/Tests\s+(\d+)\s+passed/);
+            const tests = testMatch ? testMatch[1] + ' passed' : 'see logs';
+            const summary = [
+              '# 🚀 Release benchmark — ' + info.version,
+              '',
+              '| metric | value |',
+              '|---|---|',
+              '| unit tests | ' + tests + ' |',
+              '| bundle (gzip) | ' + info.gzipKb + ' KB |',
+              '| bundle (raw) | ' + info.rawKb + ' KB |',
+              '| free-plan usage | ' + ((Number(info.gzipKb) / (info.limits?.freeKb ?? 3072)) * 100).toFixed(1) + '% |',
+              '| built at | ' + info.builtAt + ' |',
+              ''
+            ].join('\n');
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+            console.log(summary);
+          "
+
+      - name: Upload worker
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-${{ github.ref_name }}
+          path: dist/worker.js

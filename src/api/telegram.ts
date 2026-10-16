@@ -295,6 +295,22 @@ const EDITABLE_SETTINGS = {
         current: (s: any) => s.fingerprint
     },
 
+    // ---------- نگهبان WS ----------
+    'wsGuardianEnabled': {
+        label: '🛰 WS Guardian',
+        hint: 'true یا false — بستن اتصال‌های زامبی شبکه موبایل',
+        validate: boolValidate, current: (s: any) => String(s.wsGuardianEnabled)
+    },
+    'wsGuardianIdleSec': {
+        label: '🛰 WS Guardian Timeout',
+        hint: 'ثانیه — بین ۳۰ تا ۳۶۰۰ (پیش‌فرض ۳۰۰)',
+        validate: (v: string) => {
+            const n = Number(v.trim());
+            return (Number.isInteger(n) && n >= 30 && n <= 3600) || 'Must be an integer between 30 and 3600';
+        },
+        current: (s: any) => String(s.wsGuardianIdleSec)
+    },
+
     // ---------- قوانین مسیریابی — toggle های true/false ----------
     'bypassIran': {
         label: '🇮🇷 Bypass Iran',
@@ -378,6 +394,11 @@ function settingsKeyboard() {
             [{ text: '🛡 Protocols', callback_data: 'set_protocols' }],
             [{ text: '🧹 Clean IPs', callback_data: 'set_cleanIPs' }],
             [{ text: '🔑 Fingerprint', callback_data: 'set_fingerprint' }],
+            // ---------- نگهبان WS ----------
+            [
+                { text: '🛰 Guardian', callback_data: 'set_wsGuardianEnabled' },
+                { text: '⏱ Timeout', callback_data: 'set_wsGuardianIdleSec' }
+            ],
             // ---------- مسیریابی ----------
             [
                 { text: '🇮🇷 Iran', callback_data: 'set_bypassIran' },
@@ -1101,6 +1122,12 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
                         newValue = text.toLowerCase().split(',').map(p => p.trim()).join(',');
                     } else if (field === 'cleanIPs') {
                         newValue = text.split('\n').map(l => l.trim()).filter(Boolean);
+                    } else if (config.validate === boolValidate) {
+                        // باگ پیش‌موجود: رشته‌ی 'false' در JS truthy است و قوانین
+                        // مسیریابی را وارونه می‌کرد — بولی واقعی ذخیره می‌شود
+                        newValue = text.trim().toLowerCase() === 'true';
+                    } else if (field === 'wsGuardianIdleSec') {
+                        newValue = Number(text.trim());
                     } else {
                         newValue = text.trim();
                     }

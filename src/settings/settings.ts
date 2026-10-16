@@ -100,6 +100,26 @@ export async function setSettings(env: Env) {
     warpAccounts = dataset.warpAccounts;
 }
 
+/**
+ * مقداردهی globals برای context بدون Request — scheduled handler (cron).
+ * فقط فیلدهای استاتیک embeded استفاده می‌شن؛ مقادیر وابسته به درخواست خنثی می‌شن.
+ */
+export function initForScheduled(env: Env): void {
+    if (typeof EMBEDED_SETTINGS === 'undefined') {
+        throw new Error('Flash Panel is not configured — EMBEDED_SETTINGS is missing.');
+    }
+
+    globalSettings = {
+        ...getStaticGlobals(),
+        deployType: env.CF_PAGES === '1' ? 'pages' : 'workers',
+        client: '',
+        origin: '',
+        searchParams: new URLSearchParams(),
+        pathname: '/',
+        hostname: ''
+    };
+}
+
 export const getGlobals = (): EmbededSettings & ReqSettings => globalSettings;
 export const getWarpAccounts = (): WarpAccount[] => warpAccounts;
 export const getKvSettings = (): KvSettings => kvSettings;
@@ -305,6 +325,9 @@ const DEFAULT_KV_SETTINGS: KvSettings = {
     customBypassRules: [],
     customBlockRules: [],
     customBypassSanctionRules: [],
+    // نگهبان WS — به‌صورت پیش‌فرض خاموش تا رفتار فعلی تغییر نکنه
+    wsGuardianEnabled: false,
+    wsGuardianIdleSec: 300,
     remoteSettings: '',
     panelVersion: VERSION
 };

@@ -169,6 +169,8 @@ const SETTINGS_FIELDS: Array<
         ['customBypassRules'],
         ['customBlockRules'],
         ['customBypassSanctionRules'],
+        ['wsGuardianEnabled'],
+        ['wsGuardianIdleSec'],
         ['warpRemoteDNS'],
         ['warpEndpoints'],
         ['warpBestPingInterval'],

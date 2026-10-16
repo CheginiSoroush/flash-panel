@@ -2,6 +2,7 @@ import { connect } from 'cloudflare:sockets';
 import { isIPv4, parseHostPort, resolveDNS } from '@utils';
 import { safeError } from '@common';
 import { getGlobals } from '@settings';
+import { touchWsRead, touchWsWrite } from './ws-guardian';
 
 export const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
@@ -124,6 +125,7 @@ async function remoteSocketToWS(
     const writableStream = new WritableStream({
         async write(chunk: Chunk, controller) {
             hasIncomingData = true;
+            touchWsWrite(webSocket); // نگهبان: فعالیت سمت سرور
             if (webSocket.readyState !== WS_READY_STATE_OPEN) {
                 controller.error('webSocket.readyState is not open, maybe close');
                 return; // باگ قبلی: بعد از error هم به send ادامه می‌داد
@@ -176,6 +178,7 @@ export function makeReadableWebSocketStream(
         start(controller) {
             webSocketServer.addEventListener('message', (event) => {
                 if (readableStreamCancel) return;
+                touchWsRead(webSocketServer); // نگهبان: فعالیت سمت کلاینت
                 controller.enqueue(event.data);
             });
 
