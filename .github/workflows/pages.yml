@@ -1,0 +1,38 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sanity check site assets
+        run: |
+          test -f site/index.html || { echo "::error::site/index.html missing"; exit 1; }
+          test -f site/assets/panel-overview.jpg || { echo "::error::missing panel screenshot"; exit 1; }
+          echo "site OK: $(du -sh site | cut -f1)"
+
+      - name: Deploy site/ to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
+          keep_files: false
+          force_orphan: false
+          commit_message: 'deploy: ${{ github.sha }} — bilingual landing site'
+          enable_jekyll: false
