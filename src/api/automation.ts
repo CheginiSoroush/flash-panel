@@ -4,6 +4,7 @@ import { getCfWorkerUsage } from '@api/usage';
 import { recordUsageSample } from '@settings/usage-history';
 import { getSubUsers, isSubUserExpired, sweepExpiredSubUsers, SubUser } from '@settings/sub-users';
 import { tuneProxyIPs, ProxyTuneResult } from './proxy-tuner';
+import { tuneCleanIPs, CleanTuneResult } from './clean-tuner';
 import { TelegramBot } from '#types/settings';
 
 /**
@@ -33,6 +34,8 @@ interface AutomationState {
     usageWarned?: boolean;
     /** آخرین Auto-Tune ProxyIP (epoch ms) — بین روزها حفظ می‌شود */
     proxyTunedAt?: number;
+    /** آخرین Auto-Tune CleanIPs (epoch ms) — بین روزها حفظ می‌شود */
+    cleanTunedAt?: number;
 }
 
 const AUTOMATION_KEY = 'automationState';
@@ -141,6 +144,8 @@ export interface DigestInput {
     now?: number;
     /** بهترین ProxyIP از Auto-Tune — اگر موجود باشد نمایش داده می‌شود */
     bestProxyIP?: string | null;
+    /** بهترین CleanIP از Auto-Tune — اگر موجود باشد نمایش داده می‌شود */
+    bestCleanIP?: string | null;
 }
 
 /**
@@ -206,6 +211,10 @@ export function buildDigestText(input: DigestInput): string {
         lines.push('', `⚡ <b>Auto-tuned proxyIP:</b> ${esc(input.bestProxyIP)}`);
     }
 
+    if (input.bestCleanIP) {
+        lines.push('', `🧹 <b>Auto-tuned cleanIPs:</b> ${esc(input.bestCleanIP)}`);
+    }
+
     return lines.join('\n');
 }
 
@@ -235,6 +244,12 @@ export interface AutomationRunResult {
     bestProxyIP?: string | null;
     /** نتیجه‌ی کامل tune — برای تست */
     tune?: ProxyTuneResult;
+    /** Auto-Tune CleanIPs در این دور اجرا شد؟ */
+    cleanTuned?: boolean;
+    /** بهترین CleanIP تست‌شده (برای لاگ/تست) */
+    bestCleanIP?: string | null;
+    /** نتیجه‌ی کامل clean tune — برای تست */
+    clean?: CleanTuneResult;
 }
 
 /**
@@ -257,8 +272,8 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
     const today = utcDateKey(new Date(now));
     let state = await loadState(env);
     if (state.date !== today) {
-        // روز جدید — گاردهای روزانه ریست؛ proxyTunedAt بین روزها حفظ می‌شود
-        state = { date: today, proxyTunedAt: state.proxyTunedAt };
+        // روز جدید — گاردهای روزانه ریست؛ tuner timestamps بین روزها حفظ می‌شوند
+        state = { date: today, proxyTunedAt: state.proxyTunedAt, cleanTunedAt: state.cleanTunedAt };
     }
 
     // ---------- ۱+۲) نمونه‌گیری مصرف + sweep انقضا + بات — مستقل و موازی ----------
@@ -319,6 +334,23 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
         console.log(`automation: proxy tune failed — ${safeError(error)}`);
     }
 
+    // ---------- ۳b) Auto-Tune CleanIPs (هر ۶ ساعت — ضد-فیلترینگ خودکار) ----------
+    // بعد از proxy tune (هر دو blob می‌نویسند — موازی نباشند تا clobber نشود)
+    const CLEAN_TUNE_INTERVAL_MS = 6 * 3_600_000;
+    try {
+        if (now - (state.cleanTunedAt ?? 0) >= CLEAN_TUNE_INTERVAL_MS) {
+            const clean = await tuneCleanIPs(env);
+            state.cleanTunedAt = now;
+            await saveState(env, state);
+            result.cleanTuned = true;
+            result.bestCleanIP = clean.best;
+            result.clean = clean;
+            console.log(`automation: clean ip tune — pool ${clean.poolSize}, healthy ${clean.healthyCount}, best ${clean.best ?? '—'}, changed ${clean.changed}${clean.skipped ? ` (${clean.skipped})` : ''}`);
+        }
+    } catch (error) {
+        console.log(`automation: clean ip tune failed — ${safeError(error)}`);
+    }
+
     // ---------- ۴) هشدار مصرف ≥۸۰٪ (یک‌بار در روز — همان نمونه‌ی ابتدای tick) ----------
     try {
         if (bot && !state.usageWarned && usage.success &&
@@ -336,7 +368,7 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
     try {
         if (bot && !state.digestSent) {
             const users = await getSubUsers(env);
-            await notifyAdmin(bot, buildDigestText({ usage, users, date: today, bestProxyIP: result.bestProxyIP }));
+            await notifyAdmin(bot, buildDigestText({ usage, users, date: today, bestProxyIP: result.bestProxyIP, bestCleanIP: result.bestCleanIP }));
             state.digestSent = true;
             result.digestSent = true;
             await saveState(env, state);

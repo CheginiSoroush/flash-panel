@@ -90,6 +90,9 @@ async function loadDataset(env: Env): Promise<Dataset> {
             settings = await mergeDataset(env, undefined, settings);
         }
 
+        // self-heal — remoteDnsHost باید با remoteDNS هم‌تراز باشد (بوت‌استرپ DoH دامنه‌ای)
+        settings = await healRemoteDnsHost(env, settings);
+
         let telegramBot: TelegramBot | null = storedTelegramBot;
         if (!telegramBot) {
             telegramBot = { telegramBotToken: '', telegramUserId: '' };
@@ -282,4 +285,35 @@ async function getDnsParams(dns: string): Promise<DnsHost> {
     }
 
     return dohHost;
+}
+
+/**
+ * self-heal — هم‌ترازسازی remoteDnsHost با remoteDNS (یک‌بارِ می‌نویسد، بدون loop).
+ *
+ * وقتی remoteDNS دامنه‌ای است (DoH با URL — مثل AdGuard)، کلاینت برای بوت‌استرپ
+ * به pin‌کردن IP آن دامنه در hosts نیاز دارد (dns.ts: رزولوشن دامنه‌ی سرور DNS
+ * نباید به خود DNS واگذار شود — مرغ و تخم‌مرغ). اگر داده‌ی KV کهنه/ناسازگار
+ * باشد (مثلاً remoteDNS از پنل/API عوض شده ولی remoteDnsHost قدیمی مانده)،
+ * بوت‌استرپ به DNS سیستم کلاینت می‌افتد — در ایران سمّی‌پذیر است و کل رزولوشن
+ * ریموت را کند/مطمئین‌ناپذیر می‌کند. اینجا در لود، داده درست بازساخته و یک‌بار
+ * persist می‌شود؛ در لودهای بعدی شرط برقرار است و write ای در کار نیست.
+ */
+export async function healRemoteDnsHost(env: Env, settings: KvSettings): Promise<KvSettings> {
+    try {
+        const { host, isHostDomain } = getDomain(settings.remoteDNS);
+        if (!isHostDomain) return settings; // مبتنی بر IP — pin کردن بی‌معنا
+
+        const current = settings.remoteDnsHost;
+        if (current?.isDomain && current.host === host) return settings; // سالم و هم‌تراز
+
+        const healed = await getDnsParams(settings.remoteDNS);
+        const next: KvSettings = { ...settings, remoteDnsHost: healed };
+        await env.kv.put('proxySettings', JSON.stringify(next));
+        invalidateDatasetCache();
+        syncKvSettings(next);
+        return next;
+    } catch {
+        // best-effort — هرگز لود تنظیمات را نمی‌شکند؛ دور بعد دوباره تلاش می‌شود
+        return settings;
+    }
 }
