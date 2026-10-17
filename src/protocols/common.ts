@@ -35,13 +35,26 @@ function rememberProxy(key: string, stat: ProxyStat | undefined): void {
 /**
  * انتخاب ProxyIP با اولویت سالم‌ها — اگر همه در cooldown بودند، از لیست کامل
  * انتخاب می‌شود (شبکه ممکن است برگردد) و cooldown آن‌ها منقضی‌شده در نظر گرفته می‌شود.
+ *
+ * انتخاب وزنی (نه یکنواخت): Auto-Tune لیست را «سریع‌ترین → کندتر» مرتب می‌کند؛
+ * کاندیدای اول بیشترین وزن را دارد (n) و وزن هر ورودی بعدی یکی کم می‌شود.
+ * نتیجه: بیشترِ ترافیک از سریع‌ترین واسط می‌گذرد ولی بقیه هم سهم می‌برند
+ * (پخش بار + ضد-abuse). لیست ادمین (مرتب‌نشده) هم ضرری نمی‌کند — فقط ترجیح ترتیب.
  */
 export function pickProxyIP(proxyIPs: string[]): string {
     if (proxyIPs.length === 0) return '';
     const now = Date.now();
     const healthy = proxyIPs.filter((ip) => (proxyHealth.get(ip)?.cooldownUntil ?? 0) <= now);
     const pool = healthy.length ? healthy : proxyIPs;
-    return pool[Math.floor(Math.random() * pool.length)];
+    if (pool.length === 1) return pool[0];
+
+    // چرخ رولت وزنی: وزن‌های n, n-1, …, 1 — جمع = n(n+1)/2
+    let r = Math.random() * ((pool.length * (pool.length + 1)) / 2);
+    for (let i = 0; i < pool.length; i++) {
+        r -= pool.length - i;
+        if (r < 0) return pool[i];
+    }
+    return pool[0];
 }
 
 /** اتصال موفق با جریان داده — جریمه پاک می‌شود */
@@ -156,12 +169,16 @@ export async function handleTCPOutBound(
 
     // انتخاب مقصد واسط بر اساس حالت تنظیمات — بدون mutation متغیرهای اصلی تا
     // fallback مستقیم همیشه آدرس واقعی مقصد را داشته باشد
+    // exclude: کاندیداهایی که در این زنجیره امتحان شده‌اند (failover دوم)
     async function resolveProxyTarget(
         targetHost: string,
-        targetPort: number
+        targetPort: number,
+        exclude?: ReadonlySet<string>
     ): Promise<{ host: string; port: number; proxyIP: string } | null> {
         const { proxyIpMode, prefixes } = getGlobals();
-        const proxyIPs = getEffectiveProxyIPs(); // Auto-Tune اگر موجود باشد، وگرنه لیست ادمین
+        // Auto-Tune اگر موجود باشد، وگرنه لیست ادمین — منهای کاندیداهای مردود این زنجیره
+        const fullList = getEffectiveProxyIPs();
+        const proxyIPs = exclude?.size ? fullList.filter(ip => !exclude.has(ip)) : fullList;
         const getRandomValue = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
         if (proxyIpMode === 'proxyip') {
@@ -216,7 +233,32 @@ export async function handleTCPOutBound(
                 webSocket.close(1011, 'Retry connection failed: Invalid Prefix');
                 return; // باگ قبلی: ادامه می‌داد و به همون آدرس شکست‌خورده reconnect می‌کرد
             }
-            await attemptViaProxy(target, null);
+
+            // failover دوم: اگر واسط اول بدون هیچ داده‌ای مُرد، یک کاندیدای «متفاوت»
+            // امتحان می‌شود — کاربر دیگر به‌خاطر یک واسط بد کل اتصال را از دست نمی‌دهد.
+            // (کاندیدای مرده همان لحظه cooldown می‌خورد؛ تلاش دوم به‌طور طبیعی ازش می‌پرد.
+            //  فقط وقتی استخر ≥۲ کاندیداست معنا دارد و به‌اندازه‌ی یک connect گرون است.)
+            const attemptSecondProxy = getEffectiveProxyIPs().length >= 2
+                ? () => {
+                    void (async () => {
+                        try {
+                            const exclude = new Set<string>(target.proxyIP ? [target.proxyIP] : []);
+                            const alt = await resolveProxyTarget(addressRemote, portRemote, exclude);
+                            if (!alt || (alt.host === target.host && alt.port === target.port)) {
+                                // کاندیدای متمایز نبود (استخر تک‌نفره در عمل) — پایان تمیز
+                                webSocket.close(1011, 'Retry connection failed');
+                                return;
+                            }
+                            await attemptViaProxy(alt, null);
+                        } catch (error) {
+                            console.error('Retry connection failed:', error);
+                            webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);
+                        }
+                    })();
+                }
+                : null;
+
+            await attemptViaProxy(target, attemptSecondProxy);
         } catch (error) {
             console.error('Retry connection failed:', error);
             webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);

@@ -261,29 +261,37 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
         state = { date: today, proxyTunedAt: state.proxyTunedAt };
     }
 
-    // ---------- ۱) نمونه‌گیری مصرف ----------
-    try {
-        const usage = await getCfWorkerUsage();
-        if (usage.success) {
-            await recordUsageSample(env, usage.total ?? 0, usage.worker ?? 0);
-        }
-    } catch (error) {
-        console.log(`automation: usage sample failed — ${safeError(error)}`);
-    }
+    // ---------- ۱+۲) نمونه‌گیری مصرف + sweep انقضا + بات — مستقل و موازی ----------
+    // (قبلاً سری بود و usage در همین tick تا ۳ بار fetch می‌شد — حالا یک‌بار
+    //  fetch و در هشدار/digest همان tick استفاده می‌شود: ۲ subrequest کمتر در هر دور)
+    let usage: Awaited<ReturnType<typeof getCfWorkerUsage>> = { success: false };
 
-    // ---------- ۲) sweep انقضا + notify ----------
-    const bot = await getBot(env);
+    // (متغیر usage در closure پر می‌شود؛ عنصر میانی tuple صرفاً همگام‌سازی است)
+    const [bot, , sweep] = await Promise.all([
+        getBot(env),
+        getCfWorkerUsage()
+            .then((u) => {
+                usage = u;
+                if (usage.success) {
+                    return recordUsageSample(env, usage.total ?? 0, usage.worker ?? 0)
+                        .catch((error) => console.log(`automation: usage record failed — ${safeError(error)}`));
+                }
+                return undefined;
+            })
+            .catch((error) => {
+                console.log(`automation: usage sample failed — ${safeError(error)}`);
+                return undefined;
+            }),
+        sweepExpiredSubUsers(env, now).catch((error) => {
+            console.log(`automation: expiry sweep failed — ${safeError(error)}`);
+            return { swept: [] as SubUser[], expiringSoon: [] as SubUser[] };
+        })
+    ]);
 
-    try {
-        const sweep = await sweepExpiredSubUsers(env, now);
-        result.swept = sweep.swept.length;
-
-        if (bot && (sweep.swept.length || sweep.expiringSoon.length)) {
-            await notifyAdmin(bot, buildSweepText(sweep.swept, sweep.expiringSoon));
-            result.notified = true;
-        }
-    } catch (error) {
-        console.log(`automation: expiry sweep failed — ${safeError(error)}`);
+    result.swept = sweep.swept.length;
+    if (bot && (sweep.swept.length || sweep.expiringSoon.length)) {
+        await notifyAdmin(bot, buildSweepText(sweep.swept, sweep.expiringSoon));
+        result.notified = true;
     }
 
     // ---------- ۳) Auto-Tune ProxyIP (هر ۶ ساعت — بدون بات هم کار می‌کند) ----------
@@ -311,26 +319,23 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
         console.log(`automation: proxy tune failed — ${safeError(error)}`);
     }
 
-    // ---------- ۴) هشدار مصرف ≥۸۰٪ (یک‌بار در روز) ----------
+    // ---------- ۴) هشدار مصرف ≥۸۰٪ (یک‌بار در روز — همان نمونه‌ی ابتدای tick) ----------
     try {
-        if (bot && !state.usageWarned) {
-            const usage = await getCfWorkerUsage();
-            if (usage.success && (usage.total ?? 0) / DAILY_QUOTA * 100 >= USAGE_WARN_PCT) {
-                await notifyAdmin(bot, buildUsageWarnText(usage.total ?? 0, usage.worker ?? 0));
-                state.usageWarned = true;
-                result.usageWarned = true;
-                await saveState(env, state);
-            }
+        if (bot && !state.usageWarned && usage.success &&
+            (usage.total ?? 0) / DAILY_QUOTA * 100 >= USAGE_WARN_PCT) {
+            await notifyAdmin(bot, buildUsageWarnText(usage.total ?? 0, usage.worker ?? 0));
+            state.usageWarned = true;
+            result.usageWarned = true;
+            await saveState(env, state);
         }
     } catch (error) {
         console.log(`automation: usage warn failed — ${safeError(error)}`);
     }
 
-    // ---------- ۵) خلاصه‌ی روزانه (یک‌بار در روز UTC) ----------
+    // ---------- ۵) خلاصه‌ی روزانه (یک‌بار در روز UTC — همان نمونه‌ی مصرف) ----------
     try {
         if (bot && !state.digestSent) {
             const users = await getSubUsers(env);
-            const usage = await getCfWorkerUsage();
             await notifyAdmin(bot, buildDigestText({ usage, users, date: today, bestProxyIP: result.bestProxyIP }));
             state.digestSent = true;
             result.digestSent = true;

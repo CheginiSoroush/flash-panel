@@ -168,6 +168,24 @@ describe('proxy-IP health registry', () => {
             expect(pickProxyIP([ip, 'fresh.com:443'])).toBe('fresh.com:443');
         }
     });
+
+    it('انتخاب وزنی: همه‌ی کاندیداهای سالم انتخاب می‌شوند و اولی (سریع‌ترین) بیشترین سهم را دارد', () => {
+        const ranked = ['fast.example.net:443', 'mid.example.net:443', 'slow.example.net:443'];
+        const counts = new Map<string, number>();
+
+        for (let i = 0; i < 300; i++) {
+            const pick = pickProxyIP(ranked);
+            expect(ranked).toContain(pick);
+            counts.set(pick, (counts.get(pick) ?? 0) + 1);
+        }
+
+        // هر سه کاندیدا در ۳۰۰ دور ظاهر می‌شوند (وزن‌ها 3:2:1 — حذف تقریباً ناممکن)
+        for (const entry of ranked) {
+            expect(counts.get(entry) ?? 0).toBeGreaterThan(0);
+        }
+        // ترجیح ترتیب سرعت tuner — کاندیدای اول باید از آخری پرتکرارتر باشد
+        expect(counts.get('fast.example.net:443')!).toBeGreaterThan(counts.get('slow.example.net:443')!);
+    });
 });
 
 // =====================================================================
