@@ -100,6 +100,8 @@ export interface EmbededSettings {
     proxyIpMode: string;
     proxyIPs: string[];
     prefixes: string[];
+    /** دامنه‌های اجباری از مسیر ProxyIP (گوگل/OpenAI…) — نبودِ کلید = پیش‌فرض داخلی؛ [] = خاموش */
+    forceProxyDomains?: string[];
     fallback: string;
     dohUrl: string;
     mainDomain: string;

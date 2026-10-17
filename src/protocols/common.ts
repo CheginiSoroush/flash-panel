@@ -57,6 +57,38 @@ export function markProxyFail(proxyIP: string): void {
     rememberProxy(proxyIP, { fails, cooldownUntil: Date.now() + cooldown });
 }
 
+// ---------- مسیر اجباری ProxyIP برای دامنه‌های حساس ----------
+// اتصال مستقیم به برخی سرویس‌ها (گوگل — به‌ویژه Gemini/AI — و OpenAI) از egress
+// کلادفلر «فنیاً» موفق می‌شود ولی IP خروجی بسته به PoP ممکن است در رنجِ بلاکِ
+// آن سرویس باشد → صفحه‌ی 403 «Your client does not have permission». برای این
+// دامنه‌ها اتصال از همان ابتدا از ProxyIP می‌رود تا IP خروجی ثابت و تمیز باشد؛
+// اگر واسط پاسخ نداد، fallback به اتصال مستقیم (و بعد retry معمول).
+// EMBEDED_SETTINGS.forceProxyDomains لیست ادمین است ([] = خاموش)؛ نبودِ کلید = همین پیش‌فرض
+export const DEFAULT_FORCE_PROXY_DOMAINS: string[] = [
+    'google.com',
+    'googleapis.com',
+    'gstatic.com',
+    'googleusercontent.com',
+    'google.ai',
+    'ai.google.dev',
+    'deepmind.com',
+    'openai.com',
+    'chatgpt.com',
+    'oaistatic.com',
+    'oaiusercontent.com'
+];
+
+/** تطبیق دامنه‌ای پسوندی — IP literal ها هرگز force نمی‌شوند */
+export function shouldForceProxy(address: string, domains: string[]): boolean {
+    if (!domains?.length) return false;
+    const host = address.toLowerCase();
+    if (isIPv4(host) || host.includes(':')) return false;
+    return domains.some((raw) => {
+        const domain = raw.trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+        return domain !== '' && (host === domain || host.endsWith(`.${domain}`));
+    });
+}
+
 export const WS_READY_STATE_OPEN = 1;
 const WS_READY_STATE_CLOSING = 2;
 
@@ -113,61 +145,100 @@ export async function handleTCPOutBound(
         return tcpSocket;
     }
 
-    async function retry() {
+    // انتخاب مقصد واسط بر اساس حالت تنظیمات — بدون mutation متغیرهای اصلی تا
+    // fallback مستقیم همیشه آدرس واقعی مقصد را داشته باشد
+    async function resolveProxyTarget(
+        targetHost: string,
+        targetPort: number
+    ): Promise<{ host: string; port: number; proxyIP: string } | null> {
         const { proxyIpMode, proxyIPs, prefixes } = getGlobals();
         const getRandomValue = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
-        let lastProxyIP = '';
 
-        // کل منطق retry داخل try — دیگه unhandled rejection نداریم
-        try {
-            if (proxyIpMode === 'proxyip') {
-                log(`direct connection failed, trying to use Proxy IP for ${addressRemote}`);
-                lastProxyIP = pickProxyIP(proxyIPs);
-                const { host, port } = parseHostPort(lastProxyIP, true);
-                if (host) addressRemote = host;
-                if (port) portRemote = port;
-            } else if (proxyIpMode === 'prefix') {
-                log(`direct connection failed, trying to generate dynamic prefix for ${addressRemote}`);
-                const prefix = getRandomValue(prefixes);
-                const dynamicProxyIP = await getDynamicProxyIP(addressRemote, prefix);
-
-                if (dynamicProxyIP) {
-                    addressRemote = dynamicProxyIP;
-                } else {
-                    webSocket.close(1011, 'Retry connection failed: Invalid Prefix');
-                    return; // باگ قبلی: ادامه می‌داد و به همون آدرس شکست‌خورده reconnect می‌کرد
-                }
-            }
-        } catch (error) {
-            console.error('Retry connection failed:', error);
-            webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);
-            return;
+        if (proxyIpMode === 'proxyip') {
+            const proxyIP = pickProxyIP(proxyIPs);
+            const { host, port } = parseHostPort(proxyIP, true);
+            // ProxyIP خالی (لیست خالی) → همان مقصد مستقیم (رفتار قبلی: یک retry مستقیم)
+            return { host: host || targetHost, port: port || targetPort, proxyIP };
         }
 
+        if (proxyIpMode === 'prefix') {
+            const prefix = getRandomValue(prefixes);
+            // خطای prefix با exception بالا می‌آید — caller تصمیم می‌گیرد (close یا fallback)
+            const dynamicProxyIP = await getDynamicProxyIP(targetHost, prefix);
+            if (!dynamicProxyIP) return null;
+            return { host: dynamicProxyIP, port: targetPort, proxyIP: '' };
+        }
+
+        return null;
+    }
+
+    // یک تلاش از مسیر واسط با ثبت سلامت ProxyIP؛ next = مسیر جایگزین اگر
+    // اتصال/جریان بدون داده تمام شد (null = آخرین تلاش است)
+    async function attemptViaProxy(
+        target: { host: string; port: number; proxyIP: string },
+        next: (() => void) | null
+    ): Promise<void> {
         try {
-            const tcpSocket = await connectAndWrite(addressRemote, portRemote);
+            log(`connecting via ${target.host}:${target.port}`);
+            const tcpSocket = await connectAndWrite(target.host, target.port);
             tcpSocket.closed
                 .catch(error => console.log('retry TCP socket closed error', error))
                 .finally(() => safeCloseWebSocket(webSocket));
 
             // سلامت ProxyIP: اگر در این تلاش داده‌ی واقعی برگشت → سالم؛
             // اگر جریان بدون هیچ داده‌ای بسته شد → مرده و cooldown می‌خورد
-            remoteSocketToWS(tcpSocket, webSocket, VLResponseHeader, null, log, (hasData) => {
-                if (lastProxyIP) hasData ? markProxyOk(lastProxyIP) : markProxyFail(lastProxyIP);
+            remoteSocketToWS(tcpSocket, webSocket, VLResponseHeader, next, log, (hasData) => {
+                if (target.proxyIP) hasData ? markProxyOk(target.proxyIP) : markProxyFail(target.proxyIP);
             });
         } catch (error) {
-            if (lastProxyIP) markProxyFail(lastProxyIP);
+            if (target.proxyIP) markProxyFail(target.proxyIP);
+            console.error('connection via proxy failed:', error);
+            if (next) next();
+            else webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);
+        }
+    }
+
+    async function retry() {
+        // کل منطق retry داخل try — دیگه unhandled rejection نداریم
+        try {
+            const target = await resolveProxyTarget(addressRemote, portRemote);
+            if (!target) {
+                webSocket.close(1011, 'Retry connection failed: Invalid Prefix');
+                return; // باگ قبلی: ادامه می‌داد و به همون آدرس شکست‌خورده reconnect می‌کرد
+            }
+            await attemptViaProxy(target, null);
+        } catch (error) {
             console.error('Retry connection failed:', error);
             webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);
         }
     }
 
-    try {
-        const tcpSocket = await connectAndWrite(addressRemote, portRemote);
-        remoteSocketToWS(tcpSocket, webSocket, VLResponseHeader, retry, log);
-    } catch (error) {
-        console.error(`Connection failed: ${error}`);
-        webSocket.close(1011, `Connection failed: ${safeError(error)}`);
+    const attemptDirect = async () => {
+        try {
+            const tcpSocket = await connectAndWrite(addressRemote, portRemote);
+            remoteSocketToWS(tcpSocket, webSocket, VLResponseHeader, retry, log);
+        } catch (error) {
+            console.error(`Connection failed: ${error}`);
+            webSocket.close(1011, `Connection failed: ${safeError(error)}`);
+        }
+    };
+
+    // دامنه‌های حساس مستقیم به مسیر واسط می‌روند (نه بعد از شکست) — جزئیات بالای فایل
+    const { forceProxyDomains } = getGlobals();
+    const forceList = forceProxyDomains?.length ? forceProxyDomains : DEFAULT_FORCE_PROXY_DOMAINS;
+
+    if (shouldForceProxy(addressRemote, forceList)) {
+        log(`forced proxy route for ${addressRemote}`);
+        try {
+            const target = await resolveProxyTarget(addressRemote, portRemote);
+            if (target) await attemptViaProxy(target, attemptDirect);
+            else await attemptDirect();
+        } catch (error) {
+            console.error(`forced proxy route failed, falling back to direct for ${addressRemote}:`, error);
+            await attemptDirect();
+        }
+    } else {
+        await attemptDirect();
     }
 }
 
