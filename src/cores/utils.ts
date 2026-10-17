@@ -1,6 +1,7 @@
-import { getSettings } from '@settings';
+import { getGlobals, getSettings } from '@settings';
 import { base64DecodeUtf8, safeError } from '@common';
 import { UpstreamProxy } from '#types/settings';
+import type { Fingerprint } from '#types/xray';
 
 interface DnsResult {
     ipv4: string[];
@@ -251,9 +252,68 @@ export function getRandomString(lengthMin: number, lengthMax: number): string {
     return result;
 }
 
+// ---------- مسیر WS توکن‌دار — ضد پروب فعال (معکوس‌مهندسی DPI) ----------
+// قبل: مسیر WS برای هر کانفیگ تصادفی بود ولی ورکر هیچ اعتبارسنجی‌ای نمی‌کرد →
+// هر پروب‌گری روی wss://domain/vl/<هرچیزی> پاس 101 می‌گرفت — سیگنال قطعیِ
+// «این سایت یک ورکر پروکسی است» برای active-probing فیلترچی (بعدش بن IP/SNI).
+// حالا: توکن = مخلوط‌سازی آشانه‌ایِ securePath + پروتکل (۹۶ بیت)؛ بدون
+// securePath غیرقابل حدس است و مسیرِ داخل TLS هم برای DPI نامرئی می‌ماند.
+// سینک است تا امضای ۴ کرنل (xray/sing-box/clash/raw) دست نخورد.
+
+function foldLanes(input: string): [number, number, number, number] {
+    let a = 2166136261, b = 16777619, c = 2654435761, d = 40503;
+    for (let i = 0; i < input.length; i++) {
+        const ch = input.charCodeAt(i);
+        a = Math.imul(a ^ ch, 16777619);
+        b = Math.imul(b ^ ch, 2246822519);
+        c = Math.imul(c ^ (ch + i), 3266489917);
+        d = Math.imul(d ^ Math.imul(ch, i + 1), 668265263);
+    }
+    return [a, b, c, d];
+}
+
+function splitmix32(x: number): number {
+    x = (x + 0x9e3779b9) | 0;
+    let t = Math.imul(x ^ (x >>> 16), 0x21f0aaad);
+    t = Math.imul(t ^ (t >>> 15), 0x735a2d97);
+    return (t ^ (t >>> 15)) >>> 0;
+}
+
+export function deriveWsToken(securePath: string, protocol: 'vl' | 'tr'): string {
+    const [a, b, c, d] = foldLanes(`ws-path:${protocol}:${securePath}`);
+    return [
+        splitmix32(a),
+        splitmix32(b ^ c),
+        splitmix32(c ^ a),
+        splitmix32(d ^ b)
+    ].map(n => n.toString(16).padStart(8, '0')).join('').slice(0, 24);
+}
+
+/** روت مسیر WS: فقط '/vl/<token>' و '/tr/<token>' معتبر — بقیه null (پاس fallback) */
+export function getWsRoute(pathname: string, securePath: string): 'vl' | 'tr' | null {
+    const slash = pathname.indexOf('/', 1);
+    const protocol = slash === -1 ? pathname.slice(1) : pathname.slice(1, slash);
+    if (protocol !== 'vl' && protocol !== 'tr') return null;
+
+    const token = slash === -1 ? '' : pathname.slice(slash + 1);
+    return token && token === deriveWsToken(securePath, protocol) ? protocol : null;
+}
+
+// ---------- چرخش اثرانگشت uTLS — ضد خوشه‌بندی JA3 ----------
+// همه‌ی پروفایل‌ها با fp یکسان یعنی «یک کلاس JA3 واحد» — یک قانون DPI همه را
+// با هم می‌کشد. چرخش قطعی (نه تصادفی تا تست‌پذیر بماند) با سهم غالب chrome:
+// ۶۰٪ chrome، ۲۰٪ ios، ۲۰٪ firefox — هر سه اثرانگشت واقعی و رایج مرورگرند.
+
+const FINGERPRINT_POOL: readonly Fingerprint[] = ['chrome', 'chrome', 'chrome', 'ios', 'firefox'];
+
+export function pickFingerprint(seed: number): Fingerprint {
+    return FINGERPRINT_POOL[Math.abs(seed) % FINGERPRINT_POOL.length];
+}
+
 export function generateWsPath(protocol: string): string {
     const proto = protocol === _VL_ ? 'vl' : 'tr';
-    return `/${proto}/${getRandomString(16, 32)}`;
+    const { securePath } = getGlobals();
+    return `/${proto}/${deriveWsToken(securePath, proto)}`;
 }
 
 export function base64ToDecimal(base64: string): number[] {

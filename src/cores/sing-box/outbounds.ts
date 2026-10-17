@@ -5,6 +5,7 @@ import {
     base64ToDecimal,
     generateWsPath,
     parseHostPort,
+    pickFingerprint,
     selectSniHost,
     isDomain
 } from '@utils';
@@ -60,7 +61,9 @@ export function buildWebsocketOutbound(
     address: string,
     port: number,
     domain: string,
-    isFragment: boolean
+    isFragment: boolean,
+    // ضد خوشه‌بندی JA3 — seed قطعی هر پروفایل؛ بدون seed، fp ادمین ثابت می‌ماند
+    fpSeed?: number
 ): VlessOutbound | TrojanOutbound {
     const {
         vlUUID,
@@ -83,7 +86,7 @@ export function buildWebsocketOutbound(
             enableECH && !isFragment,
             echServerName || undefined,
             'http/1.1',
-            fingerprint
+            fpSeed === undefined ? fingerprint : pickFingerprint(fpSeed)
         ) : undefined;
 
     if (protocol === _VL_) return buildOutbound<VlessOutbound>(remark, protocol, address, port, enableTFO, {

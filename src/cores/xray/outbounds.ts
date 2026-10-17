@@ -4,6 +4,7 @@ import {
     base64ToDecimal,
     isHttps,
     generateWsPath,
+    pickFingerprint,
     toRange,
     selectSniHost
 } from '@utils';
@@ -90,7 +91,9 @@ export function buildWebsocketOutbound(
     domain: string,
     isFragment: boolean,
     fragLength?: string,
-    fragInterval?: string
+    fragInterval?: string,
+    // ضد خوشه‌بندی JA3 — seed قطعی هر پروفایل؛ بدون seed، fp ادمین ثابت می‌ماند
+    fpSeed?: number
 ): Outbound {
     const {
         vlUUID,
@@ -106,7 +109,7 @@ export function buildWebsocketOutbound(
     const { host, sni } = selectSniHost(address, domain);
     const tlsSettings = isTLS ? buildTlsSettings(
         sni,
-        fingerprint,
+        fpSeed === undefined ? fingerprint : pickFingerprint(fpSeed),
         'http/1.1',
         enableECH && !isFragment,
         echServerName || undefined,

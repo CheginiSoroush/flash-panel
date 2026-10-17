@@ -2,6 +2,7 @@ import { HttpStatus } from '@common';
 import { TrOverWSHandler } from '@protocols/trojan';
 import { VlOverWSHandler } from '@protocols/vless';
 import { getGlobals, setAutoProxyIPs } from '@settings';
+import { getWsRoute } from '@utils';
 import { fallback } from './utils';
 import { clampGuardianIdleSec, WsGuardianConfig } from '@protocols/ws-guardian';
 import { getDataset } from '@kv';
@@ -40,15 +41,15 @@ async function resolveGuardianConfig(env: Env): Promise<WsGuardianConfig> {
 }
 
 export async function handleWebsocket(request: Request, env: Env): Promise<Response> {
-    const { pathname } = getGlobals();
+    const { pathname, securePath } = getGlobals();
 
-    // استخراج سگمنت اول بدون ساخت آرایه (در هر کانکشن اجرا می‌شه)
-    // '/vl' → 'vl' ، '/vl/xyz' → 'vl' ، '/' → ''
-    const slash = pathname.indexOf('/', 1);
-    const protocol = slash === -1 ? pathname.slice(1) : pathname.slice(1, slash);
+    // گیت توکن مسیر — ضد پروب فعال: بدون توکن درست، هر WS آپگرید با صفحه‌ی
+    // fallback (speedtest) جواب می‌گیرد نه 101 → ورکر از ظاهر یک سایت عادی
+    // قابل تفکیک نیست. توکن = مشتق securePath (داخل TLS نامرئی برای DPI).
+    const route = getWsRoute(pathname, securePath);
 
     try {
-        switch (protocol) {
+        switch (route) {
             case 'vl':
                 return VlOverWSHandler(request, await resolveGuardianConfig(env));
 

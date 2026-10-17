@@ -7,12 +7,12 @@ import {
     getProtocols,
     isBase64,
     isHttps,
+    pickFingerprint,
     selectSniHost
 } from '@utils';
 
 export async function getURLConfigs() {
     const {
-        fingerprint,
         ports,
         chainProxy,
         remoteDNS,
@@ -27,7 +27,8 @@ export async function getURLConfigs() {
         upstreamParams: { upstreamServer, upstreamPort }
     } = getSettings();
 
-    const buildConfig = (protocol: string, addr: string, port: number, host: string, sni: string, remark: string) => {
+    // ضد خوشه‌بندی JA3 — fp چرخشی قطعی بر اساس شماره‌ی پروفایل
+    const buildConfig = (protocol: string, addr: string, port: number, host: string, sni: string, remark: string, fpSeed: number) => {
         const isTLS = httpsPorts.includes(port) || addr === upstreamServer;
         const security = isTLS ? 'tls' : 'none';
         const config = new URL(`${protocol}://config`);
@@ -57,7 +58,7 @@ export async function getURLConfigs() {
 
         if (isTLS) {
             config.searchParams.append('sni', sni);
-            config.searchParams.append('fp', fingerprint);
+            config.searchParams.append('fp', pickFingerprint(fpSeed));
             config.searchParams.append('alpn', 'http/1.1');
         }
 
@@ -84,13 +85,13 @@ export async function getURLConfigs() {
 
                 if (protocols.includes(_VL_)) {
                     const remark = generateRemark(proxyIndex, port, addr, _VL_, domain, false, false);
-                    const vlConfig = buildConfig(_VL_, addr, port, host, sni, remark);
+                    const vlConfig = buildConfig(_VL_, addr, port, host, sni, remark, proxyIndex);
                     VLConfs += `${vlConfig}\n`;
                 }
 
                 if (protocols.includes(_TR_)) {
                     const remark = generateRemark(proxyIndex, port, addr, _TR_, domain, false, false);
-                    const trConfig = buildConfig(_TR_, addr, port, host, sni, remark);
+                    const trConfig = buildConfig(_TR_, addr, port, host, sni, remark, proxyIndex);
                     TRConfs += `${trConfig}\n`;
                 }
 

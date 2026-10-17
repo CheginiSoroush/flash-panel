@@ -119,7 +119,7 @@ export async function getClNormalConfig(): Promise<Response> {
                     if ((port === upstreamPort) !== (host === upstreamServer)) continue;
 
                     const tag = generateRemark(protocolIndex, port, host, protocol, domain, false, false);
-                    const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain);
+                    const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain, outbounds.length);
 
                     if (outbound) {
                         outbounds.push(outbound);

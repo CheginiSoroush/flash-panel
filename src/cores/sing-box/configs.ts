@@ -120,7 +120,7 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
                     if ((port === upstreamPort) !== (host === upstreamServer)) continue;
 
                     const tag = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, false);
-                    const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain, isFragment);
+                    const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain, isFragment, outbounds.length);
                     outbounds.push(outbound);
                     
                     if (domain === customDomain) {

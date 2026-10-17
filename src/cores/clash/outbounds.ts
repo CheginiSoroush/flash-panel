@@ -1,5 +1,5 @@
 import { WarpAccount } from '#types/settings';
-import { isHttps, generateWsPath, parseHostPort, selectSniHost, base64ToDecimal } from '@utils';
+import { isHttps, generateWsPath, parseHostPort, pickFingerprint, selectSniHost, base64ToDecimal } from '@utils';
 import { getSettings } from '@settings';
 import {
     BaseOutbound,
@@ -54,7 +54,9 @@ export function buildWebsocketOutbound(
     remark: string,
     address: string,
     port: number,
-    domain: string
+    domain: string,
+    // ضد خوشه‌بندی JA3 — seed قطعی هر پروفایل؛ بدون seed، fp ادمین ثابت می‌ماند
+    fpSeed?: number
 ): VlessOutbound | TrojanOutbound | null {
     const {
         vlUUID,
@@ -79,7 +81,7 @@ export function buildWebsocketOutbound(
         enableECH,
         echServerName || undefined,
         'http/1.1',
-        fingerprint
+        fpSeed === undefined ? fingerprint : pickFingerprint(fpSeed)
     ) : {};
 
     const transport = buildTransport('ws', undefined, generateWsPath(protocol), host, undefined, 2560);

@@ -223,7 +223,8 @@ async function addBestFragmentConfigs(
             mainDomain,
             true,
             fragLength,
-            `${fragmentDelayMin}-${fragmentDelayMax}`
+            `${fragmentDelayMin}-${fragmentDelayMax}`,
+            index + 1
         );
 
         outbounds.push(proxy);
@@ -323,7 +324,7 @@ export async function getXrCustomConfigs(isFragment: boolean): Promise<Response>
                 for (const host of hosts) {
                     if ((port === upstreamPort) !== (host === upstreamServer)) continue;
 
-                    const outbound = buildWebsocketOutbound('proxy', protocol, host, port, domain, isFragment);
+                    const outbound = buildWebsocketOutbound('proxy', protocol, host, port, domain, isFragment, undefined, undefined, index);
                     const proxy = modifyOutbound(outbound, `proxy-${index}`);
                     proxies.push(proxy);
 
