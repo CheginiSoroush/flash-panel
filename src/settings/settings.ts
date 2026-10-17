@@ -1,4 +1,5 @@
 import { getDataset } from '@kv';
+import { resolveClientApp } from './client-detect';
 import {
     KvSettings,
     ReqSettings,
@@ -86,7 +87,9 @@ export function init(request: Request, env: Env) {
     globalSettings = {
         ...getStaticGlobals(),
         deployType: env.CF_PAGES === '1' ? 'pages' : 'workers',
-        client: safeDecode(searchParams.get('app') ?? ''),
+        // نرمال‌سازی app: core دقیق / نام کلاینت قدیمی (BPB) / تشخیص از User-Agent —
+        // لینک‌های قدیمی و کلاینت‌هایی که query را حذف می‌کنند هم کانفیگ می‌گیرند نه 404
+        client: resolveClientApp(safeDecode(searchParams.get('app') ?? ''), request.headers.get('User-Agent')),
         origin: origin,
         searchParams,
         pathname: safeDecode(pathname),

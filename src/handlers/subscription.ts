@@ -9,10 +9,17 @@ import { fallback } from './utils';
 import { getWireguardConfigs } from '@cores/wireguard';
 import { HttpStatus, respond } from '@common';
 import { SharedSettings } from '#types/settings';
-import { gzipCompress, shouldGzip, subBodyCache } from './optimize';
+import { subBodyCache } from './optimize';
 
 // انکودر سطح ماژول — ساختنش در هر درخواست هدرِ SHA-256 هدر کوچکی هم دارد
 const etagEncoder = new TextEncoder();
+
+// نام‌های مسیر پنل‌های قدیمی (BPB-مانند) → نوع فعلی — سازگاری با لینک‌های قبلی
+const SUB_PATH_ALIASES: Record<string, string> = {
+    frag: 'fragment',
+    warpro: 'warp-pro',
+    pro: 'warp-pro'
+};
 
 export async function handleSubscriptions(request: Request, env: Env): Promise<Response> {
     await setSettings(env);
@@ -40,8 +47,8 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
             : null;
     }
 
-    // نوع ساب: حالت چندکاربره از seg4، حالت قدیمی ادمین از seg3
-    const path = userId ? seg4 : seg3;
+    // نوع ساب: حالت چندکاربره از seg4، حالت قدیمی ادمین از seg3 + نام‌های قدیمی مسیر
+    const path = SUB_PATH_ALIASES[userId ? seg4 : seg3] ?? (userId ? seg4 : seg3);
 
     // ETag بر اساس «ورودی‌های» تولید کانفیگ (نه خروجی‌شون):
     // نسخه پنل + کل تنظیمات KV + تنظیمات embedded + نوع ساب + کلاینت + شناسه کاربر.
@@ -87,20 +94,14 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
         if (userinfo) responseHeaders.set('subscription-userinfo', userinfo);
     }
 
-    // فشرده‌سازی gzip — فقط برای کلاینت‌های پذیرنده و بدنه‌های بالای آستانه؛
-    // Vary تضمین می‌کند نسخه‌ی فشرده/خام قاطی نشوند
-    responseHeaders.set('Vary', 'Accept-Encoding');
+    // هشدار: هدر Vary اینجا عمداً حذف شده و فشرده‌سازی هم انجام نمی‌شود —
+    // لبه‌ی Cloudflare هدر Accept-Encoding کلاینت را با «gzip, br» بازنویسی
+    // می‌کند؛ اگر ورکر خودش gzip بفرستد، لبه برای کلاینت‌های بدون A-E به‌جای
+    // decompress فقط هدر Content-Encoding را حذف می‌کند و بدنه‌ی gzip بی‌اعلام
+    // می‌رسد → کلاینت «خطای آپدیت — بدون کانفیگ» می‌بیند. فشرده‌سازی را لبه
+    // برای کلاینت‌های پذیرنده خودش با هدر درست انجام می‌دهد (تأیید عملی — Task 21).
 
-    let responseBody: BodyInit = entry.body;
-    if (
-        request.method === 'GET' &&
-        shouldGzip(request.headers.get('Accept-Encoding'), entry.body.length)
-    ) {
-        responseBody = await gzipCompress(entry.body);
-        responseHeaders.set('Content-Encoding', 'gzip');
-    }
-
-    return new Response(responseBody, {
+    return new Response(entry.body, {
         status: HttpStatus.OK,
         headers: responseHeaders
     });
