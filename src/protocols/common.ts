@@ -78,6 +78,15 @@ export const DEFAULT_FORCE_PROXY_DOMAINS: string[] = [
     'oaiusercontent.com'
 ];
 
+/**
+ * تشخیص لیست force: لیست ادمین فقط وقتی معتبر است که آرایه‌ی واقعی باشد —
+ * [] یعنی صریحاً خاموش؛ نبودِ کلید (undefined) یعنی پیش‌فرض داخلی.
+ * (رفع باگ v0.7.3: قبل‌اً [] هم مثل نبودِ کلید به پیش‌فرض برمی‌گشت و خاموش‌کردن ممکن نبود)
+ */
+export function resolveForceList(adminList?: string[]): string[] {
+    return Array.isArray(adminList) ? adminList : DEFAULT_FORCE_PROXY_DOMAINS;
+}
+
 /** تطبیق دامنه‌ای پسوندی — IP literal ها هرگز force نمی‌شوند */
 export function shouldForceProxy(address: string, domains: string[]): boolean {
     if (!domains?.length) return false;
@@ -224,8 +233,9 @@ export async function handleTCPOutBound(
     };
 
     // دامنه‌های حساس مستقیم به مسیر واسط می‌روند (نه بعد از شکست) — جزئیات بالای فایل
+    // [] = صریحاً خاموش (حالت معمول)؛ نبودِ کلید = پیش‌فرض داخلی
     const { forceProxyDomains } = getGlobals();
-    const forceList = forceProxyDomains?.length ? forceProxyDomains : DEFAULT_FORCE_PROXY_DOMAINS;
+    const forceList = resolveForceList(forceProxyDomains);
 
     if (shouldForceProxy(addressRemote, forceList)) {
         log(`forced proxy route for ${addressRemote}`);

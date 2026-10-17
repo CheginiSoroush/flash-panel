@@ -50,6 +50,8 @@ function getStaticGlobals() {
         trPass: EMBEDED_SETTINGS.trPass,
         securePath: EMBEDED_SETTINGS.securePath,
         proxyIpMode: EMBEDED_SETTINGS.proxyIpMode,
+        // لیست ادمین عیناً پاس می‌شود: [] = صریحاً خاموش؛ نبودِ کلید = undefined → پیش‌فرض داخلی
+        forceProxyDomains: EMBEDED_SETTINGS.forceProxyDomains,
         proxyIPs: EMBEDED_SETTINGS.proxyIPs.length ? EMBEDED_SETTINGS.proxyIPs : [_public_proxy_ip_],
         prefixes: EMBEDED_SETTINGS.prefixes.length ? EMBEDED_SETTINGS.prefixes : [
             '[2a02:898:146:64::]',
