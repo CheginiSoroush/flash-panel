@@ -7,7 +7,7 @@ import { fetchLatestWorkerScript } from '@api/fetch-latest';
 import { decompressGzipBase64, safeError } from '@common';
 
 export async function updateMainSettings(newSettings: PanelSettings | null): Promise<Partial<EmbededSettings>> {
-    const { accID, accEmail, apiToken, mainDomain, vlUUID, trPass, securePath } = getGlobals();
+    const { accID, accEmail, apiToken, mainDomain, vlUUID, trPass, securePath, forceProxyDomains } = getGlobals();
     const settings: EmbededSettings = {
         accID,
         accEmail,
@@ -18,6 +18,8 @@ export async function updateMainSettings(newSettings: PanelSettings | null): Pro
         proxyIpMode: newSettings ? newSettings.proxyIpMode : 'proxyip',
         proxyIPs: newSettings ? newSettings.proxyIPs : [],
         prefixes: newSettings ? newSettings.prefixes : [],
+        // undefined → از JSON حذف می‌شود → ورکر لیست پیش‌فرض داخلی را استفاده می‌کند
+        forceProxyDomains: newSettings ? newSettings.forceProxyDomains : forceProxyDomains,
         mainDomain,
         fallback: newSettings ? newSettings.fallback : '',
         dohUrl: newSettings ? newSettings.dohUrl : ''
@@ -127,6 +129,7 @@ export async function buildScript(upgradePanel: boolean, settings?: MainSettings
         proxyIpMode: settings.proxyIpMode,
         proxyIPs: settings.proxyIPs,
         prefixes: settings.prefixes,
+        forceProxyDomains: settings.forceProxyDomains,
         fallback: settings.fallback,
         dohUrl: settings.dohUrl,
         mainDomain

@@ -185,7 +185,7 @@ export function mergeImportedSettings(
 
 const MAIN_FIELDS = [
     'vlUUID', 'trPass', 'securePath',
-    'proxyIpMode', 'proxyIPs', 'prefixes', 'fallback', 'dohUrl'
+    'proxyIpMode', 'proxyIPs', 'prefixes', 'forceProxyDomains', 'fallback', 'dohUrl'
 ] as const;
 
 /**
@@ -200,7 +200,7 @@ export function sanitizeImportedMain(raw: Record<string, unknown>): Partial<Main
         const value = raw[field];
         if (value === undefined || value === null) continue;
 
-        if (field === 'proxyIPs' || field === 'prefixes') {
+        if (field === 'proxyIPs' || field === 'prefixes' || field === 'forceProxyDomains') {
             if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
                 out[field] = value;
             }
