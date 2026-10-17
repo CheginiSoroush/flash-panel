@@ -410,10 +410,13 @@ function buildTlsSettings(
         serverName,
         fingerprint: fingerprint,
         alpn: alpn?.split(','),
-        echConfigList: enableECH
-            ? echServerName
-                ? `${echServerName}+udp://${echQueryDNS}`
-                : `udp://${echQueryDNS}`
+        // ⚠️ گارد ضد-گلوله (Task 23): حالت auto-query (فقط udp://DNS بدون نام سرور)
+        // وقتی دامنه‌ی SNI در رکورد HTTPS دنباله‌دار ECH منتشر نکند، xray را با
+        // «tls: malformed ECHConfigList» در همان dial می‌کُشد → «همه‌ی کانفیگ‌ها
+        // مرده‌اند» بدون هیچ خطای واضح. پس ECH فقط با echServerName صریح اعمال
+        // می‌شود؛ بدون آن عملاً خاموش (سایه‌اندازی امن به‌جای مرگ کل تانل).
+        echConfigList: enableECH && echServerName
+            ? `${echServerName}+udp://${echQueryDNS}`
             : undefined
     }
 }

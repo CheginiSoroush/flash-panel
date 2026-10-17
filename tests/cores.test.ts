@@ -108,6 +108,32 @@ beforeEach(async () => {
     await applyKvOverrides({ enableIPv6: false });
 });
 
+// ---------- ECH (گارد ضد-گلوله Task 23) ----------
+
+describe('ECH در tlsSettings — گارد ضد-گلوله', () => {
+    it('enableECH=true بدون echServerName → هرگز echConfigList (حالت auto-query که xray را در dial می‌کشت حذف شد)', async () => {
+        await applyKvOverrides({ enableECH: true, echServerName: '' });
+        const outbound = buildWebsocketOutbound('proxy', 'vless', 'speed.example.com', 443, 'panel.example.com', false);
+        const tls = (outbound.streamSettings as any)?.tlsSettings;
+        expect(tls).toBeDefined();
+        expect(tls.echConfigList).toBeUndefined();
+    });
+
+    it('enableECH=true با echServerName → echConfigList کامل با DNS پرس‌وجو', async () => {
+        await applyKvOverrides({ enableECH: true, echServerName: 'ech.example.com' });
+        const outbound = buildWebsocketOutbound('proxy', 'vless', 'speed.example.com', 443, 'panel.example.com', false);
+        const tls = (outbound.streamSettings as any)?.tlsSettings;
+        expect(tls.echConfigList).toBe('ech.example.com+udp://8.8.8.8');
+    });
+
+    it('enableECH=false با echServerName → باز هم بدون echConfigList', async () => {
+        await applyKvOverrides({ enableECH: false, echServerName: 'ech.example.com' });
+        const outbound = buildWebsocketOutbound('proxy', 'vless', 'speed.example.com', 443, 'panel.example.com', false);
+        const tls = (outbound.streamSettings as any)?.tlsSettings;
+        expect(tls.echConfigList).toBeUndefined();
+    });
+});
+
 // ---------- freedom ----------
 
 describe('buildFreedomOutbound', () => {
