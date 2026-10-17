@@ -190,6 +190,7 @@ const SETTINGS_FIELDS: Array<
         ['amneziaNoiseSizeMax'],
         ['customSubs'],
         ['remoteSettings'],
+        ['autoProxyIPs'],
         ['customConfigs']
     ];
 

@@ -82,6 +82,8 @@ export interface KvSettings {
     customSubs: string[];
     customConfigs: string[];
     remoteSettings: string;
+    /** Auto-Tune — بهترین ProxyIP های تست‌شده توسط اتوماسیون (خالی/ناموجود = لیست ادمین) */
+    autoProxyIPs?: string[];
     panelVersion: string;
 }
 

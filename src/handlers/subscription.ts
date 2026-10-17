@@ -88,7 +88,9 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
     // از آن‌ها برای به‌روزرسانی دوره‌ای و نمایش انقضا استفاده می‌کنند
     if (path !== 'share-settings') {
         // تولیدکننده‌ی ساب ممکن است interval اختصاصی گذاشته باشد (مثلاً raw: 3h) — به آن احترام
-        if (!responseHeaders.has('profile-update-interval')) responseHeaders.set('profile-update-interval', '12');
+        // 3h برای همه: تغییرات سرعت/پیکربندی (مثل Auto-Tune ProxyIP) سریع‌تر به کلاینت می‌رسد؛
+        // ETag/304 هم هزینه‌ی واکشی تکراری را تقریباً صفر می‌کند
+        if (!responseHeaders.has('profile-update-interval')) responseHeaders.set('profile-update-interval', '3');
         responseHeaders.set('profile-web-page-url', new URL(request.url).origin);
 
         const userinfo = buildSubUserInfoHeader({ expireMs: subUserExpiresAt });

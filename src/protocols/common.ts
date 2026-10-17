@@ -1,7 +1,7 @@
 import { connect } from 'cloudflare:sockets';
 import { isIPv4, parseHostPort, resolveDNS } from '@utils';
 import { safeError } from '@common';
-import { getGlobals } from '@settings';
+import { getGlobals, getEffectiveProxyIPs } from '@settings';
 import { touchWsRead, touchWsWrite } from './ws-guardian';
 
 // ---------- رجیستری سلامت ProxyIP (سطح isolate — بدون KV و write) ----------
@@ -160,7 +160,8 @@ export async function handleTCPOutBound(
         targetHost: string,
         targetPort: number
     ): Promise<{ host: string; port: number; proxyIP: string } | null> {
-        const { proxyIpMode, proxyIPs, prefixes } = getGlobals();
+        const { proxyIpMode, prefixes } = getGlobals();
+        const proxyIPs = getEffectiveProxyIPs(); // Auto-Tune اگر موجود باشد، وگرنه لیست ادمین
         const getRandomValue = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
         if (proxyIpMode === 'proxyip') {

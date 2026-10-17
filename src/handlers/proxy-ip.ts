@@ -5,7 +5,7 @@ import { getGlobals } from '@settings';
 import { updateMainSettings } from '@main';
 import { PanelSettings } from '#types/settings';
 import { fallback } from './utils';
-import { connect } from 'cloudflare:sockets';
+import { runProxyIPBatchTest, checkProxyIP } from '@api/proxy-check';
 
 export async function handleProxyIPs(request: Request, env: Env): Promise<Response> {
     const { pathname } = getGlobals();
@@ -122,63 +122,13 @@ async function geoLookupBatch(ipList: string[]): Promise<GeoResult[]> {
     return results;
 }
 
-const DEFAULT_SNI = 'speed.cloudflare.com';
-const TIMEOUT_MS = 5000;
-const ATTEMPTS = 5;
-
-interface Attempt {
-    attempt: number;
-    ok: boolean;
-    elapsedMs: number;
-}
-
-async function checkProxyIP(address: string): Promise<Omit<Attempt, 'attempt'>> {
-    const start = Date.now();
-    const TEST_PATH = '/__down?bytes=5000';
-
-    const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)
-    );
-
-    try {
-        const socket = connect({ hostname: address, port: 443 });
-        const writer = socket.writable.getWriter();
-        const req = `GET ${TEST_PATH} HTTP/1.1\r\nHost: ${DEFAULT_SNI}\r\nConnection: close\r\n\r\n`;
-
-        await writer.write(new TextEncoder().encode(req));
-        writer.releaseLock();
-        const reader = socket.readable.getReader();
-
-        const { value, done } = await Promise.race([reader.read(), timeout]);
-        reader.releaseLock();
-        await socket.close().catch(() => { });
-
-        if (done || !value) {
-            return { ok: false, elapsedMs: Date.now() - start };
-        }
-
-        const response = new TextDecoder().decode(value);
-        const isOk = /^HTTP\/1\.[01] 400/.test(response);
-        const hasCfRay = /cf-ray:/i.test(response);
-        const isHealthy = isOk && hasCfRay;
-
-        return {
-            ok: isHealthy,
-            elapsedMs: Date.now() - start
-        };
-    } catch (err) {
-        return {
-            ok: false,
-            elapsedMs: Date.now() - start
-        };
-    }
-}
+const SINGLE_TEST_ATTEMPTS = 5;
 
 async function testProxyIP() {
     const { searchParams } = getGlobals();
 
     const target = searchParams.get('target') as string;
-    const attemptPromises = Array.from({ length: ATTEMPTS }, (_, i) =>
+    const attemptPromises = Array.from({ length: SINGLE_TEST_ATTEMPTS }, (_, i) =>
         checkProxyIP(target).then(res => ({ attempt: i + 1, ...res }))
     );
 
@@ -189,7 +139,7 @@ async function testProxyIP() {
         : null;
 
     return respond(true, HttpStatus.OK, '', {
-        successRate: `${successes.length}/${ATTEMPTS}`,
+        successRate: `${successes.length}/${SINGLE_TEST_ATTEMPTS}`,
         avgLatencyMs,
         attempts,
     });
@@ -199,65 +149,19 @@ async function testProxyIP() {
 
 /**
  * تست همه‌ی ProxyIP های تنظیم‌شده در یک endpoint — به‌جای کلیک تکی روی هر ردیف.
- *
- * هم‌زمانی محدود (۴ در هر موج) که سهمیه‌ی socket و CPU ورکر نسوزد؛
- * هر هدف ۲ تلاش موازی می‌گیرد (نمونه‌ی تکی گمراه‌کننده است).
+ * منطق تست در @api/proxy-check مشترک است (همان موتور Auto-Tune اتوماسیون).
  * خروجی مرتب‌شده: سالم‌ها اول، بعد سریع‌ترین — «بهترین» = اولین ردیف سالم.
  */
 
-const TEST_ALL_CONCURRENCY = 4;
-const TEST_ALL_ATTEMPTS = 2;
-const MAX_TEST_TARGETS = 20;
-
-interface TargetTestResult {
-    target: string;
-    ok: boolean;
-    successRate: string;
-    avgLatencyMs: number | null;
-}
-
 async function testAllProxyIPsEndpoint(): Promise<Response> {
     try {
-        const results = await runProxyIPBatchTest();
+        const { proxyIPs } = getGlobals();
+        const results = await runProxyIPBatchTest(proxyIPs ?? []);
         const best = results.find(r => r.ok)?.target ?? null;
         return respond(true, HttpStatus.OK, '', { results, best });
     } catch (error) {
         return respond(false, HttpStatus.INTERNAL_SERVER_ERROR, `Batch test failed: ${safeError(error)}`);
     }
-}
-
-async function runProxyIPBatchTest(): Promise<TargetTestResult[]> {
-    const { proxyIPs } = getGlobals();
-    const targets = [...new Set(proxyIPs.filter(Boolean))].slice(0, MAX_TEST_TARGETS);
-    const results: TargetTestResult[] = [];
-
-    for (let i = 0; i < targets.length; i += TEST_ALL_CONCURRENCY) {
-        const batch = targets.slice(i, i + TEST_ALL_CONCURRENCY);
-        const batchResults = await Promise.all(batch.map(async (target) => {
-            const attempts = await Promise.all(
-                Array.from({ length: TEST_ALL_ATTEMPTS }, () => checkProxyIP(target))
-            );
-            const oks = attempts.filter(a => a.ok);
-
-            return {
-                target,
-                ok: oks.length > 0,
-                successRate: `${oks.length}/${TEST_ALL_ATTEMPTS}`,
-                avgLatencyMs: oks.length
-                    ? Math.round(oks.reduce((s, a) => s + a.elapsedMs, 0) / oks.length)
-                    : null
-            };
-        }));
-
-        results.push(...batchResults);
-    }
-
-    return results.sort((a, b) => {
-        if (a.ok !== b.ok) return a.ok ? -1 : 1;
-        const la = a.avgLatencyMs ?? Number.MAX_SAFE_INTEGER;
-        const lb = b.avgLatencyMs ?? Number.MAX_SAFE_INTEGER;
-        return la - lb;
-    });
 }
 
 /**
@@ -279,7 +183,7 @@ async function autoApplyBestProxyIP(request: Request, env: Env): Promise<Respons
     }
 
     try {
-        const results = await runProxyIPBatchTest();
+        const results = await runProxyIPBatchTest(getGlobals().proxyIPs ?? []);
         const best = results.find(r => r.ok);
 
         if (!best) {

@@ -3,6 +3,7 @@ import { initForScheduled } from '@settings';
 import { getCfWorkerUsage } from '@api/usage';
 import { recordUsageSample } from '@settings/usage-history';
 import { getSubUsers, isSubUserExpired, sweepExpiredSubUsers, SubUser } from '@settings/sub-users';
+import { tuneProxyIPs, ProxyTuneResult } from './proxy-tuner';
 import { TelegramBot } from '#types/settings';
 
 /**
@@ -30,6 +31,8 @@ interface AutomationState {
     digestSent?: boolean;
     /** هشدار مصرف ۸۰٪ ارسال شد؟ */
     usageWarned?: boolean;
+    /** آخرین Auto-Tune ProxyIP (epoch ms) — بین روزها حفظ می‌شود */
+    proxyTunedAt?: number;
 }
 
 const AUTOMATION_KEY = 'automationState';
@@ -136,6 +139,8 @@ export interface DigestInput {
     date?: string;
     /** مرجع زمان برای محاسبه‌ی انقضا — پیش‌فرض اکنون (برای تست قطعی لازم است) */
     now?: number;
+    /** بهترین ProxyIP از Auto-Tune — اگر موجود باشد نمایش داده می‌شود */
+    bestProxyIP?: string | null;
 }
 
 /**
@@ -197,6 +202,10 @@ export function buildDigestText(input: DigestInput): string {
         }
     }
 
+    if (input.bestProxyIP) {
+        lines.push('', `⚡ <b>Auto-tuned proxyIP:</b> ${esc(input.bestProxyIP)}`);
+    }
+
     return lines.join('\n');
 }
 
@@ -220,6 +229,12 @@ export interface AutomationRunResult {
     notified: boolean;
     digestSent: boolean;
     usageWarned: boolean;
+    /** Auto-Tune ProxyIP در این دور اجرا شد؟ */
+    proxyTuned?: boolean;
+    /** بهترین ProxyIP اعمال‌شده (برای لاگ/تست) */
+    bestProxyIP?: string | null;
+    /** نتیجه‌ی کامل tune — برای تست */
+    tune?: ProxyTuneResult;
 }
 
 /**
@@ -242,8 +257,8 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
     const today = utcDateKey(new Date(now));
     let state = await loadState(env);
     if (state.date !== today) {
-        // روز جدید — گاردها ریست
-        state = { date: today };
+        // روز جدید — گاردهای روزانه ریست؛ proxyTunedAt بین روزها حفظ می‌شود
+        state = { date: today, proxyTunedAt: state.proxyTunedAt };
     }
 
     // ---------- ۱) نمونه‌گیری مصرف ----------
@@ -271,7 +286,32 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
         console.log(`automation: expiry sweep failed — ${safeError(error)}`);
     }
 
-    // ---------- ۳) هشدار مصرف ≥۸۰٪ (یک‌بار در روز) ----------
+    // ---------- ۳) Auto-Tune ProxyIP (هر ۶ ساعت — بدون بات هم کار می‌کند) ----------
+    const TUNE_INTERVAL_MS = 6 * 3_600_000;
+    try {
+        if (now - (state.proxyTunedAt ?? 0) >= TUNE_INTERVAL_MS) {
+            const tune = await tuneProxyIPs(env);
+            state.proxyTunedAt = now;
+            await saveState(env, state);
+            result.proxyTuned = true;
+            result.bestProxyIP = tune.best;
+            result.tune = tune;
+            console.log(`automation: proxy tune — pool ${tune.poolSize}, healthy ${tune.healthyCount}, best ${tune.best ?? '—'}, changed ${tune.changed}${tune.skipped ? ` (${tune.skipped})` : ''}`);
+
+            if (bot && tune.changed && tune.best) {
+                await notifyAdmin(bot,
+                    `⚡ <b>Auto-Tune ProxyIP</b>\n` +
+                    `Best: ${esc(tune.best)}\n` +
+                    `Applied: ${tune.applied.map(esc).join(' , ') || '—'}\n` +
+                    `Healthy: ${tune.healthyCount}/${tune.poolSize}`);
+                result.notified = true;
+            }
+        }
+    } catch (error) {
+        console.log(`automation: proxy tune failed — ${safeError(error)}`);
+    }
+
+    // ---------- ۴) هشدار مصرف ≥۸۰٪ (یک‌بار در روز) ----------
     try {
         if (bot && !state.usageWarned) {
             const usage = await getCfWorkerUsage();
@@ -286,12 +326,12 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
         console.log(`automation: usage warn failed — ${safeError(error)}`);
     }
 
-    // ---------- ۴) خلاصه‌ی روزانه (یک‌بار در روز UTC) ----------
+    // ---------- ۵) خلاصه‌ی روزانه (یک‌بار در روز UTC) ----------
     try {
         if (bot && !state.digestSent) {
             const users = await getSubUsers(env);
             const usage = await getCfWorkerUsage();
-            await notifyAdmin(bot, buildDigestText({ usage, users, date: today }));
+            await notifyAdmin(bot, buildDigestText({ usage, users, date: today, bestProxyIP: result.bestProxyIP }));
             state.digestSent = true;
             result.digestSent = true;
             await saveState(env, state);

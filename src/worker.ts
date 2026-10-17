@@ -83,11 +83,12 @@ export default {
     },
 
     /**
-     * Cron trigger — موتور اتوماسیون (نمونه‌گیری مصرف + sweep انقضا + هشدار + digest).
+     * Cron trigger — موتور اتوماسیون (نمونه‌گیری مصرف + Auto-Tune ProxyIP +
+     * sweep انقضا + هشدار + digest).
      *
-     * پیشنهاد: ساعتی — '0 * * * *' در wrangler.jsonc → triggers.crons.
+     * زمان‌بندی هر ۳۰ دقیقه در metadata دیپلوی ست می‌شود (rescue-panel-update)؛
      * همه‌ی مراحل best-effort اند و گارد روزانه در KV جلوی notify تکراری را می‌گیرد؛
-     * بدون بات تلگرام هم sweep و نمونه‌گیری کار می‌کنند (فقط پیامی ارسال نمی‌شود).
+     * Auto-Tune گارد ۶ ساعته دارد و sweep/digest گارد روزانه.
      */
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
         ctx.waitUntil(runScheduledAutomation(env));

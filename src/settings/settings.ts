@@ -79,6 +79,35 @@ function safeDecode(value: string): string {
     }
 }
 
+// ---------- Auto-Tune ProxyIP (KV → مسیر داده، بدون redeploy) ----------
+// موتور اتوماسیون هر ۶ ساعت بهترین واسط‌ها را تست و در KV (autoProxyIPs)
+// می‌نویسد؛ اینجا سطح ماژول نگه داشته می‌شود تا resolveProxyTarget بدون
+// هیچ خواندن اضافه‌ای از بهترین لیست استفاده کند.
+// خالی = لیست ادمین/embeded (رفتار قبلی)
+
+let autoProxyIPs: string[] = [];
+
+/** فید از KV — در چرخه‌ی ۵ دقیقه‌ای نگهبان (websocket.ts) صدا زده می‌شود */
+export function setAutoProxyIPs(list: unknown): void {
+    if (!Array.isArray(list)) {
+        autoProxyIPs = [];
+        return;
+    }
+    autoProxyIPs = list
+        .filter((x): x is string => typeof x === 'string' && x.trim() !== '')
+        .slice(0, 5);
+}
+
+export function getAutoProxyIPs(): string[] {
+    return autoProxyIPs;
+}
+
+/** لیست مؤثر ProxyIP — Auto-Tune اگر موجود باشد، وگرنه لیست ادمین/embeded */
+export function getEffectiveProxyIPs(): string[] {
+    if (autoProxyIPs.length) return autoProxyIPs;
+    return globalSettings?.proxyIPs ?? [];
+}
+
 export function init(request: Request, env: Env) {
     if (env.UUID || env.TR_PASS || typeof EMBEDED_SETTINGS === 'undefined') {
         throw new Error(`Flash Panel is not configured — EMBEDED_SETTINGS is missing. See the <a href="${_repo_}#readme" target="_blank">installation guide</a>.`);

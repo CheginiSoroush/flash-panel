@@ -1,7 +1,7 @@
 import { HttpStatus } from '@common';
 import { TrOverWSHandler } from '@protocols/trojan';
 import { VlOverWSHandler } from '@protocols/vless';
-import { getGlobals } from '@settings';
+import { getGlobals, setAutoProxyIPs } from '@settings';
 import { fallback } from './utils';
 import { clampGuardianIdleSec, WsGuardianConfig } from '@protocols/ws-guardian';
 import { getDataset } from '@kv';
@@ -25,6 +25,8 @@ async function resolveGuardianConfig(env: Env): Promise<WsGuardianConfig> {
 
     try {
         const { settings } = await getDataset(env);
+        // فید Auto-Tune ProxyIP — در همان چرخه‌ی ۵ دقیقه‌ای، بدون خواندن اضافه
+        setAutoProxyIPs(settings.autoProxyIPs);
         config = {
             enabled: settings.wsGuardianEnabled === true,
             idleSec: clampGuardianIdleSec(settings.wsGuardianIdleSec)
