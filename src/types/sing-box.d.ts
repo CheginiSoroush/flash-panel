@@ -83,7 +83,7 @@ export interface RoutingRule {
     ip_cidr?: string[] | string;
     ip_is_private?: true;
     network?: 'tcp' | 'udp';
-    protocol?: 'http' | 'tls' | 'quic' | 'dns';
+    protocol?: 'http' | 'tls' | 'quic' | 'dns' | 'stun' | 'bittorrent';
     port?: number;
     clash_mode?: 'Global' | 'Direct';
     action?: 'route' | 'reject' | 'hijack-dns' | 'sniff';

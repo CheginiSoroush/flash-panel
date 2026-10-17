@@ -15,6 +15,10 @@ export function buildRoutingRules(isWarp: boolean) {
         rules.push('AND,((NETWORK,udp),(DST-PORT,443)),REJECT');
     }
 
+    // ضدسوءاستفاده — SMTP از تونل عبور نمی‌کند (ریسک بن ورکر)؛
+    // BT در mihomo قابل اسنیف نیست ولی UDP آن بالا رد شده است
+    rules.push('DST-PORT,25,REJECT');
+
     // تلگرام — بعد از قانون UDP reject (تماس‌های UDP تغییری نمی‌کنند) و قبل از
     // قوانین block/bypass تا bypass های کاربر (مثل bypassIran) تلگرام را به direct نفرستند
     if (telegramProxy) {

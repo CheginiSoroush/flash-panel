@@ -124,6 +124,8 @@ export async function getURLConfigs() {
             'Pragma': 'no-cache',
             'Expires': '0',
             'Profile-Title': `base64:${base64EncodeUtf8(`⚡ ${_project_} Raw`)}`,
+            // کلاینت‌ها (v2rayNG/Hiddify) هر ۳ ساعت خودکار آپدیت می‌گیرند
+            'Profile-Update-Interval': '3',
             'DNS': remoteDNS
         }
     });

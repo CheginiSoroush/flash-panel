@@ -101,7 +101,8 @@ export async function buildDNS(
     return {
         hosts: hosts.omitEmpty(),
         servers,
-        queryStrategy: isWarp && !enableIPv6 ? 'UseIPv4' : 'UseIP',
+        // enableIPv6=false → فقط A کوئری بزن (نصف‌کردن کوئری‌های DNS؛ AAAA هرگز استفاده نمی‌شود)
+        queryStrategy: enableIPv6 ? 'UseIP' : 'UseIPv4',
         tag: 'dns'
     };
 }

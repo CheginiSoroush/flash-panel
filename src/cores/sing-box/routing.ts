@@ -28,6 +28,15 @@ export function buildRoutingRules(isWarp: boolean): Route {
         {
             ip_is_private: true,
             outbound: 'direct'
+        },
+        // ضدسوءاستفاده — BT/SMTP هرگز از تونل عبور نمی‌کنند (ریسک بن ورکر؛ sniffer بالاتر فعال است)
+        {
+            protocol: 'bittorrent',
+            action: 'reject'
+        },
+        {
+            port: 25,
+            action: 'reject'
         }
     ];
 

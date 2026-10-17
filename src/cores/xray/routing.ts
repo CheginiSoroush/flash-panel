@@ -38,6 +38,13 @@ export function buildRoutingRules(
     addRoutingRule(rules, undefined, ['geosite:private'], undefined, undefined, undefined, undefined, 'direct', false);
     addRoutingRule(rules, undefined, undefined, ['geoip:private'], undefined, undefined, undefined, 'direct', false);
 
+    // ضدسوءاستفاده — BT و SMTP هرگز از تونل عبور نمی‌کنند:
+    // ترافیک بیت‌تورنت/اسپم از IP کلادفلر سریع گزارش و منجر به بن ورکر می‌شود
+    // (سابقه‌ی گزارش abuse). sniffer اکسترا هر دو را تشخیص می‌دهد؛ جای قانون:
+    // بعد از private و قبل از block/bypass کاربر تا bypass ها روی آن‌ها اثر نگذارند
+    addRoutingRule(rules, undefined, undefined, undefined, undefined, undefined, ['bittorrent'], 'block', false);
+    addRoutingRule(rules, undefined, undefined, undefined, 25, 'tcp', undefined, 'block', false);
+
     // تلگرام — قبل از block/bypass تا هیچ قانونی (حتی bypass های کاربر) تلگرام را
     // از تونل خارج نکند. در workerless اجرا نمی‌شود چون خروجی نهایی direct است و
     // قوانین fragment باید اولویت بمانند؛ در سایر مدها outTag همان خروجی نهایی است.
