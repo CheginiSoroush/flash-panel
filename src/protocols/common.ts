@@ -3,6 +3,7 @@ import { isIPv4, parseHostPort, resolveDNS } from '@utils';
 import { safeError } from '@common';
 import { getGlobals, getEffectiveProxyIPs } from '@settings';
 import { touchWsRead, touchWsWrite } from './ws-guardian';
+import { countWsDown, countWsUp } from './ws-metrics';
 
 // ---------- رجیستری سلامت ProxyIP (سطح isolate — بدون KV و write) ----------
 // انتخاب قبلی کاملاً تصادفی بود؛ یک ProxyIP مرده دوباره و دوباره امتحان می‌شد
@@ -310,6 +311,7 @@ async function remoteSocketToWS(
         async write(chunk: Chunk, controller) {
             hasIncomingData = true;
             touchWsWrite(webSocket); // نگهبان: فعالیت سمت سرور
+            countWsDown(webSocket, chunk instanceof Uint8Array ? chunk.byteLength : (chunk as ArrayBuffer).byteLength ?? 0);
             if (webSocket.readyState !== WS_READY_STATE_OPEN) {
                 controller.error('webSocket.readyState is not open, maybe close');
                 return; // باگ قبلی: بعد از error هم به send ادامه می‌داد
@@ -366,6 +368,9 @@ export function makeReadableWebSocketStream(
             webSocketServer.addEventListener('message', (event) => {
                 if (readableStreamCancel) return;
                 touchWsRead(webSocketServer); // نگهبان: فعالیت سمت کلاینت
+                // متریک ترافیک: بایت آپ‌لینک (استرینگ = فریم متنی، طول کاراکتر ~ بایت)
+                const d = event.data as unknown;
+                countWsUp(webSocketServer, typeof d === 'string' ? d.length : (d as ArrayBuffer).byteLength ?? 0);
                 controller.enqueue(event.data);
             });
 
@@ -391,6 +396,7 @@ export function makeReadableWebSocketStream(
                 controller.error(error);
                 safeCloseWebSocket(webSocketServer); // باگ قبلی: WS باز می‌موند
             } else if (earlyData) {
+                countWsUp(webSocketServer, earlyData.byteLength); // early-data هم آپ‌لینک است
                 controller.enqueue(earlyData);
             }
         },

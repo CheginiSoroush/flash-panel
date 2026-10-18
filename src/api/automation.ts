@@ -6,6 +6,7 @@ import { getSubUsers, isSubUserExpired, sweepExpiredSubUsers, SubUser } from '@s
 import { tuneProxyIPs, ProxyTuneResult } from './proxy-tuner';
 import { tuneCleanIPs, CleanTuneResult } from './clean-tuner';
 import { runWorkersDevGuard, WorkersDevGuardResult } from './workersdev-guard';
+import { runEdgeTuner, EdgeTuneResult } from './edge-tuner';
 import { buildEdgeSummary, getEdgeTelemetry } from '@settings/edge-telemetry';
 import { TelegramBot } from '#types/settings';
 
@@ -260,6 +261,8 @@ export interface AutomationRunResult {
     clean?: CleanTuneResult;
     /** 🛡️ گارد ضد-abuse workers.dev — نتیجه‌ی چک این دور (v0.8.3) */
     workersDevGuard?: WorkersDevGuardResult;
+    /** 🎯 Edge-Tuner — نتیجه‌ی چک RTT-spike این دور (v0.8.5) */
+    edgeTune?: EdgeTuneResult;
     /** 🛰️ خلاصه‌ی یک‌خطی Edge Telemetry (colo/RTT ترافیک واقعی) */
     edgeSummary?: string | null;
 }
@@ -335,6 +338,20 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
         }
     } catch (error) {
         console.log(`automation: workers.dev guard failed — ${safeError(error)}`);
+    }
+
+    // ---------- ۲c) 🎯 Edge-Tuner — جهش RTT واقعی کاربران → تیونر بیدار شود ----------
+    // تلمتری v0.8.4 حالا تصمیم می‌گیرد: اگر میانگین TCP-RTT اپراتورهای واقعی
+    // نسبت به خط پایه پرید، ProxyIP/CleanIP tuner ها خارج از زمان‌بندی عادی
+    // اجرا می‌شوند و ادمین هشدار دقیق می‌گیرد (کدام ASN بدترین افت را داشته).
+    try {
+        const edgeTune = await runEdgeTuner(env, bot ? (html) => notifyAdmin(bot, html) : null, now);
+        result.edgeTune = edgeTune;
+        if (edgeTune.status === 'spike') {
+            console.log(`automation: edge-tuner — RTT spike ${edgeTune.todayAvgRtt}ms (baseline ${edgeTune.baselineRtt}ms), tuned=${edgeTune.tuned}, asns [${(edgeTune.spikeAsns ?? []).join(', ')}]`);
+        }
+    } catch (error) {
+        console.log(`automation: edge-tuner failed — ${safeError(error)}`);
     }
 
     // ---------- ۳) Auto-Tune ProxyIP (هر ۶ ساعت — بدون بات هم کار می‌کند) ----------

@@ -31,6 +31,10 @@ export interface EdgeAgg {
     rttMax: number;
     /** چند نمونه از WS-handshake واقعی پروکسی (نه فقط HTTP) */
     ws: number;
+    /** جمع بایت کلاینت→ورکر (نمونه‌های close اتصال — v0.8.5) */
+    upSum: number;
+    /** جمع بایت ورکر→کلاینت (v0.8.5) */
+    downSum: number;
 }
 
 export interface EdgeDay {
@@ -48,6 +52,10 @@ export interface EdgeSample {
     /** TCP RTT کلاینت→لبه (ms) — گاهی platform مقدار نمی‌دهد */
     rtt?: number;
     ws: boolean;
+    /** بایت کلاینت→ورکر — فقط نمونه‌های close اتصال WS (v0.8.5) */
+    up?: number;
+    /** بایت ورکر→کلاینت (v0.8.5) */
+    down?: number;
     /** epoch ms — فقط در بافر داخلی، داخل KV نمی‌رود */
     at?: number;
 }
@@ -114,10 +122,24 @@ export function extractEdgeSample(request: Request, kind: 'ws' | 'http'): EdgeSa
 
 // ---------- ثبت + زمان‌بندی flush ----------
 
-export function recordEdgeSample(request: Request, env: Env, ctx: ExecutionContext, kind: 'ws' | 'http' = 'http'): void {
+/**
+ * ثبت یک نمونه لبه. برای kind='ws' با close اتصال صدا زده می‌شود و بایت‌های
+ * ترافیک واقعی را هم حمل می‌کند (v0.8.5). هرگز throw نمی‌کند.
+ */
+export function recordEdgeSample(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+    kind: 'ws' | 'http' = 'http',
+    traffic?: { up?: number; down?: number }
+): void {
     try {
         const s = extractEdgeSample(request, kind);
         if (!s) return;
+        if (traffic) {
+            if (typeof traffic.up === 'number' && Number.isFinite(traffic.up) && traffic.up >= 0) s.up = Math.round(traffic.up);
+            if (typeof traffic.down === 'number' && Number.isFinite(traffic.down) && traffic.down >= 0) s.down = Math.round(traffic.down);
+        }
 
         // WS-handshake همیشه (ترافیک واقعی پروکسی، کم‌تکرار)؛ HTTP یک‌بار در ۴
         if (!s.ws && Math.random() >= httpSampleRate) return;
@@ -155,10 +177,18 @@ export function recordEdgeSample(request: Request, env: Env, ctx: ExecutionConte
 // ---------- نگاشت KV ----------
 
 function emptyAgg(): EdgeAgg {
-    return { n: 0, rttSum: 0, rttMax: 0, ws: 0 };
+    return { n: 0, rttSum: 0, rttMax: 0, ws: 0, upSum: 0, downSum: 0 };
 }
 
-function addAgg(map: Record<string, EdgeAgg>, key: string, rtt?: number, ws = false, cap = Infinity): void {
+function addAgg(
+    map: Record<string, EdgeAgg>,
+    key: string,
+    rtt?: number,
+    ws = false,
+    cap = Infinity,
+    up = 0,
+    down = 0
+): void {
     let agg = map[key];
     if (!agg) {
         // نقشه پر و کلید تازه؟ ضعیف‌ترین (کم‌تکرارترین) را آزاد کن
@@ -176,6 +206,8 @@ function addAgg(map: Record<string, EdgeAgg>, key: string, rtt?: number, ws = fa
         if (rtt > agg.rttMax) agg.rttMax = rtt;
     }
     if (ws) agg.ws++;
+    if (up > 0) agg.upSum += up;
+    if (down > 0) agg.downSum += down;
 }
 
 function pruneMaps(map: Record<string, EdgeAgg>, cap: number): void {
@@ -208,8 +240,8 @@ export async function flushSamples(env: Env, batch: EdgeSample[]): Promise<void>
     let dropped = false;
     for (const s of batch) {
         if (cur.total >= MAX_SAMPLES_PER_DAY) { dropped = true; break; }
-        addAgg(cur.colos, s.colo, s.rtt, s.ws, MAX_COLOS);
-        addAgg(cur.asns, s.asn, s.rtt, s.ws, MAX_ASNS);
+        addAgg(cur.colos, s.colo, s.rtt, s.ws, MAX_COLOS, s.up ?? 0, s.down ?? 0);
+        addAgg(cur.asns, s.asn, s.rtt, s.ws, MAX_ASNS, s.up ?? 0, s.down ?? 0);
         cur.total++;
     }
     cur.updatedAt = Date.now();
@@ -260,6 +292,26 @@ export async function getEdgeTelemetryEndpoint(request: Request, env: Env): Prom
 
 // ---------- نمایش ----------
 
+/** واحد انسانی — B/KB/MB/GB/TB */
+export function formatBytes(n: number): string {
+    if (!Number.isFinite(n) || n <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    let v = n;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
+}
+
+/** جمع ترافیک کل تلمتری (تقریبی — هرس نقشه‌ها ممکنه بخشی را drop کرده باشد) */
+export function getTrafficTotals(telemetry: { days: Record<string, EdgeDay> } | null): { up: number; down: number } {
+    let up = 0, down = 0;
+    if (!telemetry?.days) return { up, down };
+    for (const day of Object.values(telemetry.days)) {
+        for (const a of Object.values(day.colos ?? {})) { up += a.upSum ?? 0; down += a.downSum ?? 0; }
+    }
+    return { up, down };
+}
+
 function topAggs(map: Record<string, EdgeAgg>, limit: number): Array<[string, EdgeAgg]> {
     return Object.entries(map)
         .sort((a, b) => b[1].n - a[1].n)
@@ -273,6 +325,8 @@ function fmtAgg(name: string, agg: EdgeAgg): string {
     if (agg.rttMax > 0) parts.push(`max ${agg.rttMax}ms`);
     parts.push(`×${agg.n}`);
     if (agg.ws > 0) parts.push(`ws ${agg.ws}`);
+    if ((agg.downSum ?? 0) > 0) parts.push(`↓ ${formatBytes(agg.downSum)}`);
+    if ((agg.upSum ?? 0) > 0) parts.push(`↑ ${formatBytes(agg.upSum)}`);
     return parts.join(' · ');
 }
 
@@ -286,11 +340,15 @@ export function buildEdgeSummary(telemetry: { days: Record<string, EdgeDay> } | 
         for (const [colo, a] of Object.entries(day.colos ?? {})) {
             const t = agg[colo] ?? (agg[colo] = emptyAgg());
             t.n += a.n; t.rttSum += a.rttSum; t.rttMax = Math.max(t.rttMax, a.rttMax); t.ws += a.ws;
+            t.upSum += a.upSum ?? 0; t.downSum += a.downSum ?? 0;
         }
     }
     if (!total) return null;
+    let downSum = 0;
+    for (const t of Object.values(agg)) downSum += t.downSum;
     const tops = topAggs(agg, 3).map(([colo, a]) => fmtAgg(colo, a));
-    return `Colo: ${tops.join(' | ')} (samples ${total})`;
+    const traffic = downSum > 0 ? ` · ↓${formatBytes(downSum)}` : '';
+    return `Colo: ${tops.join(' | ')} (samples ${total})${traffic}`;
 }
 
 /** متن کامل برای دستور /edge ربات و endpoint پنل */
@@ -310,23 +368,28 @@ export function buildEdgeText(telemetry: { days: Record<string, EdgeDay>; droppe
     const colos: Record<string, EdgeAgg> = {};
     const asns: Record<string, EdgeAgg> = {};
     let total = 0;
-    let wsTotal = 0;
     for (const day of Object.values(telemetry.days)) {
         total += day.total ?? 0;
         for (const [k, a] of Object.entries(day.colos ?? {})) {
             const t = colos[k] ?? (colos[k] = emptyAgg());
             t.n += a.n; t.rttSum += a.rttSum; t.rttMax = Math.max(t.rttMax, a.rttMax); t.ws += a.ws;
+            t.upSum += a.upSum ?? 0; t.downSum += a.downSum ?? 0;
         }
         for (const [k, a] of Object.entries(day.asns ?? {})) {
             const t = asns[k] ?? (asns[k] = emptyAgg());
             t.n += a.n; t.rttSum += a.rttSum; t.rttMax = Math.max(t.rttMax, a.rttMax); t.ws += a.ws;
+            t.upSum += a.upSum ?? 0; t.downSum += a.downSum ?? 0;
         }
+    }
+
+    const totals = getTrafficTotals(telemetry);
+    if (totals.down > 0 || totals.up > 0) {
+        lines.push('', `📊 <b>Traffic (observed):</b> ↓ ${formatBytes(totals.down)} · ↑ ${formatBytes(totals.up)}`);
     }
 
     lines.push('', '🌍 <b>Colo (CF datacenter):</b>');
     for (const [colo, a] of topAggs(colos, 5)) {
         lines.push(`• ${fmtAgg(colo, a)}`);
-        wsTotal += 0;
     }
 
     lines.push('', '📡 <b>ISPs (ASN):</b>');
@@ -339,7 +402,7 @@ export function buildEdgeText(telemetry: { days: Record<string, EdgeDay>; droppe
         `Samples: ${total} (last ${Object.keys(telemetry.days).length} day(s))${telemetry.dropped ? ' — ⚠️ daily cap hit, older samples dropped' : ''}`,
         '',
         '💡 <code>/cdn-cgi/trace</code> on your domain shows colo/TLS/ECH for free (zero CPU).',
-        '💡 RTT spike for an ISP = entry degradation → check CleanIPs.'
+        '💡 RTT spike for an ISP = entry degradation → Edge-Tuner retunes automatically.'
     );
 
     return lines.join('\n');

@@ -2,7 +2,6 @@ import { HttpStatus } from '@common';
 import { TrOverWSHandler } from '@protocols/trojan';
 import { VlOverWSHandler } from '@protocols/vless';
 import { getGlobals, setAutoProxyIPs } from '@settings';
-import { recordEdgeSample } from '@settings/edge-telemetry';
 import { getWsRoute } from '@utils';
 import { fallback } from './utils';
 import { clampGuardianIdleSec, WsGuardianConfig } from '@protocols/ws-guardian';
@@ -52,13 +51,11 @@ export async function handleWebsocket(request: Request, env: Env, ctx?: Executio
     try {
         switch (route) {
             case 'vl':
-                // 🛰️ گیت پاس شد → ترافیک واقعی پروکسی — نمونه‌برداری لبه (همیشه)
-                if (ctx) recordEdgeSample(request, env, ctx, 'ws');
-                return VlOverWSHandler(request, await resolveGuardianConfig(env));
+                // 🛰️ نمونه‌ی لبه در close اتصال ثبت می‌شود (با بایت‌های ترافیک واقعی)
+                return VlOverWSHandler(request, env, ctx!, await resolveGuardianConfig(env));
 
             case 'tr':
-                if (ctx) recordEdgeSample(request, env, ctx, 'ws');
-                return TrOverWSHandler(request, await resolveGuardianConfig(env));
+                return TrOverWSHandler(request, env, ctx!, await resolveGuardianConfig(env));
 
             default:
                 return fallback(request);

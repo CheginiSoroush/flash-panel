@@ -8,7 +8,9 @@ import {
 } from '@protocols/common';
 import type { RemoteSocketWrapper } from '@protocols/common';
 import { attachWsGuardian, WsGuardianConfig } from './ws-guardian';
+import { beginWsMetrics, endWsMetrics } from './ws-metrics';
 import { parseTrHeader } from './parsers';
+import { recordEdgeSample } from '@settings/edge-telemetry';
 
 // در حالت دیباگ true کنید تا لاگ‌ها فعال بشن
 const LOG_ENABLED = false;
@@ -31,7 +33,7 @@ function getHashBytes(trPass: string): Uint8Array {
     return bytes;
 }
 
-export async function TrOverWSHandler(request: Request, guardian?: WsGuardianConfig | null): Promise<Response> {
+export async function TrOverWSHandler(request: Request, env: Env, ctx: ExecutionContext, guardian?: WsGuardianConfig | null): Promise<Response> {
     const { trPass } = getGlobals();
     const hashBytes = getHashBytes(trPass);
 
@@ -39,6 +41,17 @@ export async function TrOverWSHandler(request: Request, guardian?: WsGuardianCon
     const [client, webSocket] = Object.values(webSocketPair);
     webSocket.accept();
     webSocket.binaryType = 'arraybuffer';
+
+    // 📊 متریک ترافیک — از accept تا close (نمونه در close ثبت می‌شود، نه handshake)
+    beginWsMetrics(webSocket);
+    webSocket.addEventListener('close', () => {
+        const traffic = endWsMetrics(webSocket);
+        if (traffic) recordEdgeSample(request, env, ctx, 'ws', traffic);
+    });
+    webSocket.addEventListener('error', () => {
+        const traffic = endWsMetrics(webSocket);
+        if (traffic) recordEdgeSample(request, env, ctx, 'ws', traffic);
+    });
 
     let address = '';
     let portForLog = 0;

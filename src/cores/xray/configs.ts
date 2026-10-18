@@ -369,6 +369,11 @@ export async function getXrCustomConfigs(isFragment: boolean): Promise<Response>
         await addBestPingConfigs(configs, totalHosts, proxies, chains, isFragment, isCustomDomain);
     }
 
+    // 📌 درس معکوس‌مهندسی Task 35: واریانت‌های HTTPUpgrade امتحان شدند و حذف شدند.
+    // سرورِ گیت ما handshake را 101 می‌کند (اثبات شد) ولی کلاینت Xray 26.x
+    // httpupgrade را deprecate و عملاً غیرفعال کرده («migrate to XHTTP H2 & H3»)
+    // — پروفایل مرده در ساب = UX خراب؛ مسیر واقعی آینده: XHTTP سمت سرور با DO.
+
     if (isFragment) {
         await addBestFragmentConfigs(configs, chainOutbound);
         await addWorkerlessConfigs(configs);

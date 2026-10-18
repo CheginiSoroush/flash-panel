@@ -8,12 +8,14 @@ import {
 } from '@protocols/common';
 import type { RemoteSocketWrapper } from '@protocols/common';
 import { attachWsGuardian, WsGuardianConfig } from './ws-guardian';
+import { beginWsMetrics, endWsMetrics } from './ws-metrics';
 import { getUUIDBytes, parseVlHeader } from './parsers';
+import { recordEdgeSample } from '@settings/edge-telemetry';
 
 // در حالت دیباگ true کنید تا لاگ‌ها فعال بشن
 const LOG_ENABLED = false;
 
-export async function VlOverWSHandler(request: Request, guardian?: WsGuardianConfig | null): Promise<Response> {
+export async function VlOverWSHandler(request: Request, env: Env, ctx: ExecutionContext, guardian?: WsGuardianConfig | null): Promise<Response> {
     const { vlUUID } = getGlobals();
     const userUUIDBytes = getUUIDBytes(vlUUID);
 
@@ -21,6 +23,17 @@ export async function VlOverWSHandler(request: Request, guardian?: WsGuardianCon
     const [client, webSocket] = Object.values(webSocketPair);
     webSocket.accept();
     webSocket.binaryType = 'arraybuffer';
+
+    // 📊 متریک ترافیک — از accept تا close (نمونه در close ثبت می‌شود، نه handshake)
+    beginWsMetrics(webSocket);
+    webSocket.addEventListener('close', () => {
+        const traffic = endWsMetrics(webSocket);
+        if (traffic) recordEdgeSample(request, env, ctx, 'ws', traffic);
+    });
+    webSocket.addEventListener('error', () => {
+        const traffic = endWsMetrics(webSocket);
+        if (traffic) recordEdgeSample(request, env, ctx, 'ws', traffic);
+    });
 
     let address = '';
     let portForLog = 0;
