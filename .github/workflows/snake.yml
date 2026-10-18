@@ -31,5 +31,9 @@ jobs:
         with:
           target_branch: output
           build_dir: dist
+          # هویت کامیت‌ها همیشه خود کاربر — هرگز bot
+          username: CheginiSoroush
+          email: lmsoroush@proton.me
+          commit_message: "chore: regenerate contribution snake"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
