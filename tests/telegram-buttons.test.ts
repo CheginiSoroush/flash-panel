@@ -543,10 +543,12 @@ describe('webhook resilience', () => {
         expect(sentTexts().join(' ')).toContain('Action failed');
     });
 
-    it('unknown callback data → 200, no crash', async () => {
+    it('unknown callback data → 200, no crash (v0.8.10: explicit "Unknown option" reply)', async () => {
         const { telegram, env } = await bootBot();
         const res = await post(telegram, env, callbackUpdate('definitely-not-a-button'));
         expect(res.status).toBe(200);
+        // فیکس Task 39: دیگر 200ِ بی‌صدا نیست — بازخورد صریح با منو
+        expect(sentTexts().join(' ')).toContain('Unknown option');
     });
 
     it('malformed JSON body → 200, no crash', async () => {

@@ -674,7 +674,9 @@ async function promptBroadcast(token: string, chatId: number, env: Env, adminId:
         return;
     }
 
-    await setPending(env, adminId, TG_BROADCAST_PENDING);
+    // ثبت حالت انتظار — best-effort (فیکس Task 39): با سقف KV تمام‌شده هم پرامپت
+    // باز می‌شود؛ reply به همین پرامپت بدون pending هم متن را می‌گیرد
+    const pendingSaved = await setPending(env, adminId, TG_BROADCAST_PENDING);
     await tgFetch(token, 'sendMessage', {
         chat_id: chatId,
         text: [
@@ -689,7 +691,8 @@ async function promptBroadcast(token: string, chatId: number, env: Env, adminId:
             '• <code>{link}</code> — their personal subscription URL',
             '• <code>{uuid}</code> — their UUID',
             '',
-            '<i>Send /settings or tap a menu button to cancel.</i>'
+            '<i>Send /settings or tap a menu button to cancel.</i>',
+            ...(pendingSaved ? [] : [TG_OFFLINE_HINT])
         ].join('\n'),
         parse_mode: 'HTML',
         reply_markup: { force_reply: true, selective: true }
@@ -809,10 +812,94 @@ async function cancelBroadcast(token: string, chatId: number, env: Env, adminId:
     });
 }
 
+/**
+ * رندر usage — یک مسیر مشترک برای دکمه‌ی Usage/Refresh و دستور /usage (فیکس Task 39).
+ * صفر هم داده‌ی معتبر است (ابتدای روز UTC) — همیشه چیزی رندر می‌شود؛
+ * شکست هم کارت خطا با Back — دستور /usage قبلاً روی صفر/شکست break بی‌صدای می‌شد.
+ */
+async function sendUsageCard(token: string, chatId: number, result: UsageResult, editMessageId?: number): Promise<void> {
+    if (!result.success) {
+        await tgFetch(token, 'sendMessage', {
+            chat_id: chatId,
+            text: result.error,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [[{ text: '◀️ Back', callback_data: 'main' }]] }
+        });
+        return;
+    }
+
+    const text = buildUsageText(result.total ?? 0, result.worker ?? 0);
+    if (editMessageId) {
+        const edited = await tgFetch(token, 'editMessageText', {
+            chat_id: chatId,
+            message_id: editMessageId,
+            text: text,
+            parse_mode: 'HTML',
+            reply_markup: usageKeyboard()
+        });
+        // «message is not modified» و خطاهای مشابه تلگرام → پیام تازه به‌جای سکوت
+        if (!edited?.ok) {
+            await tgFetch(token, 'sendMessage', {
+                chat_id: chatId,
+                text: text,
+                parse_mode: 'HTML',
+                reply_markup: usageKeyboard()
+            });
+        }
+        return;
+    }
+
+    await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'HTML',
+        reply_markup: usageKeyboard()
+    });
+}
+
+/** دکمه‌ای که رجیسترش دیگر وجود ندارد (دکمه‌ی کش‌شده‌ی قدیمی) — پیام صریح به‌جای break خاموش */
+async function sendStaleOptionNotice(token: string, chatId: number): Promise<void> {
+    await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text: '⚠️ This option is no longer available — please use the menu below.',
+        parse_mode: 'HTML',
+        reply_markup: mainKeyboard()
+    });
+}
+
+/** callback_data ناشناخته — بازخورد صریح به‌جای سکوت کامل (فیکس Task 39) */
+async function sendUnknownOptionNotice(token: string, chatId: number): Promise<void> {
+    await tgFetch(token, 'sendMessage', {
+        chat_id: chatId,
+        text: '⚠️ Unknown option — please use the menu below.',
+        parse_mode: 'HTML',
+        reply_markup: mainKeyboard()
+    });
+}
+
 async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number, env: Env): Promise<void> {
     const data = cq.data || '';
 
     switch (data) {
+        case 'main': {
+            // فیکس Task 39: شاخه‌ی main از بیرون (handleTelegramUpdate) به اینجا منتقل شد
+            // تا داخل همان try پیام‌دار dispatch اجرا شود — کرشش دیگر از catch
+            // بی‌صدای بیرونی عبور نمی‌کند و ادمین «⚠️ Action failed» می‌گیرد
+            // لغو flow های در انتظار broadcast با بازگشت به منوی اصلی
+            const pending = await getPending(env, cq.from.id.toString());
+            if (pending && (pending === TG_BROADCAST_PENDING || pending.startsWith(TG_BROADCAST_PREFIX))) {
+                await clearPending(env, cq.from.id.toString());
+            }
+
+            await tgFetch(token, 'sendMessage', {
+                chat_id: chatId,
+                text: `🤖 <b>${_project_} Panel Bot</b>\n\nChoose an option:`,
+                parse_mode: 'HTML',
+                reply_markup: mainKeyboard()
+            });
+            break;
+        }
+
         case 'settings':
             await tgFetch(token, 'sendMessage', {
                 chat_id: chatId,
@@ -873,48 +960,12 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
 
         case 'usage':
         case 'usage_refresh':
-            const result = await getUsageCached();
-            if (!result.success) {
-                await tgFetch(token, 'sendMessage', {
-                    chat_id: chatId,
-                    text: result.error,
-                    parse_mode: 'HTML',
-                    reply_markup: { inline_keyboard: [[{ text: '◀️ Back', callback_data: 'main' }]] }
-                });
-                break;
-            }
-
-            // صفر هم داده‌ی معتبر است (ابتدای روز UTC) — دکمه باید همیشه چیزی نشان دهد؛
-            // قبلاً total/worker صفر باعث break بی‌صدا می‌شد و دکمه «کار نمی‌کرد»
-            const text = buildUsageText(result.total ?? 0, result.worker ?? 0);
-            if (data === 'usage_refresh' && cq.message?.message_id) {
-                const edited = await tgFetch(token, 'editMessageText', {
-                    chat_id: chatId,
-                    message_id: cq.message.message_id,
-                    text: text,
-                    parse_mode: 'HTML',
-                    reply_markup: usageKeyboard()
-                });
-                // «message is not modified» و خطاهای مشابه تلگرام → پیام تازه به‌جای سکوت
-                if (!edited?.ok) {
-                    await tgFetch(token, 'sendMessage', {
-                        chat_id: chatId,
-                        text: text,
-                        parse_mode: 'HTML',
-                        reply_markup: usageKeyboard()
-                    });
-                }
-            } else {
-                await tgFetch(token, 'sendMessage', {
-                    chat_id: chatId,
-                    text: text,
-                    parse_mode: 'HTML',
-                    reply_markup: usageKeyboard()
-                });
-            }
+            // رندر مشترک با دستور /usage — صفر = کارت، شکست = کارت خطا (هرگز بی‌صدا)
+            await sendUsageCard(token, chatId, await getUsageCached(),
+                data === 'usage_refresh' ? cq.message?.message_id : undefined);
             break;
 
-        default:
+        default: {
             // ---------- Users: صفحه‌بندی، جزئیات، ارسال لینک ----------
             // ترتیب مهم است: users_page_ و ulink_ قبل از u_ چک بشن
             if (data.startsWith('users_page_')) {
@@ -929,34 +980,41 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
             else if (data.startsWith('set_')) {
                 const field = data.slice(4) as EditableField;
                 const config = EDITABLE_SETTINGS[field];
-                if (!config) break;
+                if (!config) {
+                    // فیکس Task 39 — رجیستر کهنه (دکمه‌ی کش‌شده‌ی قدیمی): پیام صریح،
+                    // نه break خاموش که ادمین را با «دکمه‌ی مرده» تنها بگذارد
+                    await sendStaleOptionNotice(token, chatId);
+                } else {
+                    const { settings } = await getDataset(env);
+                    const currentValue = config.current(settings);
 
-                const { settings } = await getDataset(env);
-                const currentValue = config.current(settings);
+                    // ثبت حالت انتظار برای این کاربر (fallback بدون reply) —
+                    // best-effort: با سقف KV تمام‌شده هم پرامپت باز می‌شود
+                    const pendingSaved = await setPending(env, cq.from.id.toString(), field);
 
-                // ثبت حالت انتظار برای این کاربر (fallback بدون reply)
-                await setPending(env, cq.from.id.toString(), field);
-
-                await tgFetch(token, 'sendMessage', {
-                    chat_id: chatId,
-                    text: `⚙️ <b>${config.label}</b>\n\n` +
-                          `📋 <b>Current:</b>\n<code>${currentValue}</code>\n\n` +
-                          `💬 <b>Send new value (reply یا پیام تکی):</b>\n<i>${config.hint}</i>`,
-                    parse_mode: 'HTML',
-                    reply_markup: {
-                        force_reply: true,
-                        selective: true
-                    }
-                });
-                break;
+                    await tgFetch(token, 'sendMessage', {
+                        chat_id: chatId,
+                        text: `⚙️ <b>${config.label}</b>\n\n` +
+                              `📋 <b>Current:</b>\n<code>${currentValue}</code>\n\n` +
+                              `💬 <b>Send new value (reply یا پیام تکی):</b>\n<i>${config.hint}</i>` +
+                              (pendingSaved ? '' : `\n${TG_OFFLINE_HINT}`),
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            force_reply: true,
+                            selective: true
+                        }
+                    });
+                }
             }
-            if (data.startsWith('sub_')) {
+            // ---------- اشتراک‌ها ----------
+            else if (data.startsWith('sub_')) {
                 // با slice به‌جای split — کل مقدار بعد از پیشوند
                 const typeKey = data.slice(4); // 'sub_'.length
                 const subscription = subscriptions[typeKey];
-                if (!subscription) break;
-
-                for (const [index, appInfo] of subscription.categories.entries()) {
+                if (!subscription) {
+                    // فیکس Task 39 — نوع حذف‌شده از رجیستر: پیام صریح به‌جای break خاموش
+                    await sendStaleOptionNotice(token, chatId);
+                } else for (const [index, appInfo] of subscription.categories.entries()) {
                     const clientUrl = buildClientUrl(typeKey, appInfo.core, subscription.label);
                     const qrUrl = buildQrUrl(typeKey, appInfo.core, subscription.label);
                     const docUrl = buildDocUrl(typeKey, appInfo.core);
@@ -1014,32 +1072,45 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
                 }
             }
 
-            if (data.startsWith('client_')) {
+            // ---------- کلاینت‌ها ----------
+            else if (data.startsWith('client_')) {
                 // باگ قبلی: split('_')[1] برای اسم‌های دارای فاصله
                 // ('Clash Meta', 'Clash verge rev', 'WG Tunnel') فقط بخش اول اسم رو
                 // برمی‌گردوند و این دکمه‌ها کار نمی‌کردن — با slice کل اسم حفظ می‌شه
                 const clientName = data.slice(7); // 'client_'.length
                 const client = clients.find(cli => cli.name === clientName);
-                if (!client) break;
-                let text = [
-                    `✅ <b>${client.name}</b>`,
-                    `━━━━━━━━━━━━━━━━`,
-                    `📍 <b>Minimum requirement:</b> ${client.minVer}`,
-                    `🏚️ <b>Download source:</b> ${client.source}`,
-                    '',
-                    `📥 <a href=\"${atob(client.b64Url)}\"><b>Get latest version</b></a>`,
-                    ''
-                ].join('\n');
+                if (!client) {
+                    // فیکس Task 39 — کلاینت حذف‌شده از رجیستر: پیام صریح به‌جای break خاموش
+                    await sendStaleOptionNotice(token, chatId);
+                } else {
+                    let text = [
+                        `✅ <b>${client.name}</b>`,
+                        `━━━━━━━━━━━━━━━━`,
+                        `📍 <b>Minimum requirement:</b> ${client.minVer}`,
+                        `🏚️ <b>Download source:</b> ${client.source}`,
+                        '',
+                        `📥 <a href=\"${atob(client.b64Url)}\"><b>Get latest version</b></a>`,
+                        ''
+                    ].join('\n');
 
-                await tgFetch(token, 'sendMessage', {
-                    chat_id: chatId,
-                    text: text,
-                    parse_mode: 'HTML',
-                    reply_markup: {
-                        inline_keyboard: [[{ text: '◀️ Back', callback_data: 'clients' }]]
-                    }
-                });
+                    await tgFetch(token, 'sendMessage', {
+                        chat_id: chatId,
+                        text: text,
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [[{ text: '◀️ Back', callback_data: 'clients' }]]
+                        }
+                    });
+                }
             }
+            // ---------- ناشناخته ----------
+            else {
+                // فیکس Task 39 — callback_data ناشناخته دیگر 200ِ بی‌صدا نیست؛
+                // ادمین می‌فهمد دکمه‌ای که زده به هیچ هندلری نرسیده
+                await sendUnknownOptionNotice(token, chatId);
+            }
+            break;
+        }
     }
 }
 
@@ -1079,40 +1150,37 @@ async function handleTelegramUpdate(request: Request, env: Env): Promise<Respons
         const cq = update.callback_query;
         if (cq.from.id.toString() !== userId) return new Response(null, { status: 200 });
 
-        await tgFetch(botToken, 'answerCallbackQuery', { callback_query_id: cq.id });
+        // ack به تلگرام (اسپینر کاربر) — فیکس Task 39: در try؛ شکستش هرگز نباید
+        // dispatch را بکشد (قبلاً throw کل دکمه را بی‌صدا از catch بیرونی عبور می‌داد)
+        try {
+            await tgFetch(botToken, 'answerCallbackQuery', { callback_query_id: cq.id });
+        } catch {
+            // اسپینر تا timeout کلاینت می‌ماند ولی دکمه زنده است
+        }
 
         const chatId = cq.message?.chat.id;
         if (!chatId) return new Response(null, { status: 200 });
 
         const data = cq.data || '';
 
-        if (data === 'main') {
-            // لغو flow های در انتظار broadcast با بازگشت به منوی اصلی
-            const pending = await getPending(env, cq.from.id.toString());
-            if (pending && (pending === TG_BROADCAST_PENDING || pending.startsWith(TG_BROADCAST_PREFIX))) {
-                await clearPending(env, cq.from.id.toString());
-            }
+        // فیکس Task 39: همه‌ی شاخه‌ها (شامل main که حالا داخل handleCallback است)
+        // داخل همین try پیام‌دار — هیچ مسیری از catch بی‌صدای بیرونی عبور نمی‌کند
+        try {
+            await handleCallback(cq, botToken, chatId, env);
 
+            // await شده — بدون await بعد از return شدن response در Workers
+            // این promise احتمالاً cancel می‌شد (باگ قبلی)
+            // بعد از usage/usage_refresh خودِ کارت رندر شده — هشدار تکراری نفرست
+            if (data !== 'usage' && data !== 'usage_refresh') {
+                await checkCfUsageWarning(botToken, chatId);
+            }
+        } catch (error) {
+            // خطای غیرمنتظره در هندلر دکمه — ادمین باید بداند، نه سکوت
             await tgFetch(botToken, 'sendMessage', {
                 chat_id: chatId,
-                text: `🤖 <b>${_project_} Panel Bot</b>\n\nChoose an option:`,
-                parse_mode: 'HTML',
-                reply_markup: mainKeyboard()
-            });
-        } else {
-            try {
-                await handleCallback(cq, botToken, chatId, env);
-            } catch (error) {
-                // خطای غیرمنتظره در هندلر دکمه — ادمین باید بداند، نه سکوت
-                await tgFetch(botToken, 'sendMessage', {
-                    chat_id: chatId,
-                    text: `⚠️ Action failed: ${safeError(error).slice(0, 200)}`
-                }).catch(() => {});
-            }
+                text: `⚠️ Action failed: ${safeError(error).slice(0, 200)}`
+            }).catch(() => {});
         }
-        // await شده — بدون await بعد از return شدن response در Workers
-        // این promise احتمالاً cancel می‌شد (باگ قبلی)
-        await checkCfUsageWarning(botToken, chatId);
         return new Response(null, { status: 200 });
     }
 
@@ -1141,6 +1209,15 @@ async function handleTelegramUpdate(request: Request, env: Env): Promise<Respons
             }
             // مسیر جدید — تشخیص از متن خام؛ حتی وقتی pending منقضی شده باشد کار می‌کند
             if (!settingsField) settingsField = resolveSettingsFieldFromBotText(botText);
+
+            // فیکس Task 39 — مسیر آفلاین broadcast: وقتی put سقفِ KV پرامپت را
+            // بی‌pending گذاشت، reply به پرامپت باز هم متن announcement را می‌گیرد
+            // (وگرنه پیام ادمین به منوی اصلی می‌افتد و جریان broadcast می‌میرد)
+            if (!settingsField && botText.includes('Send the message to broadcast now')) {
+                await handleBroadcastTextInput(botToken, chatId, env, update.message.from.id.toString(), text);
+                await checkCfUsageWarning(botToken, chatId);
+                return new Response(null, { status: 200 });
+            }
         }
 
         if (!settingsField && text && !text.startsWith('/')) {
@@ -1234,14 +1311,9 @@ async function handleTelegramUpdate(request: Request, env: Env): Promise<Respons
 
         switch (text) {
             case '/usage':
-                const result = await getUsageCached();
-                if (!result.success || !result.worker || !result.total) break;
-                await tgFetch(botToken, 'sendMessage', {
-                    chat_id: chatId,
-                    text: buildUsageText(result.total, result.worker),
-                    parse_mode: 'HTML',
-                    reply_markup: usageKeyboard()
-                });
+                // فیکس Task 39 — همان رندر مشترک دکمه‌ی Usage (sendUsageCard):
+                // صفر = کارت، شکست = کارت خطا با Back (قبلاً break بی‌صدای می‌شد)
+                await sendUsageCard(botToken, chatId, await getUsageCached());
                 break;
 
             case '/settings':
@@ -1330,7 +1402,8 @@ async function handleTelegramUpdate(request: Request, env: Env): Promise<Respons
                 break;
         }
 
-        await checkCfUsageWarning(botToken, chatId);
+        // بعد از /usage خودِ کارت رندر شده — هشدار تکراری نفرست
+        if (text !== '/usage') await checkCfUsageWarning(botToken, chatId);
         return new Response(null, { status: 200 });
     }
 
@@ -1385,12 +1458,22 @@ async function sendStatus(token: string, chatId: number, env: Env): Promise<void
     });
 }
 
+// cooldown هشدار usage — فقط حافظه‌ی isolate، صفر KV put (فیکس Task 39)
+// قبلاً بعد از هر پیام/کلیک امکان ارسال کارت هشدار بود؛ حالا هر چت ساعتی یک‌بار
+const usageWarningCooldown = new Map<number, number>();
+const USAGE_WARNING_COOLDOWN_MS = 3_600_000; // ۱ ساعت
+
 async function checkCfUsageWarning(botToken: string, chatId: number): Promise<void> {
+    const lastWarned = usageWarningCooldown.get(chatId);
+    if (lastWarned && Date.now() - lastWarned < USAGE_WARNING_COOLDOWN_MS) return;
+
     const result = await getUsageCached();
     if (!result.success || !result.worker || !result.total) return;
 
     const nearLimit = result.total / 100000 * 100 > 80;
     if (nearLimit) {
+        // قبل از ارسال ثبت می‌شود — حتی اگر tgFetch شکست بخورد اسپم نمی‌شود
+        usageWarningCooldown.set(chatId, Date.now());
         await tgFetch(botToken, 'sendMessage', {
             chat_id: chatId,
             text: buildUsageText(result.total, result.worker),
@@ -1405,24 +1488,44 @@ async function checkCfUsageWarning(botToken: string, chatId: number): Promise<vo
 
 const TG_PENDING_PREFIX = 'tg-pending-';
 
+/** hint وقتی pending به‌خاطر سقف KV ذخیره نشد — ادمین می‌داند باید reply کند */
+const TG_OFFLINE_HINT = '<i>(offline — reply to this message)</i>';
+
 // flow broadcast از همان مکانیزم pending استفاده می‌کند:
 //   مقدار TG_BROADCAST_PENDING = «در انتظار متن announcement»
 //   مقدار TG_BROADCAST_PREFIX + text = «متن آماده‌ی ارسال، منتظر تأیید»
 const TG_BROADCAST_PENDING = 'broadcast';
 const TG_BROADCAST_PREFIX = 'broadcast:';
 
-async function setPending(env: Env, userId: string, field: string) {
+/**
+ * ثبت حالت انتظار — best-effort (فیکس Task 39): با سقف روزانه‌ی KV (429) هم
+ * پرامپت تنظیمات/broadcast باید باز شود؛ مسیر reply از روی متن پرامپت
+ * (resolveSettingsFieldFromBotText) بدون pending هم کار می‌کند.
+ * false = ذخیره نشد → پرامپت یک خط hint آفلاین اضافه می‌کند.
+ */
+async function setPending(env: Env, userId: string, field: string): Promise<boolean> {
     // ۱۵ دقیقه — قبلاً ۳۰۰ ثانیه بود؛ ادمینی که دیر جواب می‌داد
     // پیامش بی‌اثر می‌شد (احساس «کار نمی‌کند»)
-    await env.kv.put(TG_PENDING_PREFIX + userId, field, { expirationTtl: 900 });
+    try {
+        await env.kv.put(TG_PENDING_PREFIX + userId, field, { expirationTtl: 900 });
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 async function getPending(env: Env, userId: string): Promise<string | null> {
     return env.kv.get(TG_PENDING_PREFIX + userId);
 }
 
-async function clearPending(env: Env, userId: string) {
-    await env.kv.delete(TG_PENDING_PREFIX + userId);
+/** پاک‌کردن حالت انتظار — best-effort؛ delete هم زیر سقف روزانه می‌ماند */
+async function clearPending(env: Env, userId: string): Promise<boolean> {
+    try {
+        await env.kv.delete(TG_PENDING_PREFIX + userId);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /** ذخیره‌ی تنظیمات از ربات — مستقیم در KV + invalidate کش */
