@@ -96,39 +96,20 @@ export function isValidCleanEntry(entry: string): boolean {
 }
 
 // ---------- تولید کاندیدای قطعی از رنج‌های CF ----------
-// به‌جای لیست ثابتِ کهنه‌شونده: تولید قطعی (seed = روز UTC + ایندکس) از
-// رنج‌های رسمی — هر روز ترکیب متفاوت (تنوع ضد-فیلترینگ)، بدون اینترنت و
-// بدون سوکت. همان IP در همان روز همیشه همان است (idempotent).
+// ⚠️ v0.8.2 اصلاح مهم: عضویت در رنج فقط «اعتبار» را اثبات می‌کند، نه «زنده‌بودن» —
+// پروب زنده نشان داد فقط ۴ از ۱۴ IP تصادفیِ داخل رنج واقعاً سرویس می‌دهند
+// (بسیاری از IPهای رنج‌های منتشرشده مسیر ندارند/dark). سیگنال زنده‌بودنِ قابل‌
+// اتکا: IPهای داخل رکورد A دامنه‌های واقعاً CF-fronted (اگر یک IP امروز در
+// رکورد A یک دامنه‌ی زنده است، حتماً سرویس می‌دهد). منبع: DoH از داخل Worker
+// (fetch مجاز است — فقط سوکت CF→CF مسدود است) + fallback ثابتِ تأییدشده.
 
-/** splitmix32 — PRNG قطعی کوچک */
-function splitmix32(seed: number): () => number {
-    let s = seed | 0;
-    return () => {
-        s = (s + 0x9E3779B9) | 0;
-        let z = s;
-        z = Math.imul(z ^ (z >>> 16), 0x21F0AAAD);
-        z = Math.imul(z ^ (z >>> 15), 0x735A2D97);
-        return (z ^ (z >>> 15)) >>> 0;
-    };
-}
-
-/** کاندیدای clean-IP قطعی برای (روز، ایندکس) — همیشه داخل رنج‌های CF */
-export function generateCleanCandidate(dayBucket: number, index: number): string {
-    const rand = splitmix32((Math.imul(dayBucket, 2654435761) ^ Math.imul(index + 1, 0x9E3779B9)) | 0);
-    const range = CF_EDGE_RANGES[rand() % CF_EDGE_RANGES.length];
-    const base = cleanIpToInt(range.base)!;
-    const mask = (0xFFFFFFFF << (32 - range.bits)) >>> 0;
-    const hostMask = (~mask) >>> 0;
-    const hostBits = 32 - range.bits;
-    let host = rand() % hostMask;
-    if (hostBits >= 8) {
-        // پرهیز از لبه‌ی اکتت (x.y.z.0 / x.y.z.255)
-        const last = host & 0xFF;
-        if (last === 0) host += 1;
-        else if (last === 255) host -= 1;
+/** هش قطعی برای رتبه‌بندی روزانه‌ی کاندیداها (تنوع روزانه بدون تصادف) */
+export function dayRankHash(ip: string, dayBucket: number): number {
+    let h = Math.imul(dayBucket, 2654435761) >>> 0;
+    for (let i = 0; i < ip.length; i++) {
+        h = (Math.imul(h ^ ip.charCodeAt(i), 0x9E3779B9)) >>> 0;
     }
-    const value = ((base & mask) | (host & hostMask)) >>> 0;
-    return `${(value >>> 24) & 255}.${(value >>> 16) & 255}.${(value >>> 8) & 255}.${value & 255}`;
+    return h >>> 0;
 }
 
 /**
