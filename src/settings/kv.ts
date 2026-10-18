@@ -19,6 +19,18 @@ const DATASET_CACHE_TTL = 5_000; // ۵ ثانیه
 let datasetCache: { data: Dataset; expiresAt: number } | null = null;
 let inflight: Promise<Dataset> | null = null;
 
+// ---------- رژیم degrade سهمیه‌ی KV ----------
+// سقف رایگان ۱٬۰۰۰ put/روز است؛ وقتی تمام شود (429 «KV put() limit exceeded»)
+// هیچ نوشتنیِ *ضمنی* (مهاجرت نسخه/بوت‌استرپ) نباید سرویس را پایین بیاورد —
+// باگ ریشه‌ای قبلی: شکست put مهاجرت → throw → کل sub/panel error page می‌داد.
+// با تنظیمات merge-شده‌ی در حافظه ادامه می‌دهیم؛ ۱۵ دقیقه بعد دوباره تلاش می‌شود.
+const MIGRATION_RETRY_MS = 15 * 60 * 1000;
+let migrationRetryAfter = 0;
+
+export function _resetMigrationThrottleForTest(): void {
+    migrationRetryAfter = 0;
+}
+
 /**
  * باطل کردن کش — بعد از هر write به KV باید صدا زده بشه.
  * (برای فایل‌هایی که مستقیم KV می‌نویسن — مثل telegram و warp — هم export شده)
@@ -76,18 +88,33 @@ async function loadDataset(env: Env): Promise<Dataset> {
         warpAccounts = storedWarpAccounts;
 
         if (!settings) {
-            await env.kv.put('proxySettings', JSON.stringify(kvSettings));
+            // بوت‌استرپ اولین اجرا — put best-effort: با سهمیه‌ی تمام‌شده هم سرویس زنده می‌ماند
             settings = kvSettings;
+            try {
+                await env.kv.put('proxySettings', JSON.stringify(kvSettings));
+            } catch (error) {
+                console.log(`KV bootstrap put skipped (best-effort): ${safeError(error)}`);
+            }
         }
 
         if (!warpAccounts) {
             warpAccounts = await fetchWarpAccounts(env);
         }
 
-        if (VERSION !== settings.panelVersion) {
+        if (VERSION !== settings.panelVersion && Date.now() >= migrationRetryAfter) {
             // مهاجرت نسخه — مستقیم از روی settings ذخیره‌شده merge می‌شه
             // (بدون خواندن دوباره KV + بدون overwrite شدن با پیش‌فرض‌ها)
-            settings = await mergeDataset(env, undefined, settings);
+            try {
+                settings = await mergeDataset(env, undefined, settings);
+                migrationRetryAfter = 0;
+            } catch (error) {
+                // 🔴 سقف put روزانه (429) یا هر خطای write دیگر → هرگز لود تنظیمات را نکش؛
+                // سرویس با merge در حافظه ادامه می‌دهد (پس از ریست سهمیه، put بعدی مهاجرت را ثبت می‌کند)
+                console.log(`KV migration put deferred (best-effort, retry in 15m): ${safeError(error)}`);
+                migrationRetryAfter = Date.now() + MIGRATION_RETRY_MS;
+                settings = { ...kvSettings, ...settings, panelVersion: VERSION };
+                syncKvSettings(settings);
+            }
         }
 
         // self-heal — remoteDnsHost باید با remoteDNS هم‌تراز باشد (بوت‌استرپ DoH دامنه‌ای)
@@ -96,7 +123,11 @@ async function loadDataset(env: Env): Promise<Dataset> {
         let telegramBot: TelegramBot | null = storedTelegramBot;
         if (!telegramBot) {
             telegramBot = { telegramBotToken: '', telegramUserId: '' };
-            await env.kv.put('telegramBot', JSON.stringify(telegramBot));
+            try {
+                await env.kv.put('telegramBot', JSON.stringify(telegramBot));
+            } catch (error) {
+                console.log(`KV telegramBot bootstrap put skipped (best-effort): ${safeError(error)}`);
+            }
         }
 
         return {
