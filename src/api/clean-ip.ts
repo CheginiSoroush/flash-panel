@@ -16,6 +16,8 @@ export interface EndpointTestResult {
     ok: boolean;
     successRate: string;
     avgLatencyMs: number | null;
+    /** true = تأیید ساختاری (رنج رسمی CF) بدون پروب سوکتی — CF→CF cancel می‌شود */
+    structural?: boolean;
 }
 
 /** جمع‌کننده‌های عمومی IP تمیز — هر کدام متن ساده (IP یا دامنه در هر خط) برمی‌گردانند */
@@ -31,6 +33,102 @@ const DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
 export function isValidEndpoint(value: string): boolean {
     if (!value || value.length > 253) return false;
     return IPV4_RE.test(value) || IPV6_RE.test(value) || DOMAIN_RE.test(value);
+}
+
+// ---------- اعتبارسنجی ساختاری لبه‌ی Cloudflare ----------
+// دیاگ زنده (v0.8.1): سوکت Worker → IP لبه‌ی CF در سطح پلتفرم cancel می‌شود
+// ("Stream was cancelled") — یعنی هیچ تست سوکتی از داخل Worker روی IP های
+// لبه ممکن نیست (CF→CF مسدود است). چیزی که از لبه قابل‌اثبات است فقط
+// «اعتبار ساختاری» است: عضویت IPv4 در رنج‌های رسمی منتشرشده‌ی CF.
+// IPv4 خارج از این رنج‌ها (مثل Google/GCP) برای clean-IP «قطعاً» مرده است —
+// کلاینت با SNI دامنه‌ی ما به آن IP وصل می‌شود و گواهی mismatch می‌گیرد.
+
+export const CF_EDGE_RANGES: ReadonlyArray<{ base: string; bits: number }> = [
+    { base: '104.16.0.0', bits: 13 },      // 104.16.0.0/13
+    { base: '104.24.0.0', bits: 14 },      // 104.24.0.0/14
+    { base: '172.64.0.0', bits: 13 },      // 172.64.0.0/13
+    { base: '162.158.0.0', bits: 15 },     // 162.158.0.0/15
+    { base: '108.162.192.0', bits: 18 },   // 108.162.192.0/18
+    { base: '141.101.64.0', bits: 18 },    // 141.101.64.0/18
+    { base: '188.114.96.0', bits: 20 },    // 188.114.96.0/20
+    { base: '190.93.240.0', bits: 20 },    // 190.93.240.0/20
+    { base: '103.21.244.0', bits: 22 },    // 103.21.244.0/22
+    { base: '198.41.128.0', bits: 17 },    // 198.41.128.0/17
+    { base: '173.245.48.0', bits: 20 },    // 173.245.48.0/20
+    { base: '131.0.72.0', bits: 22 }       // 131.0.72.0/22
+];
+
+const CLEAN_IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+
+/** IPv4 → int (بی‌اعتبار = null) */
+export function cleanIpToInt(ip: string): number | null {
+    const m = CLEAN_IPV4_RE.exec(ip);
+    if (!m) return null;
+    const octets = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+    if (octets.some(o => o > 255)) return null;
+    return (((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0);
+}
+
+/** آیا این IPv4 در رنج‌های رسمی لبه‌ی Cloudflare است؟ */
+export function isCloudflareEdgeIPv4(ip: string): boolean {
+    const value = cleanIpToInt(ip);
+    if (value === null) return false;
+    for (const range of CF_EDGE_RANGES) {
+        const base = cleanIpToInt(range.base);
+        if (base === null) continue;
+        const mask = (0xFFFFFFFF << (32 - range.bits)) >>> 0;
+        if ((value & mask) === (base & mask)) return true;
+    }
+    return false;
+}
+
+/**
+ * اعتبار ساختاری یک ورودی clean-IP:
+ *  - IPv4 → فقط داخل رنج‌های CF معتبر است (خارج = قطعاً مرده برای کلاینت)
+ *  - دامنه → محافظه‌کارانه معتبر (قصد ادمین؛ دامنه‌های CF-fronted مثل
+ *    www.speedtest.net این‌اند؛ تشخیص CF-fronted بودن از لبه ممکن نیست)
+ */
+export function isValidCleanEntry(entry: string): boolean {
+    const trimmed = (entry ?? '').trim();
+    if (!trimmed) return false;
+    if (cleanIpToInt(trimmed) === null) return true; // دامنه/IPv6
+    return isCloudflareEdgeIPv4(trimmed);
+}
+
+// ---------- تولید کاندیدای قطعی از رنج‌های CF ----------
+// به‌جای لیست ثابتِ کهنه‌شونده: تولید قطعی (seed = روز UTC + ایندکس) از
+// رنج‌های رسمی — هر روز ترکیب متفاوت (تنوع ضد-فیلترینگ)، بدون اینترنت و
+// بدون سوکت. همان IP در همان روز همیشه همان است (idempotent).
+
+/** splitmix32 — PRNG قطعی کوچک */
+function splitmix32(seed: number): () => number {
+    let s = seed | 0;
+    return () => {
+        s = (s + 0x9E3779B9) | 0;
+        let z = s;
+        z = Math.imul(z ^ (z >>> 16), 0x21F0AAAD);
+        z = Math.imul(z ^ (z >>> 15), 0x735A2D97);
+        return (z ^ (z >>> 15)) >>> 0;
+    };
+}
+
+/** کاندیدای clean-IP قطعی برای (روز، ایندکس) — همیشه داخل رنج‌های CF */
+export function generateCleanCandidate(dayBucket: number, index: number): string {
+    const rand = splitmix32((Math.imul(dayBucket, 2654435761) ^ Math.imul(index + 1, 0x9E3779B9)) | 0);
+    const range = CF_EDGE_RANGES[rand() % CF_EDGE_RANGES.length];
+    const base = cleanIpToInt(range.base)!;
+    const mask = (0xFFFFFFFF << (32 - range.bits)) >>> 0;
+    const hostMask = (~mask) >>> 0;
+    const hostBits = 32 - range.bits;
+    let host = rand() % hostMask;
+    if (hostBits >= 8) {
+        // پرهیز از لبه‌ی اکتت (x.y.z.0 / x.y.z.255)
+        const last = host & 0xFF;
+        if (last === 0) host += 1;
+        else if (last === 255) host -= 1;
+    }
+    const value = ((base & mask) | (host & hostMask)) >>> 0;
+    return `${(value >>> 24) & 255}.${(value >>> 16) & 255}.${(value >>> 8) & 255}.${value & 255}`;
 }
 
 /**

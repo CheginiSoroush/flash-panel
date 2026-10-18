@@ -8,6 +8,7 @@ import {
     CLEAN_IP_DISCOVERY_SOURCES,
     EndpointTestResult,
     extractCandidates,
+    isValidCleanEntry,
     rankResults,
     reorderCleanIPs
 } from '@api/clean-ip';
@@ -87,7 +88,11 @@ interface ProbeAttempt {
 /**
  * پروب سلامت لبه: TCP:443 + درخواست HTTP ساده به مسیر سنجه — یک لبه‌ی سالم
  * Cloudflare پاسخ 400 با هدر cf-ray می‌دهد (همان تکنیک تست ProxyIP موجود).
- * اگر IP/دامنه برای اتصال کلاینت قابل‌استفاده باشد این چک پاس می‌شود.
+ *
+ * ⚠️ v0.8.1 — محدوده‌ی اعتبار: این پروب فقط برای اهداف «غیر-CF» معنا دارد
+ * (مثل رله‌های ProxyIP). سوکت Worker → IP لبه‌ی CF در سطح پلتفرم cancel
+ * می‌شود ("Stream was cancelled") — برای آدرس‌های داخل رنج‌های رسمی CF
+ * از اعتبارسنجی ساختاری (isValidCleanEntry) استفاده می‌شود، نه سوکت.
  */
 async function checkEndpoint(address: string): Promise<ProbeAttempt> {
     const start = Date.now();
@@ -136,6 +141,12 @@ async function batchTest(targets: string[], attempts: number): Promise<EndpointT
     for (let i = 0; i < unique.length; i += BATCH_CONCURRENCY) {
         const batch = unique.slice(i, i + BATCH_CONCURRENCY);
         const batchResults = await Promise.all(batch.map(async (target) => {
+            // ساختاری-معتبر (IP داخل رنج CF / دامنه) → بدون سوکت — CF→CF
+            // cancel می‌شود و نتیجه‌ی سوکت گمراه‌کننده است؛ معتبر یعنی ok
+            if (isValidCleanEntry(target)) {
+                return { target, ok: true, successRate: 'cf-range', avgLatencyMs: null, structural: true };
+            }
+
             const probes = await Promise.all(
                 Array.from({ length: attempts }, () => checkEndpoint(target))
             );
@@ -163,6 +174,17 @@ async function testSingleEndpoint(): Promise<Response> {
 
     if (!target) {
         return respond(false, HttpStatus.BAD_REQUEST, 'Missing ?target= parameter.');
+    }
+
+    // ساختاری-معتبر → ok بدون سوکت (پروب روی CF→CF cancel می‌شود)
+    if (isValidCleanEntry(target)) {
+        return respond(true, HttpStatus.OK, '', {
+            target,
+            ok: true,
+            successRate: 'cf-range',
+            avgLatencyMs: null,
+            structural: true
+        });
     }
 
     const attempts = await Promise.all(
@@ -221,6 +243,9 @@ async function discoverAndTest(exclude: string[]): Promise<{ sources: string[]; 
         MAX_DISCOVER_CANDIDATES * 4
     )
         .filter(c => !excludeSet.has(c))
+        // v0.8.1 — فیلتر ساختاری قبل از تست: IP خارج از رنج CF (مثل Google
+        // لیست‌ها) قطعاً مرده است؛ پروب فقط برای اهداف غیر-CF معنا دارد
+        .filter(isValidCleanEntry)
         .slice(0, MAX_DISCOVER_CANDIDATES);
 
     const results = candidates.length
@@ -276,13 +301,26 @@ async function addCleanIPs(request: Request, env: Env): Promise<Response> {
             return respond(false, HttpStatus.BAD_REQUEST, 'No targets provided.');
         }
 
+        // v0.8.1 — دروازه‌ی ساختاری: IPv4 خارج از رنج‌های رسمی CF (مثل Google)
+        // هرگز به‌عنوان Clean IP کار نمی‌کند (SNI دامنه‌ی ما → گواهی mismatch).
+        // دامنه‌ها پذیرفته می‌شوند (قصد ادمین؛ ممکن است CF-fronted باشند).
+        const rejected = targets.filter(t => !isValidCleanEntry(t));
+        const accepted = targets.filter(t => isValidCleanEntry(t));
+
+        if (!accepted.length) {
+            return respond(false, HttpStatus.BAD_REQUEST,
+                `All targets rejected — IPv4s outside Cloudflare edge ranges cannot serve this panel (TLS mismatch). Rejected: ${rejected.join(', ')}`);
+        }
+
         const { cleanIPs } = getSettings();
         // سقف ۱۵ و اعتبارسنجی سخت — ورودی مستقیم کاربر است
-        const merged = [...new Set([...cleanIPs.filter(Boolean), ...targets])].slice(0, 15);
+        const merged = [...new Set([...cleanIPs.filter(Boolean), ...accepted])].slice(0, 15);
         await persistCleanIPs(env, merged);
 
-        return respond(true, HttpStatus.OK, `${targets.length} target(s) processed — worker redeployed.`, {
-            cleanIPs: merged
+        const note = rejected.length ? ` Rejected ${rejected.length} invalid (outside CF ranges): ${rejected.join(', ')}` : '';
+        return respond(true, HttpStatus.OK, `${accepted.length} target(s) processed — worker redeployed.${note}`, {
+            cleanIPs: merged,
+            rejected
         });
     } catch (error) {
         return respond(false, HttpStatus.INTERNAL_SERVER_ERROR, `Add failed: ${safeError(error)}`);

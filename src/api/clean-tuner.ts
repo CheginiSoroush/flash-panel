@@ -1,41 +1,38 @@
-import { runProxyIPBatchTest } from './proxy-check';
+import {
+    CF_EDGE_RANGES,
+    generateCleanCandidate,
+    isValidCleanEntry
+} from './clean-ip';
 import { syncKvSettings } from '@settings';
 import { invalidateDatasetCache } from '@kv';
 import { safeError } from '@common';
 import { KvSettings } from '#types/settings';
 
-// ---------- Auto-Tune CleanIPs ----------
-// همان فلسفه‌ی Auto-Tune ProxyIP ولی برای آدرس‌های رو-به-کلاینت (cleanIPs):
-// فیلترینگ مدام تغییر می‌کند — IP تمیزِ امروز ممکن است فردا مُرد باشد و اولین
-// پروفایل‌های ساب (که کاربر اول همان‌ها را تست می‌کند) بی‌جان شوند تا ادمین
-// دستی عوضشان کند. حالا هر ۶ ساعت استخر فعلی + کاندیداهای عمومی از لبه‌ی CF
-// تست می‌شود (TCP:443 + پاسخ ۴۰۰ با cf-ray = لبه‌ی زنده‌ی کلادفلر) و ورودی‌های
-// مرده با سالم‌ترین کاندیداها جایگزین می‌شوند.
+// ---------- Auto-Tune CleanIPs (v0.8.1 — بازطراحی مبتنی بر معکوس‌مهندسی) ----------
 //
-// سیاست محافظه‌کار:
-//   - ورودی سالم ادمین هرگز حذف/جابجا نمی‌شود (حداقل churn)
-//   - customCdnAddrs و customDomain اصلاً تست نمی‌شوند و همیشه می‌مانند
-//     (دامنه‌های CDN شخصی ممکن است معیار تست relay را پاس نکنند ولی برای
-//      مسیر پنل معتبر باشند)
-//   - همه‌ی ورودی‌های فعلی سالم بودند → بدون write (صرفه‌ی KV)
-//   - هیچ سالمی نبود → لیست قبلی دست‌نخورده (آخرین حالت خوب بهتر از خالی است)
-
-export const CLEAN_IP_CANDIDATES: string[] = [
-    'speed.cloudflare.com',     // دامنه‌ی رسمی تست سرعت CF — همیشه در رنج لبه
-    '104.16.160.3',             // رنج 104.16/12
-    '104.17.148.22',            // رنج 104.17/16
-    '172.66.0.218',             // رنج 172.66/15
-    '104.16.123.96',            // کاندیدای عمومی رنج 104.16
-    '104.17.147.22',            // کاندیدای عمومی رنج 104.17
-    '172.64.32.11',             // کاندیدای عمومی رنج 172.64
-    '172.67.68.4',              // کاندیدای عمومی رنج 172.67
-    '108.162.229.1',            // کاندیدای عمومی رنج 108.162
-    '141.101.90.1',             // کاندیدای عمومی رنج 141.101
-    '190.93.246.1'              // کاندیدای عمومی رنج 190.93 (آمریکای لاتین)
-];
-
-const CLEAN_TOP_N = 5;
-const CLEAN_MAX_POOL = 16;
+// تفاوت ماهوی با ProxyIP tuner: کاندیداهای ProxyIP سرورهای رله‌ی «غیر-CF»
+// هستند (VPS های جامعه که :443 را به لبه‌ی CF فوروارد می‌کنند) و سوکت Worker
+// به آن‌ها آزاد است — تست TCP+HTTP آن‌ها معنا دارد. ولی CleanIP ها خودِ
+// «لبه‌ی Cloudflare»اند و پلتفرم، سوکت Worker → CF را cancel می‌کند
+// (دیاگ زنده: "Stream was cancelled") — یعنی نسخه‌ی قبلی (تست سوکتی) از
+// نظر ساختاری «هرگز» نمی‌توانست نه کاندیداها را تأیید کند و نه لیست خراب
+// ادمین را ترمیم کند؛ نتیجه‌اش همیشه 'no healthy clean ip' بود.
+//
+// مدل جدید — اعتبارسنجی ساختاری (اثبات‌پذیر از لبه):
+//   - IPv4 خارج از رنج‌های رسمی CF (مثل Google/GCP) = قطعاً مرده
+//     (کلاینت با SNI دامنه‌ی ما وصل می‌شود → گواهی mismatch) → جایگزین
+//   - IPv4 داخل رنج = معتبر → می‌ماند (سلامت واقعیِ ایران‌ساید فقط از
+//     سمت ایران سنجیدنی است — هیچ اوراکلی از لبه وجود ندارد؛ صادقانه)
+//   - دامنه = معتبر (قصد ادمین — مثل www.speedtest.net که CF-fronted است)
+//
+// کاندیداهای جایگزین: تولید قطعی با بذر روز UTC از رنج‌های رسمی CF —
+// بدون اینترنت، بدون سوکت، هر روز ترکیب متفاوت (تنوع ضد-فیلترینگ).
+//
+// سیاست محافظه‌کار (حفظ شده):
+//   - ورودی معتبر ادمین هرگز حذف/جابجا نمی‌شود (churn = صفر)
+//   - customCdnAddrs و customDomain همیشه می‌مانند
+//   - لیست خالی = دخالت نمی‌کند (پیش‌فرض EMBEDED حاکم می‌شود)
+//   - فقط تغییر واقعی → یک write (صرفه‌ی KV)
 
 export interface CleanTuneResult {
     poolSize: number;
@@ -46,12 +43,7 @@ export interface CleanTuneResult {
     skipped?: string;
 }
 
-/**
- * استخر = cleanIPs فعلی + کاندیداهای عمومی → تست از لبه → جایگزینی مرده‌ها.
- * خواندن/نوشتن مستقیم blob (بدون وابستگی به snapshot ماژول — cron در isolate
- * سرد هم درست کار می‌کند، هم‌الگوی tuneProxyIPs).
- */
-export async function tuneCleanIPs(env: Env): Promise<CleanTuneResult> {
+export async function tuneCleanIPs(env: Env, now: number = Date.now()): Promise<CleanTuneResult> {
     try {
         const blob = await env.kv.get('proxySettings', { type: 'json' }) as KvSettings | null;
         if (!blob || typeof blob !== 'object') {
@@ -66,42 +58,41 @@ export async function tuneCleanIPs(env: Env): Promise<CleanTuneResult> {
         const current = (Array.isArray(blob.cleanIPs) ? blob.cleanIPs : [])
             .filter((x): x is string => typeof x === 'string' && x.trim() !== '');
 
-        const pool = [...new Set([...current, ...CLEAN_IP_CANDIDATES])]
-            .filter(entry => !protectedEntries.has(entry))
-            .slice(0, CLEAN_MAX_POOL);
-
-        const results = await runProxyIPBatchTest(pool, { concurrency: 4, attempts: 2 });
-        const healthy = results.filter(r => r.ok); // مرتب: سالم‌ها اول، بعد سریع‌ترین
-        const best = healthy[0]?.target ?? null;
-
-        if (!healthy.length) {
-            return { poolSize: pool.length, healthyCount: 0, applied: current, best: null, changed: false, skipped: 'no healthy clean ip' };
+        if (!current.length) {
+            return { poolSize: 0, healthyCount: 0, applied: [], best: null, changed: false, skipped: 'cleanIPs empty — EMBEDED default applies' };
         }
 
-        // ورودی‌های محافظت‌شده: همیشه می‌مانند (تست نشدند — ممکن است relay را پاس نکنند)
-        const kept = current.filter(entry => protectedEntries.has(entry));
-        const testableCurrent = current.filter(entry => !protectedEntries.has(entry));
-        const healthySet = new Set(healthy.map(r => r.target));
-
-        // همه‌ی ورودی‌های قابل‌تست سالم‌اند → لیست ادمین دست‌نخورده (بدون write)
-        if (current.length && testableCurrent.every(entry => healthySet.has(entry))) {
-            return { poolSize: pool.length, healthyCount: healthy.length, applied: current, best, changed: false };
+        // دسته‌بندی: محافظت‌شده / معتبر / نامعتبر (فقط IPv4 خارج از رنج CF)
+        const keptProtected: string[] = [];
+        const valid: string[] = [];
+        const invalid: string[] = [];
+        for (const entry of current) {
+            if (protectedEntries.has(entry)) keptProtected.push(entry);
+            else if (isValidCleanEntry(entry)) valid.push(entry);
+            else invalid.push(entry);
         }
 
-        const healthyCurrent = testableCurrent.filter(entry => healthySet.has(entry));
-        const candidates = healthy.map(r => r.target).filter(t => !current.includes(t));
+        if (!invalid.length) {
+            // همه معتبر — بدون write (کمترین churn)
+            const best = valid[0] ?? keptProtected[0] ?? null;
+            return { poolSize: current.length, healthyCount: current.length, applied: current, best, changed: false };
+        }
 
-        // جایگزینی مرده‌ها با سریع‌ترین کاندیداها:
-        //   - حداقل به اندازه‌ی لیست فعلی (بدون کوچک‌شدن)
-        //   - ورودی‌های محافظت‌شده نباید کل اسلات‌ها را بگیرند — همیشه دست‌کم یک
-        //     clean-IP قابل‌تست سالم در لیست بماند (kept + ۱)
-        const targetSize = Math.max(current.length || CLEAN_TOP_N, kept.length + 1);
-        const applied = [...new Set([...kept, ...healthyCurrent, ...candidates])]
-            .slice(0, targetSize);
+        // جایگزینی ۱:۱ نامعتبرها با کاندیدای قطعی متمایز از همان روز
+        const dayBucket = Math.floor(now / 86_400_000);
+        const taken = new Set([...keptProtected, ...valid]);
+        const candidates: string[] = [];
+        for (let i = 0; candidates.length < invalid.length && i < invalid.length * 20 + 20; i++) {
+            const candidate = generateCleanCandidate(dayBucket, i);
+            if (!taken.has(candidate) && !candidates.includes(candidate)) {
+                candidates.push(candidate);
+            }
+        }
 
+        const applied = [...new Set([...keptProtected, ...valid, ...candidates])].slice(0, current.length);
         const changed = JSON.stringify(applied) !== JSON.stringify(current);
         if (!changed) {
-            return { poolSize: pool.length, healthyCount: healthy.length, applied: current, best, changed: false };
+            return { poolSize: current.length, healthyCount: valid.length + candidates.length, applied: current, best: valid[0] ?? null, changed: false };
         }
 
         const next: KvSettings = { ...blob, cleanIPs: applied };
@@ -109,7 +100,13 @@ export async function tuneCleanIPs(env: Env): Promise<CleanTuneResult> {
         invalidateDatasetCache();
         syncKvSettings(next);
 
-        return { poolSize: pool.length, healthyCount: healthy.length, applied, best, changed: true };
+        return {
+            poolSize: current.length,
+            healthyCount: valid.length + candidates.length,
+            applied,
+            best: applied.find(e => !protectedEntries.has(e)) ?? applied[0] ?? null,
+            changed: true
+        };
     } catch (error) {
         return { poolSize: 0, healthyCount: 0, applied: [], best: null, changed: false, skipped: safeError(error) };
     }
