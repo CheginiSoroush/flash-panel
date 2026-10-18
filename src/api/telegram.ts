@@ -9,6 +9,7 @@ import {
     buildTelegramGuideText,
     buildUserDetailText,
     buildUsersOverviewText,
+    escapeHtml,
     paginateUsers,
     resolveBroadcastRecipients,
     sendBroadcast,
@@ -392,6 +393,28 @@ function boolValidate(v: string): true | string {
 
 type EditableField = keyof typeof EDITABLE_SETTINGS;
 
+/**
+ * فیلد تنظیمات از متن خام پرامپت بات — خالص و تست‌پذیر.
+ * replyTo.text تلگرام همیشه WITHOUT مارک‌آپ HTML است، پس regex تگ‌دار
+ * قبلی هیچ‌وقت match نمی‌شد و reply ادمین نادیده گرفته می‌شد
+ * (احساس «دکمه‌ی تنظیمات کار نمی‌کند»). این نسخه متن را نرمالایز و
+ * لیبل‌ها را جستجو می‌کند — با و بدون تگ کار می‌کند.
+ */
+export function resolveSettingsFieldFromBotText(botText: string): string | null {
+    if (!botText) return null;
+    const plain = botText
+        .replace(/<[^>]*>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+    // طولانی‌ترین لیبل برنده — «WS Guardian Timeout» نباید با «WS Guardian»
+    // اشتباه گرفته شود (زیررشته است)
+    const entry = Object.entries(EDITABLE_SETTINGS)
+        .filter(([, cfg]) => plain.includes(cfg.label))
+        .sort((a, b) => b[1].label.length - a[1].label.length)[0];
+    return entry ? entry[0] : null;
+}
+
 function settingsKeyboard() {
     return {
         inline_keyboard: [
@@ -609,12 +632,13 @@ async function sendUserLinks(token: string, adminChatId: number, env: Env, userI
 
     const normalUrl = buildUserSubUrl(user.id, 'normal', 'xray').href;
     const rawUrl = buildUserSubUrl(user.id, 'raw', 'xray').href;
+    const safeName = escapeHtml(user.name);
     const text = [
-        `🔗 <b>Subscription links — ${user.name}</b>`,
+        `🔗 <b>Subscription links — ${safeName}</b>`,
         '━━━━━━━━━━━━━━━━',
-        `📡 <b>Normal (Xray):</b>\n<code>${normalUrl}</code>`,
+        `📡 <b>Normal (Xray):</b>\n<code>${escapeHtml(normalUrl)}</code>`,
         '',
-        `📄 <b>Raw:</b>\n<code>${rawUrl}</code>`,
+        `📄 <b>Raw:</b>\n<code>${escapeHtml(rawUrl)}</code>`,
         '',
         user.active ? '✅ This link is active.' : '🔴 This user is revoked — links return 401 until restored.'
     ].join('\n');
@@ -630,7 +654,7 @@ async function sendUserLinks(token: string, adminChatId: number, env: Env, userI
     if (target !== adminChatId) {
         await tgFetch(token, 'sendMessage', {
             chat_id: adminChatId,
-            text: `✅ Links sent to <b>${user.name}</b>'s Telegram chat.`,
+            text: `✅ Links sent to <b>${escapeHtml(user.name)}</b>'s Telegram chat.`,
             parse_mode: 'HTML'
         });
     }
@@ -850,16 +874,6 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
         case 'usage':
         case 'usage_refresh':
             const result = await getUsageCached();
-            if (!result) {
-                await tgFetch(token, 'sendMessage', {
-                    chat_id: chatId,
-                    text: '⚠️ Could not fetch usage data.',
-                    parse_mode: 'HTML',
-                    reply_markup: { inline_keyboard: [[{ text: '◀️ Back', callback_data: 'main' }]] }
-                });
-                break;
-            }
-
             if (!result.success) {
                 await tgFetch(token, 'sendMessage', {
                     chat_id: chatId,
@@ -870,16 +884,26 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
                 break;
             }
 
-            if (!result.total || !result.worker) break;
-            const text = buildUsageText(result.total, result.worker);
+            // صفر هم داده‌ی معتبر است (ابتدای روز UTC) — دکمه باید همیشه چیزی نشان دهد؛
+            // قبلاً total/worker صفر باعث break بی‌صدا می‌شد و دکمه «کار نمی‌کرد»
+            const text = buildUsageText(result.total ?? 0, result.worker ?? 0);
             if (data === 'usage_refresh' && cq.message?.message_id) {
-                await tgFetch(token, 'editMessageText', {
+                const edited = await tgFetch(token, 'editMessageText', {
                     chat_id: chatId,
                     message_id: cq.message.message_id,
                     text: text,
                     parse_mode: 'HTML',
                     reply_markup: usageKeyboard()
                 });
+                // «message is not modified» و خطاهای مشابه تلگرام → پیام تازه به‌جای سکوت
+                if (!edited?.ok) {
+                    await tgFetch(token, 'sendMessage', {
+                        chat_id: chatId,
+                        text: text,
+                        parse_mode: 'HTML',
+                        reply_markup: usageKeyboard()
+                    });
+                }
             } else {
                 await tgFetch(token, 'sendMessage', {
                     chat_id: chatId,
@@ -960,13 +984,24 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
                     } else {
                         const hasDocument = typeKey !== 'raw';
 
-                        await tgFetch(token, 'sendPhoto', {
+                        const photoRes = await tgFetch(token, 'sendPhoto', {
                             chat_id: chatId,
                             photo: qrUrl,
                             caption: caption,
                             parse_mode: 'HTML',
                             ...(isLast && !hasDocument && backBtn)
                         });
+
+                        // QR اگر به هر دلیلی ارسال نشد (تصویر بزرگ/خطای تلگرام/...) —
+                        // لینک متنی می‌فرستیم تا دکمه هیچ‌وقت بی‌جواب نماند
+                        if (!photoRes?.ok) {
+                            await tgFetch(token, 'sendMessage', {
+                                chat_id: chatId,
+                                text: `⚡ <b>${_project_} ${subscription.label}</b>\n\n<code>${escapeHtml(clientUrl)}</code>\n\n<b>Supported apps:</b>\n\n${supportedList}`,
+                                parse_mode: 'HTML',
+                                ...(isLast && !hasDocument && backBtn)
+                            });
+                        }
 
                         if (hasDocument) {
                             await tgFetch(token, 'sendDocument', {
@@ -1009,6 +1044,16 @@ async function handleCallback(cq: TgCallbackQuery, token: string, chatId: number
 }
 
 export async function handleTelegramWebhook(request: Request, env: Env): Promise<Response> {
+    try {
+        return await handleTelegramUpdate(request, env);
+    } catch {
+        // تور ایمنی نهایی — هرگز 500 برنگرد؛ تلگرام روی خطا retry می‌کند
+        // و همان آپدیت دوباره اجرا می‌شود (پیام‌های تکراری/لوپ)
+        return new Response(null, { status: 200 });
+    }
+}
+
+async function handleTelegramUpdate(request: Request, env: Env): Promise<Response> {
     // تنظیمات بات از دیتاست کش‌شده — به‌جای خواندن KV در هر آپدیت
     const { telegramBot: tgBot } = await getDataset(env);
     if (!tgBot) return new Response(null, { status: 200 });
@@ -1055,7 +1100,15 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
                 reply_markup: mainKeyboard()
             });
         } else {
-            await handleCallback(cq, botToken, chatId, env);
+            try {
+                await handleCallback(cq, botToken, chatId, env);
+            } catch (error) {
+                // خطای غیرمنتظره در هندلر دکمه — ادمین باید بداند، نه سکوت
+                await tgFetch(botToken, 'sendMessage', {
+                    chat_id: chatId,
+                    text: `⚠️ Action failed: ${safeError(error).slice(0, 200)}`
+                }).catch(() => {});
+            }
         }
         // await شده — بدون await بعد از return شدن response در Workers
         // این promise احتمالاً cancel می‌شد (باگ قبلی)
@@ -1076,6 +1129,8 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
         const replyTo = update.message.reply_to_message;
         if (replyTo && replyTo.from?.is_bot && text) {
             const botText = replyTo.text || replyTo.caption || '';
+            // مسیر قدیمی — لیبل تگ‌دار (برای سازگاری حفظ شد؛ معمولاً match نمی‌شود
+            // چون replyTo.text بدون مارک‌آپ است)
             const fieldMatch = botText.match(/<b>([^<]+)<\/b>/);
             if (fieldMatch) {
                 const label = fieldMatch[1];
@@ -1084,6 +1139,8 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
                 );
                 if (fieldEntry) settingsField = fieldEntry[0];
             }
+            // مسیر جدید — تشخیص از متن خام؛ حتی وقتی pending منقضی شده باشد کار می‌کند
+            if (!settingsField) settingsField = resolveSettingsFieldFromBotText(botText);
         }
 
         if (!settingsField && text && !text.startsWith('/')) {
@@ -1140,7 +1197,18 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
 
                     const { settings } = await getDataset(env);
                     (settings as any)[field] = newValue;
-                    await updateDatasetFromTelegram(env, settings);
+                    try {
+                        await updateDatasetFromTelegram(env, settings);
+                    } catch (saveError) {
+                        // KV هرگز نباید ادمین را بی‌جواب بگذارد
+                        await tgFetch(botToken, 'sendMessage', {
+                            chat_id: chatId,
+                            text: `⚠️ <b>Save failed:</b> ${safeError(saveError)}\n\nTry again in a moment.`,
+                            parse_mode: 'HTML'
+                        });
+                        await checkCfUsageWarning(botToken, chatId);
+                        return new Response(null, { status: 200 });
+                    }
 
                     await tgFetch(botToken, 'sendMessage', {
                         chat_id: chatId,
@@ -1344,7 +1412,9 @@ const TG_BROADCAST_PENDING = 'broadcast';
 const TG_BROADCAST_PREFIX = 'broadcast:';
 
 async function setPending(env: Env, userId: string, field: string) {
-    await env.kv.put(TG_PENDING_PREFIX + userId, field, { expirationTtl: 300 });
+    // ۱۵ دقیقه — قبلاً ۳۰۰ ثانیه بود؛ ادمینی که دیر جواب می‌داد
+    // پیامش بی‌اثر می‌شد (احساس «کار نمی‌کند»)
+    await env.kv.put(TG_PENDING_PREFIX + userId, field, { expirationTtl: 900 });
 }
 
 async function getPending(env: Env, userId: string): Promise<string | null> {
