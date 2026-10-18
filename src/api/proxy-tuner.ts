@@ -1,8 +1,7 @@
 import { runProxyIPBatchTest } from './proxy-check';
-import { getGlobals, syncKvSettings } from '@settings';
-import { invalidateDatasetCache } from '@kv';
+import { getGlobals } from '@settings';
+import { mutateSettings, skipWrite } from '@settings/store';
 import { safeError } from '@common';
-import { KvSettings } from '#types/settings';
 
 // ---------- Auto-Tune ProxyIP ----------
 // هر ۶ ساعت (گارد در automation) لیست استخر فعلی + کاندیداهای عمومی تست
@@ -52,25 +51,29 @@ export async function tuneProxyIPs(env: Env): Promise<ProxyTuneResult> {
 
         const top = healthy.slice(0, TUNE_TOP_N);
 
-        // مقایسه با مقدار فعلی KV — بدون تغییر = بدون write (صرفه‌ی KV)
-        const current = await env.kv.get('proxySettings', { type: 'json' }) as KvSettings | null;
-        if (!current || typeof current !== 'object') {
-            return { poolSize: pool.length, healthyCount: healthy.length, applied: top, best: top[0], changed: false, skipped: 'settings blob missing' };
+        // تراکنش متمرکز: خواندن تازه داخل صف + no-op skip + rev + retry + سهمیه‌آگاه
+        // (قبلاً get→put دست‌ساز بود و با ذخیره‌ی همزمان پنل/ربات race داشت)
+        const res = await mutateSettings(env, (current) => {
+            if (!current || typeof current !== 'object') {
+                return skipWrite('settings blob missing');
+            }
+
+            const existing = Array.isArray(current.autoProxyIPs) ? current.autoProxyIPs : [];
+            // مقایسه با مقدار فعلی KV — بدون تغییر = بدون write (صرفه‌ی KV)
+            if (JSON.stringify(existing) === JSON.stringify(top)) {
+                return null;
+            }
+            return { ...current, autoProxyIPs: top };
+        }, { reason: 'proxy-tune', implicit: true });
+
+        if (res.skipped && res.skipped !== 'unchanged') {
+            return { poolSize: pool.length, healthyCount: healthy.length, applied: top, best: top[0], changed: false, skipped: res.skipped };
+        }
+        if (!res.ok) {
+            return { poolSize: pool.length, healthyCount: healthy.length, applied: top, best: top[0], changed: false, skipped: res.error ?? 'commit failed' };
         }
 
-        const existing = Array.isArray(current.autoProxyIPs) ? current.autoProxyIPs : [];
-        const changed = JSON.stringify(existing) !== JSON.stringify(top);
-
-        if (!changed) {
-            return { poolSize: pool.length, healthyCount: healthy.length, applied: top, best: top[0], changed: false };
-        }
-
-        const next: KvSettings = { ...current, autoProxyIPs: top };
-        await env.kv.put('proxySettings', JSON.stringify(next));
-        invalidateDatasetCache();
-        syncKvSettings(next);
-
-        return { poolSize: pool.length, healthyCount: healthy.length, applied: top, best: top[0], changed: true };
+        return { poolSize: pool.length, healthyCount: healthy.length, applied: top, best: top[0], changed: res.changed };
     } catch (error) {
         return { poolSize: 0, healthyCount: 0, applied: [], best: null, changed: false, skipped: safeError(error) };
     }

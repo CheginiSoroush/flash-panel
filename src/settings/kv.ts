@@ -4,6 +4,7 @@ import { fetchWarpAccounts } from '@api/warp';
 import { safeError } from '@common';
 import { getKvSettings, syncKvSettings } from '@settings';
 import { setCustomDomain } from '@main';
+import { commitSettingsBlob, mutateSettings } from './store';
 
 export interface Dataset {
     settings: KvSettings;
@@ -268,11 +269,11 @@ async function mergeDataset(
             panelVersion: VERSION
         };
 
-        await env.kv.put('proxySettings', JSON.stringify(updatedSettings));
-        invalidateDatasetCache(); // بعد از ذخیره، کش همیشه تازه‌ست
-        // همگام‌سازی snapshot ماژول — وگرنه handlerهای بدون setSettings
-        // (مثل clean-ip) مقدار پیش‌فرض/کهنه را می‌خوانند و روی KV پس‌می‌نویسند
-        syncKvSettings(updatedSettings);
+        // نوشتن از طریق موتور پایداری — no-op skip (صرفه‌ی سهمیه) + rev + retry
+        // + آگاهی از سهمیه؛ invalidate کش دیتاست و sync snapshot ماژول داخل
+        // خودِ commit انجام می‌شود (وگرنه handlerهای بدون setSettings مثل
+        // clean-ip مقدار پیش‌فرض/کهنه را می‌خوانند و روی KV پس‌می‌نویسند)
+        await commitSettingsBlob(env, currentSettings, updatedSettings, { reason: 'merge' });
         return updatedSettings;
     } catch (error) {
         console.log(error);
@@ -282,15 +283,13 @@ async function mergeDataset(
 
 export async function updateDataset(env: Env, newSettings?: PanelSettings): Promise<KvSettings> {
     // بدون newSettings → ذخیرهٔ تنظیمات فعلیِ حافظه (panel.ts به این رفتار وابسته‌ست)
+    // از طریق تراکنش مرکزی: اگر KV عیناً همین را داشت، بدون put skip می‌شود (صرفه‌ی سهمیه)
     if (!newSettings) {
         const kvSettings = getKvSettings();
-        try {
-            await env.kv.put('proxySettings', JSON.stringify(kvSettings));
-        } catch (error) {
-            console.log(error);
-            throw new Error(`An error occurred while updating KV: ${safeError(error)}`);
+        const result = await mutateSettings(env, () => structuredClone(kvSettings), { reason: 'sync-memory' });
+        if (!result.ok) {
+            throw new Error(`An error occurred while updating KV: ${result.error}`);
         }
-        invalidateDatasetCache();
         return kvSettings;
     }
 
@@ -339,9 +338,8 @@ export async function healRemoteDnsHost(env: Env, settings: KvSettings): Promise
 
         const healed = await getDnsParams(settings.remoteDNS);
         const next: KvSettings = { ...settings, remoteDnsHost: healed };
-        await env.kv.put('proxySettings', JSON.stringify(next));
-        invalidateDatasetCache();
-        syncKvSettings(next);
+        // write ضمنی self-heal — از موتور پایداری (no-op skip + سهمیه‌آگاه + rev)
+        await commitSettingsBlob(env, settings, next, { reason: 'dns-heal', implicit: true });
         return next;
     } catch {
         // best-effort — هرگز لود تنظیمات را نمی‌شکند؛ دور بعد دوباره تلاش می‌شود

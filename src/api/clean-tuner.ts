@@ -3,8 +3,7 @@ import {
     isCloudflareEdgeIPv4,
     isValidCleanEntry
 } from './clean-ip';
-import { syncKvSettings } from '@settings';
-import { invalidateDatasetCache } from '@kv';
+import { mutateSettings, skipWrite } from '@settings/store';
 import { safeError } from '@common';
 import { KvSettings } from '#types/settings';
 
@@ -100,88 +99,100 @@ async function fetchLiveEdgeIPs(mainDomain?: string): Promise<string[]> {
 
 export async function tuneCleanIPs(env: Env, now: number = Date.now()): Promise<CleanTuneResult> {
     try {
-        const blob = await env.kv.get('proxySettings', { type: 'json' }) as KvSettings | null;
-        if (!blob || typeof blob !== 'object') {
-            return { poolSize: 0, healthyCount: 0, applied: [], best: null, changed: false, skipped: 'settings blob missing' };
+        // نتایج داخل mutator جمع می‌شود تا دقیقاً همان قرارداد قبلی result برگردد
+        let info: CleanTuneResult | null = null;
+
+        const res = await mutateSettings(env, async (blob) => {
+            if (!blob || typeof blob !== 'object') {
+                return skipWrite('settings blob missing');
+            }
+
+            const protectedEntries = new Set<string>([
+                ...(Array.isArray(blob.customCdnAddrs) ? blob.customCdnAddrs : []),
+                ...(blob.customDomain ? [blob.customDomain] : [])
+            ]);
+
+            const current = (Array.isArray(blob.cleanIPs) ? blob.cleanIPs : [])
+                .filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+
+            if (!current.length) {
+                return skipWrite('cleanIPs empty — EMBEDED default applies');
+            }
+
+            // دسته‌بندی: محافظت‌شده / معتبر / نامعتبر (فقط IPv4 خارج از رنج CF)
+            const keptProtected: string[] = [];
+            const valid: string[] = [];
+            const invalid: string[] = [];
+            for (const entry of current) {
+                if (protectedEntries.has(entry)) keptProtected.push(entry);
+                else if (isValidCleanEntry(entry)) valid.push(entry);
+                else invalid.push(entry);
+            }
+
+            if (!invalid.length) {
+                // همه معتبر — بدون write (کمترین churn)
+                const best = valid[0] ?? keptProtected[0] ?? null;
+                info = { poolSize: current.length, healthyCount: current.length, applied: current, best, changed: false };
+                return null;
+            }
+
+            // کاندیداهای زنده: DoH (تازه) + fallback تأییدشده — بدون حدس
+            // (فقط وقتی ترمیم لازم است شبکه می‌زند — مسیر سریع همان KC طی می‌کند)
+            const dayBucket = Math.floor(now / 86_400_000);
+            const taken = new Set([...keptProtected, ...valid]);
+            let pool: string[] = [];
+            try {
+                const blobMainDomain = (blob as { mainDomain?: unknown }).mainDomain;
+                pool = await fetchLiveEdgeIPs(typeof blobMainDomain === 'string' ? blobMainDomain : undefined);
+            } catch {
+                pool = [];
+            }
+            pool = pool.filter(ip => !taken.has(ip));
+            for (const ip of CLEAN_VERIFIED_FALLBACK) {
+                if (pool.length >= invalid.length) break;
+                if (!taken.has(ip) && !pool.includes(ip)) pool.push(ip);
+            }
+
+            if (!pool.length) {
+                // هیچ کاندیدای تأییدشده‌ای نیست — لیست فعلی دست‌نخورده (بهتر از حدس)
+                info = { poolSize: current.length, healthyCount: valid.length, applied: current, best: valid[0] ?? null, changed: false, skipped: 'no verified live candidates (DoH down?)' };
+                return null;
+            }
+
+            // رتبه‌بندی قطعی روزانه → جایگزینی ۱:۱ (کم‌بودن کاندیدا = جایگزینی جزئی
+            // با حفظ اندازه: باقیمانده‌ی نامعتبرها موقتاً می‌مانند تا تیک بعدی)
+            const ranked = [...pool].sort((a, b) => dayRankHash(a, dayBucket) - dayRankHash(b, dayBucket));
+            const candidates = ranked.slice(0, invalid.length);
+            const merged = [...new Set([...keptProtected, ...valid, ...candidates])];
+            for (const entry of invalid) {
+                if (merged.length >= current.length) break;
+                merged.push(entry);
+            }
+            const applied = merged.slice(0, current.length);
+
+            if (JSON.stringify(applied) === JSON.stringify(current)) {
+                info = { poolSize: current.length, healthyCount: valid.length + candidates.length, applied: current, best: valid[0] ?? null, changed: false };
+                return null;
+            }
+
+            info = {
+                poolSize: current.length,
+                healthyCount: valid.length + candidates.length,
+                applied,
+                best: applied.find(e => !protectedEntries.has(e)) ?? applied[0] ?? null,
+                changed: true
+            };
+            // فقط slice فیلد cleanIPs عوض می‌شود — بقیه‌ی blob دست‌نخورده (no-op skip موتور هم فعال است)
+            return { ...blob, cleanIPs: applied };
+        }, { reason: 'clean-tune', implicit: true });
+
+        if (info) return info;
+
+        // mutator به مرحله‌ی نتیجه نرسید — skip/خطا را به قرارداد قبلی ترجمه کن
+        if (res.skipped && res.skipped !== 'unchanged') {
+            return { poolSize: 0, healthyCount: 0, applied: [], best: null, changed: false, skipped: res.skipped };
         }
-
-        const protectedEntries = new Set<string>([
-            ...(Array.isArray(blob.customCdnAddrs) ? blob.customCdnAddrs : []),
-            ...(blob.customDomain ? [blob.customDomain] : [])
-        ]);
-
-        const current = (Array.isArray(blob.cleanIPs) ? blob.cleanIPs : [])
-            .filter((x): x is string => typeof x === 'string' && x.trim() !== '');
-
-        if (!current.length) {
-            return { poolSize: 0, healthyCount: 0, applied: [], best: null, changed: false, skipped: 'cleanIPs empty — EMBEDED default applies' };
-        }
-
-        // دسته‌بندی: محافظت‌شده / معتبر / نامعتبر (فقط IPv4 خارج از رنج CF)
-        const keptProtected: string[] = [];
-        const valid: string[] = [];
-        const invalid: string[] = [];
-        for (const entry of current) {
-            if (protectedEntries.has(entry)) keptProtected.push(entry);
-            else if (isValidCleanEntry(entry)) valid.push(entry);
-            else invalid.push(entry);
-        }
-
-        if (!invalid.length) {
-            // همه معتبر — بدون write (کمترین churn)
-            const best = valid[0] ?? keptProtected[0] ?? null;
-            return { poolSize: current.length, healthyCount: current.length, applied: current, best, changed: false };
-        }
-
-        // کاندیداهای زنده: DoH (تازه) + fallback تأییدشده — بدون حدس
-        const dayBucket = Math.floor(now / 86_400_000);
-        const taken = new Set([...keptProtected, ...valid]);
-        let pool: string[] = [];
-        try {
-            const blobMainDomain = (blob as { mainDomain?: unknown }).mainDomain;
-            pool = await fetchLiveEdgeIPs(typeof blobMainDomain === 'string' ? blobMainDomain : undefined);
-        } catch {
-            pool = [];
-        }
-        pool = pool.filter(ip => !taken.has(ip));
-        for (const ip of CLEAN_VERIFIED_FALLBACK) {
-            if (pool.length >= invalid.length) break;
-            if (!taken.has(ip) && !pool.includes(ip)) pool.push(ip);
-        }
-
-        if (!pool.length) {
-            // هیچ کاندیدای تأییدشده‌ای نیست — لیست فعلی دست‌نخورده (بهتر از حدس)
-            return { poolSize: current.length, healthyCount: valid.length, applied: current, best: valid[0] ?? null, changed: false, skipped: 'no verified live candidates (DoH down?)' };
-        }
-
-        // رتبه‌بندی قطعی روزانه → جایگزینی ۱:۱ (کم‌بودن کاندیدا = جایگزینی جزئی
-        // با حفظ اندازه: باقیمانده‌ی نامعتبرها موقتاً می‌مانند تا تیک بعدی)
-        const ranked = [...pool].sort((a, b) => dayRankHash(a, dayBucket) - dayRankHash(b, dayBucket));
-        const candidates = ranked.slice(0, invalid.length);
-        const merged = [...new Set([...keptProtected, ...valid, ...candidates])];
-        for (const entry of invalid) {
-            if (merged.length >= current.length) break;
-            merged.push(entry);
-        }
-        const applied = merged.slice(0, current.length);
-
-        const changed = JSON.stringify(applied) !== JSON.stringify(current);
-        if (!changed) {
-            return { poolSize: current.length, healthyCount: valid.length + candidates.length, applied: current, best: valid[0] ?? null, changed: false };
-        }
-
-        const next: KvSettings = { ...blob, cleanIPs: applied };
-        await env.kv.put('proxySettings', JSON.stringify(next));
-        invalidateDatasetCache();
-        syncKvSettings(next);
-
-        return {
-            poolSize: current.length,
-            healthyCount: valid.length + candidates.length,
-            applied,
-            best: applied.find(e => !protectedEntries.has(e)) ?? applied[0] ?? null,
-            changed: true
-        };
+        return { poolSize: 0, healthyCount: 0, applied: [], best: null, changed: false, skipped: res.error ?? 'unchanged' };
     } catch (error) {
         return { poolSize: 0, healthyCount: 0, applied: [], best: null, changed: false, skipped: safeError(error) };
     }

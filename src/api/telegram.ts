@@ -18,6 +18,7 @@ import {
 import { buildDigestForCommand } from './automation';
 import { authenticate } from '@auth';
 import { getDataset, invalidateDatasetCache } from '@kv';
+import { mutateSettings, skipWrite } from '@settings/store';
 import { TelegramBot } from '#types/settings';
 
 // ---------- کش usage ----------
@@ -1272,15 +1273,20 @@ async function handleTelegramUpdate(request: Request, env: Env): Promise<Respons
                         newValue = text.trim();
                     }
 
-                    const { settings } = await getDataset(env);
-                    (settings as any)[field] = newValue;
-                    try {
-                        await updateDatasetFromTelegram(env, settings);
-                    } catch (saveError) {
+                    // تراکنش متمرکز پایداری — patch فیلدی روی blob تازه داخل صف نوشتن؛
+                    // قبلاً clone کش خوانده می‌شد و کل blob دستی put می‌شد (race با پنل/cron + بدون retry)
+                    const saveResult = await mutateSettings(env, (current) => {
+                        if (!current || typeof current !== 'object') {
+                            return skipWrite('settings blob missing');
+                        }
+                        return { ...current, [field]: newValue };
+                    }, { reason: `telegram:${field}` });
+
+                    if (!saveResult.ok) {
                         // KV هرگز نباید ادمین را بی‌جواب بگذارد
                         await tgFetch(botToken, 'sendMessage', {
                             chat_id: chatId,
-                            text: `⚠️ <b>Save failed:</b> ${safeError(saveError)}\n\nTry again in a moment.`,
+                            text: `⚠️ <b>Save failed:</b> ${saveResult.error ?? saveResult.skipped ?? 'unknown'}\n\nTry again in a moment.`,
                             parse_mode: 'HTML'
                         });
                         await checkCfUsageWarning(botToken, chatId);
@@ -1528,8 +1534,4 @@ async function clearPending(env: Env, userId: string): Promise<boolean> {
     }
 }
 
-/** ذخیره‌ی تنظیمات از ربات — مستقیم در KV + invalidate کش */
-async function updateDatasetFromTelegram(env: Env, settings: any): Promise<void> {
-    await env.kv.put('proxySettings', JSON.stringify(settings));
-    invalidateDatasetCache();
-}
+/** ذخیره‌ی تنظیمات از ربات → به تراکنش متمرکز mutateSettings منتقل شد (mutateSettings در نقطه‌ی فراخوانی) */

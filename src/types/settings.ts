@@ -85,6 +85,8 @@ export interface KvSettings {
     /** Auto-Tune — بهترین ProxyIP های تست‌شده توسط اتوماسیون (خالی/ناموجود = لیست ادمین) */
     autoProxyIPs?: string[];
     panelVersion: string;
+    /** شمارنده‌ی نسخه‌ی blob — هر commit موفق +1 (پایه‌ی ردیابی race؛ مدیریتش با settings/store) */
+    settingsRev?: number;
 }
 
 export interface TelegramBot {
