@@ -3,6 +3,7 @@ import { deployPages, deletePagesProject } from '@api/pages';
 import { getUsage, getUsageHistoryEndpoint } from '@api/usage';
 import { fetchWarpAccounts } from '@api/warp';
 import { deployWorkers, deleteWorker } from '@api/workers';
+import { getUpdateCheckEndpoint } from '@api/update-check';
 import { getEdgeTelemetryEndpoint } from '@settings/edge-telemetry';
 import { resetPassword, logout, authenticate, invalidateTotpCache } from '@auth';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotp } from '@auth/totp';
@@ -78,6 +79,9 @@ export async function handlePanel(request: Request, env: Env): Promise<Response>
 
         case 'panel/update-warp':
             return updateWarpConfigs(request, env);
+
+        case 'panel/update-check':
+            return getUpdateCheckEndpoint(request, env);
 
         case 'panel/update-panel':
             return updatePanel(request, env);

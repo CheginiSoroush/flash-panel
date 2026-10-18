@@ -106,6 +106,13 @@ async function checkVersion(panelVersion) {
         'https://raw.githubusercontent.com/CheginiSoroush/flash-panel/refs/heads/main/package.json',
         'https://cdn.jsdelivr.net/gh/CheginiSoroush/flash-panel@main/package.json'
     ];
+    const btn = document.getElementById('updatePanel');
+    const setHint = text => { if (btn) btn.title = text; };
+    setHint('Checking for updates…');
+
+    let latest = null;
+    let via = '';
+    const versionRe = /^\d+\.\d+\.\d+$/;
 
     for (const source of sources) {
         try {
@@ -113,15 +120,50 @@ async function checkVersion(panelVersion) {
             if (!res.ok) throw new Error(`status ${res.status}`);
 
             const pkg = await res.json();
-            const latest = pkg.version;
-            if (isNewerVersion(latest, panelVersion)) {
-                globalThis.latestVersion = latest;
-                document.getElementById('updatePanel').disabled = false;
+            if (typeof pkg?.version !== 'string' || !versionRe.test(pkg.version)) {
+                throw new Error('invalid package.json payload');
             }
-            return;
+
+            latest = pkg.version;
+            via = new URL(source).host;
+            break;
         } catch (error) {
             console.error(`Get latest version error (${source}):`, error);
         }
+    }
+
+    // fallback سمت سرور: اگر مرورگر نتوانست (مثلاً فیلترینگ آینه‌ها در ایران)،
+    // خود ورکر از لبه‌ی کلادفلر — که هرگز فیلتر نمی‌شود — آخرین نسخه را برمی‌گرداند؛
+    // دیگر دکمه‌ی Update هیچ‌وقت بی‌دلیل خاکستری نمی‌ماند
+    if (!latest) {
+        try {
+            const res = await fetch(`./panel/update-check?nocache=${Date.now()}`, {
+                cache: 'no-store',
+                credentials: 'include'
+            });
+            const { success, message, body } = await res.json();
+            if (success && typeof body?.latest === 'string') {
+                latest = body.latest;
+                via = `panel server (${body.source ?? 'edge'})`;
+            } else {
+                setHint(`Version check failed: ${String(message ?? 'server unreachable').slice(0, 140)}`);
+            }
+        } catch (error) {
+            console.error('Server update-check fallback error:', error);
+            setHint('Version check failed — update mirrors unreachable and server check errored');
+        }
+    }
+
+    if (!latest) return;
+
+    if (isNewerVersion(latest, panelVersion)) {
+        globalThis.latestVersion = latest;
+        if (btn) {
+            btn.disabled = false;
+            setHint(`Update available: v${latest} (via ${via})`);
+        }
+    } else {
+        setHint(`You are up to date (v${panelVersion}) — checked via ${via}`);
     }
 }
 
