@@ -440,8 +440,9 @@ describe('usage buttons — never silent', () => {
 
         await post(telegram, env, callbackUpdate('usage'));
 
+        // v0.8.7: پیام خطا حالا قابل‌اقدام است و هرگز «صفرِ دروغین» نمی‌شود
         const errCall = tgCalls.find(c =>
-            c.method === 'sendMessage' && String(c.body.text || '').includes('Error fetching usage data'));
+            c.method === 'sendMessage' && String(c.body.text || '').includes('Usage analytics unavailable'));
         expect(errCall, 'usage failure message was not sent').toBeTruthy();
         const hasBack = errCall!.body.reply_markup?.inline_keyboard?.flat()
             .some((b: any) => b.callback_data === 'main');

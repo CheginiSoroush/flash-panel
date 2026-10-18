@@ -203,9 +203,14 @@ export async function resolveSubUser(env: Env, id: string, now: number = Date.no
 
 // ---------- آمار واکشی هر کاربر ----------
 
-// آستانه‌ی ثبت — هر واکشی با فاصله‌ی کمتر از این از شمارش می‌افتد:
-// جلوگیری از burn شدن سهمیه‌ی write کلاینت‌هایی که پشت‌سرهم refresh می‌زنن.
-export const SUB_USER_FETCH_THROTTLE_MS = 5 * 60_000;
+/**
+ * آستانه‌ی ثبت — هر واکشی با فاصله‌ی کمتر از این از شمارش می‌افتد:
+ * جلوگیری از burn شدن سهمیه‌ی write کلاینت‌هایی که پشت‌سرهم refresh می‌زنن.
+ * v0.8.7: ۵ → ۳۰ دقیقه — سهمیه‌ی KV رایگان فقط ۱٬۰۰۰ put/روز است و
+ * کلاینت‌های auto-update می‌توانستند به‌تنهایی صدها put در روز بسازند
+ * (هر کلاینت با این آستانه حداکثر ۴۸ put/روز؛ با ۵ دقیقه تا ۲۸۸).
+ */
+export const SUB_USER_FETCH_THROTTLE_MS = 30 * 60_000;
 
 // کش سطح isolate — اگه همین isolate تازه ثبت کرده، اصلاً KV خونده نمی‌شه
 // (تأثیر صفر روی تأخیر پاسخ اشتراک). بین isolate ها KV مرجع است.
@@ -247,16 +252,21 @@ export async function resolveAndRecordSubUser(
     const freshWindow = typeof user.lastFetchedAt === 'number' &&
         now - user.lastFetchedAt < SUB_USER_FETCH_THROTTLE_MS;
 
-    user.lastFetchedAt = now;
     if (!freshWindow) {
+        // 🍳 فقط تغییرِ واقعی (شمارش جدید) سزاوار put است — قبلاً حتی داخل پنجره‌ی
+        // تازه، فقط برای lastFetchedAt هم کل blob نوشته می‌شد (هدررفت سهمیه‌ی write)
+        user.lastFetchedAt = now;
         user.fetchCount = (user.fetchCount || 0) + 1;
-    }
 
-    try {
-        await saveSubUsers(env, users);
+        try {
+            await saveSubUsers(env, users);
+            fetchSeenAt.set(id, now);
+        } catch {
+            // write ناموفق — آمار مهم‌تر از دسترس‌پذیری اشتراک نیست
+        }
+    } else {
+        // داخل پنجره: فقط کش isolate پر شود — صفر write
         fetchSeenAt.set(id, now);
-    } catch {
-        // write ناموفق — آمار مهم‌تر از دسترس‌پذیری اشتراک نیست
     }
 
     return user;

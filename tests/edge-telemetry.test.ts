@@ -93,7 +93,7 @@ describe('recordEdgeSample / flushSamples', () => {
         const env = { kv } as unknown as Env;
         const { ctx, awaited } = fakeCtx();
 
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 32; i++) { // FLUSH_AT = 32 (v0.8.7 رژیم write)
             mod.recordEdgeSample(fakeRequest(FULL_CF), env, ctx, 'ws');
         }
         // بافر پر شد → flush از مسیر waitUntil
@@ -101,11 +101,11 @@ describe('recordEdgeSample / flushSamples', () => {
 
         const blob = JSON.parse(store.get('edgeTelemetry')!);
         const today = new Date().toISOString().slice(0, 10);
-        expect(blob.days[today].colos.FRA.n).toBe(12);
-        expect(blob.days[today].colos.FRA.ws).toBe(12);
-        expect(blob.days[today].asns['58224 TIC'].n).toBe(12);
+        expect(blob.days[today].colos.FRA.n).toBe(32);
+        expect(blob.days[today].colos.FRA.ws).toBe(32);
+        expect(blob.days[today].asns['58224 TIC'].n).toBe(32);
         // میانگین RTT
-        expect(blob.days[today].colos.FRA.rttSum).toBe(42 * 12);
+        expect(blob.days[today].colos.FRA.rttSum).toBe(42 * 32);
     });
 
     it('http sampling respects the rate (0 = never)', async () => {
@@ -200,6 +200,61 @@ describe('recordEdgeSample / flushSamples', () => {
         const blob = JSON.parse(store.get('edgeTelemetry')!);
         expect(blob.days[today].total).toBe(2000); // drop شد — سقف
         expect(blob.dropped).toBe(true);
+    });
+
+    it('write-diet: flushes after the cap are completely put-free (no dropped re-writes)', async () => {
+        const mod = await import('../src/settings/edge-telemetry');
+        mod._resetEdgeTelemetryForTest();
+
+        const { kv } = createKvMock();
+        let puts = 0;
+        const countingKv = {
+            get: kv.get.bind(kv),
+            put: async (key: string, value: string) => { puts++; await kv.put(key, value); },
+            delete: kv.delete.bind(kv)
+        } as unknown as KVNamespace;
+        const env = { kv: countingKv } as unknown as Env;
+
+        const today = new Date().toISOString().slice(0, 10);
+        await kv.put('edgeTelemetry', JSON.stringify({
+            days: { [today]: { date: today, colos: {}, asns: {}, total: 2000, updatedAt: 9 } }
+        }));
+
+        // flush اول بعد از سقف → فقط همین یکی put می‌زند (پرچم dropped)
+        mod.recordEdgeSample(fakeRequest(FULL_CF), env, fakeCtx().ctx, 'ws');
+        await mod._flushNow(env);
+        expect(puts).toBe(1);
+
+        // flush های بعدی همان روز → صفر put (قبلاً هرکدام یک put کامل بود!)
+        for (let i = 0; i < 5; i++) {
+            mod.recordEdgeSample(fakeRequest(FULL_CF), env, fakeCtx().ctx, 'ws');
+            await mod._flushNow(env);
+        }
+        expect(puts).toBe(1);
+    });
+
+    it('write-diet: dropped flag resets on a new day', async () => {
+        const mod = await import('../src/settings/edge-telemetry');
+        mod._resetEdgeTelemetryForTest();
+
+        const { kv, store } = createKvMock();
+        const env = { kv } as unknown as Env;
+
+        const today = new Date().toISOString().slice(0, 10);
+        const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+
+        // شبیه‌سازی: پرچم dropped از دیروز مانده (flush دیروز سقف را گزارش کرده)
+        mod._setDroppedReportedOnForTest(yesterday);
+        expect(mod._setDroppedReportedOnForTest).toBeDefined();
+
+        // flush امروز — چون droppedReportedOn برای امروز نیست، باید بنویسد
+        mod.recordEdgeSample(fakeRequest(FULL_CF), env, fakeCtx().ctx, 'ws');
+        await mod._flushNow(env);
+
+        const blob = JSON.parse(store.get('edgeTelemetry')!);
+        expect(blob.days[today]).toBeDefined();       // روز تازه ساخته شد
+        expect(blob.days[today].total).toBe(1);
+        expect(blob.dropped).toBe(false);              // امروز سقف نخورده (پرچم false persist می‌شود)
     });
 });
 

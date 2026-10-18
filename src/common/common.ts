@@ -6,7 +6,8 @@ export enum HttpStatus {
     FORBIDDEN = 403,
     NOT_FOUND = 404,
     METHOD_NOT_ALLOWED = 405,
-    INTERNAL_SERVER_ERROR = 500
+    INTERNAL_SERVER_ERROR = 500,
+    SERVICE_UNAVAILABLE = 503
 }
 
 export function base64EncodeUtf8(str: string): string {

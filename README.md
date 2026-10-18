@@ -4,12 +4,12 @@
 
 <img src="assets/readme/hero.svg" alt="Flash Panel emblem — animated lightning, rotating rings, orbiting particles" width="720" />
 
-<a href="https://github.com/CheginiSoroush/flash-panel"><img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=22&duration=2600&pause=800&color=F59E0B&center=true&vCenter=true&width=820&height=70&lines=Fast+as+a+flash.+Light+as+a+feather.;VLESS+%C2%B7+TROJAN+%C2%B7+WARP+on+Cloudflare+Workers;Reverse-engineered+for+the+edge;391+tests.+Zero+servers.+100%25+serverless." alt="Flash Panel in one line" /></a>
+<a href="https://github.com/CheginiSoroush/flash-panel"><img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=22&duration=2600&pause=800&color=F59E0B&center=true&vCenter=true&width=820&height=70&lines=Fast+as+a+flash.+Light+as+a+feather.;VLESS+%C2%B7+TROJAN+%C2%B7+WARP+on+Cloudflare+Workers;Reverse-engineered+for+the+edge;439+tests.+Zero+servers.+100%25+serverless." alt="Flash Panel in one line" /></a>
 
 [![Release](https://img.shields.io/github/v/release/CheginiSoroush/flash-panel?style=for-the-badge&logo=github&label=Release&color=f59e0b)](https://github.com/CheginiSoroush/flash-panel/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CheginiSoroush/flash-panel/ci.yml?branch=main&style=for-the-badge&logo=githubactions&label=CI&color=34d399)](https://github.com/CheginiSoroush/flash-panel/actions)
-[![Tests](https://img.shields.io/badge/Tests-391%20passing-34d399?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/actions)
-[![Bundle](https://img.shields.io/badge/Bundle-137.1%20KB%20gzip-f59e0b?style=for-the-badge&logo=esbuild&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/blob/main/scripts/build.js)
+[![Tests](https://img.shields.io/badge/Tests-439%20passing-34d399?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/actions)
+[![Bundle](https://img.shields.io/badge/Bundle-138%20KB%20gzip-f59e0b?style=for-the-badge&logo=esbuild&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/blob/main/scripts/build.js)
 
 [![Platform](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#-how-a-request-flows)
 [![License](https://img.shields.io/github/license/CheginiSoroush/flash-panel?style=for-the-badge&label=License&color=e11d48)](LICENSE)
@@ -28,7 +28,7 @@
 
 | | | | |
 |:---:|:---:|:---:|:---:|
-| **0** servers | **3** config cores | **391** unit tests | **137 KB** gzipped |
+| **0** servers | **3** config cores | **439** unit tests | **137 KB** gzipped |
 | **ETag** instant 304s | **gzip** sub responses | **QR** memoized | **3-mirror** self-update |
 | **24/7** self-tuning | **edge telemetry** | **scanner-proof** | **100%** serverless |
 
@@ -114,7 +114,7 @@ Set the cron trigger once (`'0 * * * *'` in `wrangler.jsonc`) and the panel take
 - 🖼️ **QR memoization** — the QR PNG encoder (RGBA loop + deflate) runs once per unique config link; the panel's QR modal re-opens now cost zero CPU. Browser cache headers (`max-age=3600`) prevent re-fetching altogether
 - 🔧 **Micro-hygiene** — module-level `TextEncoder` for ETag hashing, header snapshots stored with the cache instead of per-request rebuilds
 
-All of it is memory-bounded (LRU + size caps) and covered by unit tests — **391/391 green across 26 files**.
+All of it is memory-bounded (LRU + size caps) and covered by unit tests — **439/439 green across 28 files**.
 
 </details>
 
@@ -179,7 +179,7 @@ The one-click **Update panel** button fetches the latest `worker.js` and redeplo
 <details>
 <summary><b>🧪 Engineering — built like production software</b></summary>
 
-- **391 unit tests** across 26 files — protocol parsers, settings validators, KV migrations, sub-users, telemetry, tuners, guards
+- **439 unit tests** across 28 files — protocol parsers, settings validators, KV migrations, sub-users, telemetry, tuners, guards
 - **CI on every push** — typecheck → tests → build → **bundle gate** (gzip ≤ 150 KB, ~4.5% of the Workers free-plan limit)
 - **Automated releases** — tag → build → publish → Pages mirror
 - **Self-update from panel** — zero-downtime upgrades via the 3-mirror engine

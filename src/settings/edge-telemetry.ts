@@ -66,16 +66,27 @@ const MAX_COLOS = 12;
 const MAX_ASNS = 24;
 /** سقف نمونه‌ی ثبت‌شده در روز — بعد از آن flush ها drop می‌شوند (محافظ سهمیه‌ی KV) */
 const MAX_SAMPLES_PER_DAY = 2000;
-const FLUSH_AT = 12;
-const FLUSH_DELAY_MS = 15_000;
+/**
+ * 🍳 رژیم write (v0.8.7) — سهمیه‌ی KV رایگان فقط ۱٬۰۰۰ put/روز است و
+ * flush تله‌متری سابق (هر ۱۲ نمونه یا ۱۵ ثانیه، تا ۴۰ بار در هر isolate)
+ * با چند isolate می‌توانست به‌تنهایی سقف را بسوزاند. حالا:
+ *   - دسته‌ها بزرگ‌تر (۳۲ نمونه) و فاصله‌ی flush ترافیک‌کم ۱۲۰ ثانیه
+ *   - هر isolate حداکثر ۶ put در طول عمرش (به‌جای ۴۰)
+ *   - بعد از سقف روزانه، فقط «اولین» flush پرچم dropped را می‌نویسد؛
+ *     بقیه‌ی flush های همان روز کاملاً بدون put رد می‌شوند.
+ */
+const FLUSH_AT = 32;
+const FLUSH_DELAY_MS = 120_000;
 /** سقف flush در طول عمر هر isolate — محافظ دوم سهمیه‌ی نوشتن */
-const MAX_FLUSHES_PER_ISOLATE = 40;
+const MAX_FLUSHES_PER_ISOLATE = 6;
 
 // ---------- بافر داخلی isolate ----------
 
 let buffer: EdgeSample[] = [];
 let flushCount = 0;
 let flushScheduled = false;
+/** آخرین روزی که dropped=true برایش persist شده — flush های بعدی همان روز put نمی‌زنند (v0.8.7) */
+let droppedReportedOn: string | null = null;
 /** برای تست — نرخ نمونه‌گیری HTTP */
 let httpSampleRate = 0.25;
 
@@ -87,7 +98,13 @@ export function _resetEdgeTelemetryForTest(): void {
     buffer = [];
     flushCount = 0;
     flushScheduled = false;
+    droppedReportedOn = null;
     httpSampleRate = 0.25;
+}
+
+/** برای تست — شبیه‌سازی «پرچم dropped از دیروز مانده» */
+export function _setDroppedReportedOnForTest(date: string | null): void {
+    droppedReportedOn = date;
 }
 
 /** برای تست — بافر را بدون تایمر فوراً می‌شوید */
@@ -221,6 +238,11 @@ export async function flushSamples(env: Env, batch: EdgeSample[]): Promise<void>
     if (!batch.length) return;
 
     const today = new Date().toISOString().slice(0, 10);
+
+    // 🍳 سقف امروز پر شده و پرشدنش را قبلاً گزارش کرده‌ایم؟ این batch هیچ داده‌ی
+    // تازه‌ای نمی‌تواند اضافه کند → بدون هیچ put ای رد شو (ضد سوختن سهمیه‌ی write)
+    if (droppedReportedOn === today) return;
+
     let days: Record<string, EdgeDay> = {};
     try {
         const raw = await env.kv.get(TELEMETRY_KEY, { type: 'json' });
@@ -245,6 +267,12 @@ export async function flushSamples(env: Env, batch: EdgeSample[]): Promise<void>
         cur.total++;
     }
     cur.updatedAt = Date.now();
+
+    if (dropped) {
+        // اولین flush بعد از سقف → فقط همین یکی پرچم dropped را می‌نویسد؛
+        // flush های بعدی امروز از گارد بالای تابع بدون put رد می‌شوند
+        droppedReportedOn = today;
+    }
 
     // هرس روزهای قدیمی
     const fresh: Record<string, EdgeDay> = { [today]: cur };

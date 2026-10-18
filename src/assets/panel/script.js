@@ -52,19 +52,31 @@ async function initPanel(settings, tgSettings, subscriptions, clients) {
 }
 
 async function getUsage() {
+    const ids = ['total-usage', 'panel-usage', 'total-pct', 'panel-pct'];
+    const showUsageError = (msg) => {
+        // v0.8.7 — دیگر «صفرِ ساکت» نیستیم: خطای واقعی در tooltip فیلدها می‌نشیند
+        for (const id of ids) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            el.textContent = '—';
+            el.removeAttribute('style');
+            el.title = `Usage unavailable — ${msg}`;
+        }
+    };
     try {
         const nocache = Date.now();
         const res = await fetch(`./panel/usage?nocache=${nocache}`, { cache: 'no-store' });
         const { success, status, message, body } = await res.json();
 
         if (!success) {
-            throw new Error(`status ${status} - ${message}`);
+            throw new Error(message || `status ${status}`);
         }
 
         const { total, worker } = body;
         const totalReq = document.getElementById('total-usage');
         totalReq.textContent = total.toLocaleString('en-US');
         totalReq.style.fontSize = 'larger';
+        totalReq.title = '';
         const totalPct = document.getElementById('total-pct');
         const totalPctVal = Math.ceil(Number(total) / 100000 * 100);
         totalPct.textContent = totalPctVal;
@@ -73,12 +85,18 @@ async function getUsage() {
         const panelReq = document.getElementById('panel-usage');
         panelReq.textContent = worker.toLocaleString('en-US');
         panelReq.style.fontSize = 'larger';
+        panelReq.title = '';
         const panelPct = document.getElementById('panel-pct');
         const panelPctVal = Math.ceil(Number(worker) / 100000 * 100);
         panelPct.textContent = panelPctVal;
         if (panelPctVal > 80) panelPct.style.color = 'var(--color-icon-red)';
+
+        for (const id of ['total-pct', 'panel-pct']) {
+            document.getElementById(id)?.removeAttribute('title');
+        }
     } catch (error) {
         console.error('Failed to get usage from API:', error);
+        showUsageError(error?.message || 'unknown error');
     }
 }
 

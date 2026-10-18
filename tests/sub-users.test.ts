@@ -430,6 +430,33 @@ describe('resolveAndRecordSubUser', () => {
         expect(all[0].fetchCount).toBeUndefined();
     });
 
+    it('v0.8.7 write-diet: a cold isolate inside the fresh window writes nothing', async () => {
+        // ریشه‌ی سوختن سهمیه‌ی KV: قبلاً isolate سرد حتی داخل پنجره‌ی تازه هم
+        // فقط برای lastFetchedAt کل blob را می‌نوشت. حالا صفر write.
+        const { kv } = createKvMock();
+        let puts = 0;
+        const countingKv = {
+            get: kv.get.bind(kv),
+            put: async (key: string, value: string) => { puts++; await kv.put(key, value); },
+            delete: kv.delete.bind(kv)
+        } as unknown as KVNamespace;
+        const env = { kv: countingKv } as Env;
+
+        const user = (await createSubUser(env, 'John'))!;
+        const t0 = Date.now();
+        await resolveAndRecordSubUser(env, user.id, t0);   // ثبت اول — ۱ write
+        puts = 0;
+        _resetSubUserFetchState();                          // شبیه‌سازی isolate سرد
+
+        const resolved = await resolveAndRecordSubUser(env, user.id, t0 + SUB_USER_FETCH_THROTTLE_MS - 1_000);
+        expect(resolved).not.toBeNull();                    // کاربر سالم resolve شد
+        expect(puts).toBe(0);                               // ولی هیچ put ای نزد
+
+        const all = await getSubUsers(env);
+        expect(all[0].fetchCount).toBe(1);                  // شمارش دست‌نخورده
+        expect(all[0].lastFetchedAt).toBe(t0);
+    });
+
     it('still resolves the user when the stats write fails (best-effort)', async () => {
         const { kv, store } = createKvMock();
         const env = { kv } as Env;

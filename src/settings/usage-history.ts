@@ -30,6 +30,14 @@ export interface UsageDay {
 const USAGE_KEY = 'usageHistory';
 const MAX_DAYS = 31;
 
+/**
+ * 🍳 رژیم write (v0.8.7) — سهمیه‌ی KV رایگان فقط ۱٬۰۰۰ put/روز است.
+ * نمونه‌گیری هر ۳۰ دقیقه cron + هر باز شدن پنل یعنی ده‌ها put اضافه در روز،
+ * در حالی که نمودار فقط دانه‌بندی روزانه دارد. نمونه‌ی تازه‌تر از این فاصله
+ * نوشته نمی‌شود (خواندن KV ارزان است — ۱۰۰ هزار/روز — فقط put گران است).
+ */
+export const USAGE_SAMPLE_MIN_INTERVAL_MS = 3 * 3_600_000;
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function utcDateKey(d: Date = new Date()): string {
@@ -78,18 +86,36 @@ function prune(history: Record<string, UsageDay>): Record<string, UsageDay> {
     return kept;
 }
 
+/** نتیجه‌ی ثبت — برای لاگ/تست */
+export type UsageRecordOutcome = 'recorded' | 'throttled' | 'skipped';
+
 /**
  * ثبت نمونه امروز — «آخرین نمونه برنده» چون پنجره ۲۴ ساعته CF همیشه تازه‌ترین
  * مقادیر را دارد. خطاها بلعیده می‌شوند تا هرگز پاس usage را خراب نکنند.
+ *
+ * v0.8.7: نمونه‌های تازه‌تر از USAGE_SAMPLE_MIN_INTERVAL_MS نوشته نمی‌شوند
+ * (سقف ۱٬۰۰۰ put روزانه‌ی KV رایگان). تست‌ها می‌توانند با minIntervalMs: 0
+ * رفتار قدیمی را بگیرند.
  */
-export async function recordUsageSample(env: Env, total: number, worker: number): Promise<void> {
+export async function recordUsageSample(
+    env: Env,
+    total: number,
+    worker: number,
+    opts?: { minIntervalMs?: number }
+): Promise<UsageRecordOutcome> {
     try {
-        if (!Number.isFinite(total) || !Number.isFinite(worker)) return;
-        if (total < 0 || worker < 0) return;
+        if (!Number.isFinite(total) || !Number.isFinite(worker)) return 'skipped';
+        if (total < 0 || worker < 0) return 'skipped';
 
+        const minIntervalMs = opts?.minIntervalMs ?? USAGE_SAMPLE_MIN_INTERVAL_MS;
         const history = prune(await loadMap(env));
         const date = utcDateKey();
         const prev = history[date];
+
+        // 🍳 نمونه‌ی تازه داریم؟ هیچ چیزِ تازه‌ای برای نوشتن نیست — put نزن
+        if (prev && minIntervalMs > 0 && Date.now() - prev.updatedAt < minIntervalMs) {
+            return 'throttled';
+        }
 
         history[date] = {
             date,
@@ -100,9 +126,11 @@ export async function recordUsageSample(env: Env, total: number, worker: number)
         };
 
         await env.kv.put(USAGE_KEY, JSON.stringify(history));
+        return 'recorded';
     } catch (error) {
         // ثبت نباید هرگز مسیر اصلی usage را بشکند
         console.log(`usage-history: record failed — ${safeError(error)}`);
+        return 'skipped';
     }
 }
 

@@ -70,7 +70,7 @@ describe('usage history — KV time-series', () => {
 
     it('records today’s sample on empty KV', async () => {
         const { kv, store } = createKvMock();
-        await usage.recordUsageSample({ kv } as Env, 1234, 567);
+        expect(await usage.recordUsageSample({ kv } as Env, 1234, 567)).toBe('recorded');
 
         const raw = store.get('usageHistory')!;
         const map = JSON.parse(raw);
@@ -82,9 +82,11 @@ describe('usage history — KV time-series', () => {
 
     it('latest sample wins and samples counter increments', async () => {
         const { kv, store } = createKvMock();
-        await usage.recordUsageSample({ kv } as Env, 1000, 100);
-        await usage.recordUsageSample({ kv } as Env, 2500, 300);
-        await usage.recordUsageSample({ kv } as Env, 9999, 999);
+        // minIntervalMs: 0 = رفتار قدیمی (بدون رژیم write) — اینجا منطق «آخرین برنده» را می‌آزماییم
+        const fast = { minIntervalMs: 0 } as const;
+        await usage.recordUsageSample({ kv } as Env, 1000, 100, fast);
+        await usage.recordUsageSample({ kv } as Env, 2500, 300, fast);
+        await usage.recordUsageSample({ kv } as Env, 9999, 999, fast);
 
         const map = JSON.parse(store.get('usageHistory')!);
         expect(map[utcDateKey()].total).toBe(9999);
@@ -98,6 +100,56 @@ describe('usage history — KV time-series', () => {
         await usage.recordUsageSample({ kv } as Env, Number.NaN, 10);
         await usage.recordUsageSample({ kv } as Env, 10, Number.POSITIVE_INFINITY);
         expect(store.has('usageHistory')).toBe(false);
+    });
+
+    // ---------- 🍳 رژیم write (v0.8.7) — سقف ۱٬۰۰۰ put روزانه‌ی KV ----------
+
+    it('write-diet: throttles a fresh sample within the interval without a put', async () => {
+        const { kv, store } = createKvMock();
+        const env = { kv } as Env;
+
+        expect(await usage.recordUsageSample(env, 1000, 100)).toBe('recorded');
+        let puts = 0;
+        const counting = {
+            get: kv.get.bind(kv),
+            put: async (k: string, v: string) => { puts++; await kv.put(k, v); },
+            delete: kv.delete.bind(kv)
+        } as unknown as KVNamespace;
+
+        // پنل دوباره باز شد / cron دوباره آمد — فقط ۱۰ دقیقه گذشته: نه شمارش، نه put
+        expect(await usage.recordUsageSample({ kv: counting } as Env, 2000, 200)).toBe('throttled');
+        expect(puts).toBe(0);
+
+        const map = JSON.parse(store.get('usageHistory')!);
+        expect(map[utcDateKey()].total).toBe(1000); // نمونه‌ی قبلی دست‌نخورده
+        expect(map[utcDateKey()].samples).toBe(1);
+    });
+
+    it('write-diet: records again after the interval has passed', async () => {
+        const { kv, store } = createKvMock();
+        const env = { kv } as Env;
+
+        await usage.recordUsageSample(env, 1000, 100);
+        // نمونه‌ی قبلی را ۴ ساعت قدیمی کنیم
+        const map = JSON.parse(store.get('usageHistory')!);
+        map[utcDateKey()].updatedAt = Date.now() - 4 * 3_600_000;
+        store.set('usageHistory', JSON.stringify(map));
+
+        expect(await usage.recordUsageSample(env, 2500, 250)).toBe('recorded');
+        const after = JSON.parse(store.get('usageHistory')!);
+        expect(after[utcDateKey()].total).toBe(2500);
+        expect(after[utcDateKey()].samples).toBe(2);
+    });
+
+    it('write-diet: minIntervalMs: 0 bypasses the throttle (legacy/tests)', async () => {
+        const { kv, store } = createKvMock();
+        const env = { kv } as Env;
+        const fast = { minIntervalMs: 0 } as const;
+
+        await usage.recordUsageSample(env, 1, 1, fast);
+        expect(await usage.recordUsageSample(env, 2, 2, fast)).toBe('recorded');
+        const map = JSON.parse(store.get('usageHistory')!);
+        expect(map[utcDateKey()].samples).toBe(2);
     });
 
     it('history gap-fills missing days with null in ascending order', async () => {
