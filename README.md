@@ -4,12 +4,12 @@
 
 <img src="assets/readme/hero.svg" alt="Flash Panel emblem — animated lightning, rotating rings, orbiting particles" width="720" />
 
-<a href="https://github.com/CheginiSoroush/flash-panel"><img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=22&duration=2600&pause=800&color=F59E0B&center=true&vCenter=true&width=820&height=70&lines=Fast+as+a+flash.+Light+as+a+feather.;VLESS+%C2%B7+TROJAN+%C2%B7+WARP+on+Cloudflare+Workers;Reverse-engineered+for+the+edge;439+tests.+Zero+servers.+100%25+serverless." alt="Flash Panel in one line" /></a>
+<a href="https://github.com/CheginiSoroush/flash-panel"><img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=22&duration=2600&pause=800&color=F59E0B&center=true&vCenter=true&width=820&height=70&lines=Fast+as+a+flash.+Light+as+a+feather.;VLESS+%C2%B7+TROJAN+%C2%B7+WARP+on+Cloudflare+Workers;Reverse-engineered+for+the+edge;470+tests.+Zero+servers.+100%25+serverless." alt="Flash Panel in one line" /></a>
 
 [![Release](https://img.shields.io/github/v/release/CheginiSoroush/flash-panel?style=for-the-badge&logo=github&label=Release&color=f59e0b)](https://github.com/CheginiSoroush/flash-panel/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CheginiSoroush/flash-panel/ci.yml?branch=main&style=for-the-badge&logo=githubactions&label=CI&color=34d399)](https://github.com/CheginiSoroush/flash-panel/actions)
-[![Tests](https://img.shields.io/badge/Tests-439%20passing-34d399?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/actions)
-[![Bundle](https://img.shields.io/badge/Bundle-138%20KB%20gzip-f59e0b?style=for-the-badge&logo=esbuild&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/blob/main/scripts/build.js)
+[![Tests](https://img.shields.io/badge/Tests-470%20passing-34d399?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/actions)
+[![Bundle](https://img.shields.io/badge/Bundle-139%20KB%20gzip-f59e0b?style=for-the-badge&logo=esbuild&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/blob/main/scripts/build.js)
 
 [![Platform](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#-how-a-request-flows)
 [![License](https://img.shields.io/github/license/CheginiSoroush/flash-panel?style=for-the-badge&label=License&color=e11d48)](LICENSE)
@@ -28,7 +28,7 @@
 
 | | | | |
 |:---:|:---:|:---:|:---:|
-| **0** servers | **3** config cores | **439** unit tests | **137 KB** gzipped |
+| **0** servers | **3** config cores | **470** unit tests | **139 KB** gzipped |
 | **ETag** instant 304s | **gzip** sub responses | **QR** memoized | **3-mirror** self-update |
 | **24/7** self-tuning | **edge telemetry** | **scanner-proof** | **100%** serverless |
 
@@ -89,6 +89,22 @@ Most panels fly blind. Flash Panel turned Cloudflare's own per-request metadata 
 - 🤖 **Telegram webhook secret validation** — forged updates rejected
 - 🔒 Login page / settings / subscriptions fully separated
 - ⚡ `workers.dev` route **auto-disabled** — scanner-proof by design (auto-guard re-checks every 30 minutes, alerts via Telegram)
+- 🎫 **Token-gated WebSocket paths** — WS routes are derived from the secret path (deterministic 96-bit token); active probes get a realistic camouflage fallback instead of a `101` handshake that screams "this is a proxy worker"
+- 🎭 **uTLS fingerprint rotation** — generated configs rotate fingerprints deterministically (60% Chrome / 20% iOS / 20% Firefox) so all clients never share one JA3 class that a single DPI rule could kill
+- 🕶️ **Camouflage fallback** — every non-panel path transparently proxies to a real high-traffic website (path/method preserved) — casual scanners see an ordinary site
+
+</details>
+
+<details>
+<summary><b>🧯 Resilience — degrades gracefully, never silently</b> <i>(v0.8.6 → v0.8.10)</i></summary>
+
+Free plans have hard walls — 1,000 KV writes/day, filtered mirrors, rate limits. Flash Panel bends instead of breaking:
+
+- 📉 **KV write-diet** — settings reads cached at isolate level (5s TTL + anti-stampede), telemetry batched (12 samples / 15s, 2,000/day cap) — the whole panel now runs on ~150–250 KV writes/day
+- 🪫 **Quota-dead degrade (v0.8.9)** — when the daily KV quota dries up: bootstrap/migration writes become best-effort, reads are absorbed by isolate caches, the service stays up and self-heals after the UTC reset — **no crash, no data loss, no silent behavior**
+- 🤖 **Unkillable bot buttons (v0.8.10)** — under a dead KV quota, Telegram prompts still open (with an "offline — reply to this message" hint), unknown callbacks get explicit answers, crashes report loudly — **12 dedicated tests** pin every path
+- 🧾 **Honest usage (v0.8.7)** — usage charts never fake zeros again: sampling failures are visible, quota warnings have hourly cooldowns, `/usage` and its button share one renderer
+- 🛰️ **Honest errors everywhere** — update-panel failures name the real cause (GitHub 403 / token permission / quota), webhook handlers never swallow exceptions into fake 200s
 
 </details>
 
@@ -114,7 +130,7 @@ Set the cron trigger once (`'0 * * * *'` in `wrangler.jsonc`) and the panel take
 - 🖼️ **QR memoization** — the QR PNG encoder (RGBA loop + deflate) runs once per unique config link; the panel's QR modal re-opens now cost zero CPU. Browser cache headers (`max-age=3600`) prevent re-fetching altogether
 - 🔧 **Micro-hygiene** — module-level `TextEncoder` for ETag hashing, header snapshots stored with the cache instead of per-request rebuilds
 
-All of it is memory-bounded (LRU + size caps) and covered by unit tests — **439/439 green across 28 files**.
+All of it is memory-bounded (LRU + size caps) and covered by unit tests — **470/470 green across 32 files**.
 
 </details>
 
@@ -170,7 +186,7 @@ The one-click **Update panel** button fetches the latest `worker.js` and redeplo
 - **Content validation** — an HTML error page or truncated body is never deployed (length + `export default` checks)
 - **10-minute edge cache + request coalescing** — repeated clicks cost zero extra fetches
 - **Honest errors** — the panel toast shows the real reason (GitHub 403 / token permission / quota) instead of a blind *"please try again"*
-- **Client-side version check fallback** — `raw.githubusercontent.com` first, jsDelivr second
+- **Dual-path version check (v0.8.8)** — browser mirrors first, then a **server-side edge fallback** that bypasses ISP filtering: the Update button activates even where `raw.githubusercontent.com` / jsDelivr are blocked (10-minute isolate cache, zero KV writes)
 
 > 💡 If your panel is older than **v0.7.1** and the update button fails, retry in a few minutes (the 403 is transient) or upload `worker.js` manually via the Cloudflare dashboard / Flash Wizard — after that, every future update uses the mirror engine.
 
@@ -179,7 +195,7 @@ The one-click **Update panel** button fetches the latest `worker.js` and redeplo
 <details>
 <summary><b>🧪 Engineering — built like production software</b></summary>
 
-- **439 unit tests** across 28 files — protocol parsers, settings validators, KV migrations, sub-users, telemetry, tuners, guards
+- **470 unit tests** across 32 files — protocol parsers, settings validators, KV migrations, sub-users, telemetry, tuners, guards, update-check, telegram resilience, KV-degrade harnesses
 - **CI on every push** — typecheck → tests → build → **bundle gate** (gzip ≤ 150 KB, ~4.5% of the Workers free-plan limit)
 - **Automated releases** — tag → build → publish → Pages mirror
 - **Self-update from panel** — zero-downtime upgrades via the 3-mirror engine
