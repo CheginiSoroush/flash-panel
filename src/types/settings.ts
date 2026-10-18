@@ -96,6 +96,8 @@ export interface EmbededSettings {
     accID: string;
     accEmail: string;
     apiToken: string;
+    /** نام اسکریپت ورکر در CF — تزریق‌شده موقع دیپلوی؛ نبودِ کلید = derive از mainDomain */
+    scriptName?: string;
     vlUUID: string;
     trPass: string;
     securePath: string;

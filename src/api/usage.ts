@@ -2,6 +2,7 @@ import { authenticate } from '@auth';
 import { HttpStatus, respond, safeError } from '@common';
 import { getGlobals, initForScheduled } from '@settings';
 import { getUsageHistory, recordUsageSample } from '@settings/usage-history';
+import { resolveWorkerName } from './worker-name';
 
 interface CfUsageResult {
     success: boolean;
@@ -11,8 +12,10 @@ interface CfUsageResult {
 }
 
 export async function getCfWorkerUsage(): Promise<CfUsageResult> {
-    const { accID, apiToken, mainDomain } = getGlobals();
-    const scriptName = mainDomain.split('.')[0];
+    const { accID, apiToken } = getGlobals();
+    // v0.8.3: قبلاً mainDomain.split('.')[0] بود که برای دامنه‌ی شخصی «fp» می‌داد
+    // و فیلتر scriptName در GraphQL هیچ‌وقت match نمی‌شد (Panel requests همیشه ۰)
+    const scriptName = resolveWorkerName();
 
     try {
         const now = new Date();

@@ -46,6 +46,8 @@ function getStaticGlobals() {
         accID: EMBEDED_SETTINGS.accID,
         accEmail: EMBEDED_SETTINGS.accEmail.toLowerCase(),
         apiToken: EMBEDED_SETTINGS.apiToken,
+        // نام اسکریپت برای CF API — resolveWorkerName از این استفاده می‌کند
+        scriptName: EMBEDED_SETTINGS.scriptName,
         vlUUID: EMBEDED_SETTINGS.vlUUID,
         trPass: EMBEDED_SETTINGS.trPass,
         securePath: EMBEDED_SETTINGS.securePath,

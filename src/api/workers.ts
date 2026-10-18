@@ -1,5 +1,6 @@
 import { safeError } from '@common';
 import { getGlobals } from '@settings';
+import { resolveWorkerName } from './worker-name';
 
 /**
  * پیام‌های خطای Cloudflare API را به راهنمای عملی تبدیل می‌کند —
@@ -29,7 +30,8 @@ export async function deployWorkers(script: string) {
     const uploadForm = new FormData();
     uploadForm.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
     uploadForm.append('worker.js', new Blob([script], { type: 'application/javascript+module' }), 'worker.js');
-    const scriptName = mainDomain.split('.')[0];
+    // v0.8.3: قبلاً mainDomain.split('.')[0] بود که با دامنه‌ی شخصی اسکریپت اشتباه آپدیت می‌کرد
+    const scriptName = resolveWorkerName();
 
     try {
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts/${scriptName}`, {
@@ -46,8 +48,8 @@ export async function deployWorkers(script: string) {
 }
 
 export async function getWorkerDomains(): Promise<string[]> {
-    const { accID, apiToken, mainDomain } = getGlobals();
-    const scriptName = mainDomain.split('.')[0];
+    const { accID, apiToken } = getGlobals();
+    const scriptName = resolveWorkerName();
 
     try {
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/domains?service=${scriptName}`, {
@@ -63,8 +65,8 @@ export async function getWorkerDomains(): Promise<string[]> {
 }
 
 export async function setWorkerDomain(domain: string) {
-    const { accID, apiToken, mainDomain } = getGlobals();
-    const scriptName = mainDomain.split('.')[0];
+    const { accID, apiToken } = getGlobals();
+    const scriptName = resolveWorkerName();
 
     try {
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/domains`, {
@@ -92,8 +94,8 @@ export async function setWorkerDomain(domain: string) {
  * enabled=true  → وقتی دامنه پاک می‌شه: پنل بی‌جا نمی‌مونه
  */
 export async function setWorkersDevRoute(enabled: boolean) {
-    const { accID, apiToken, mainDomain } = getGlobals();
-    const scriptName = mainDomain.split('.')[0];
+    const { accID, apiToken } = getGlobals();
+    const scriptName = resolveWorkerName();
 
     try {
         const form = new FormData();
@@ -115,8 +117,8 @@ export async function setWorkersDevRoute(enabled: boolean) {
 }
 
 export async function deleteWorker() {
-    const { accID, apiToken, mainDomain } = getGlobals();
-    const scriptName = mainDomain.split('.')[0];
+    const { accID, apiToken } = getGlobals();
+    const scriptName = resolveWorkerName();
 
     try {
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts/${scriptName}`, {

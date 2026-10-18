@@ -6,7 +6,7 @@
 
 **VLESS · Trojan · WARP** — built for speed, hardened for real-world use
 
-[🇮🇷 فارسی](README_fa.md) · [🪄 Quick Deploy](https://flash-wizard.cheginisoroush6.workers.dev/)
+[🇮🇷 فارسی](README_fa.md) · [🪄 Quick Deploy](https://github.com/CheginiSoroush/flash-wizard)
 
 ![Cloudflare Workers](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
@@ -137,9 +137,9 @@ The one-click **Update panel** button fetches the latest `worker.js` and redeplo
 
 ### 🪄 Flash Wizard — 60 seconds, no CLI
 
-**[→ Deploy now](https://flash-wizard.cheginisoroush6.workers.dev/)**
+**[→ Get Flash Wizard — deploy it yourself](https://github.com/CheginiSoroush/flash-wizard)**
 
-> ⚠️ **Use a custom domain.** Scanners continuously probe `*.workers.dev` and file automated abuse reports — accounts have been suspended this way. A $3/year domain on a Cloudflare zone keeps you off the radar.
+> ⚠️ **Never publish your live panel URL.** Scanners continuously probe `*.workers.dev` and file automated abuse reports — accounts have been suspended this way. A $3/year domain on a Cloudflare zone keeps you off the radar. Keep the wizard's workers.dev name private (it is only used once, during setup).
 
 ### Manual
 

@@ -5,6 +5,7 @@ import { recordUsageSample } from '@settings/usage-history';
 import { getSubUsers, isSubUserExpired, sweepExpiredSubUsers, SubUser } from '@settings/sub-users';
 import { tuneProxyIPs, ProxyTuneResult } from './proxy-tuner';
 import { tuneCleanIPs, CleanTuneResult } from './clean-tuner';
+import { runWorkersDevGuard, WorkersDevGuardResult } from './workersdev-guard';
 import { TelegramBot } from '#types/settings';
 
 /**
@@ -250,6 +251,8 @@ export interface AutomationRunResult {
     bestCleanIP?: string | null;
     /** نتیجه‌ی کامل clean tune — برای تست */
     clean?: CleanTuneResult;
+    /** 🛡️ گارد ضد-abuse workers.dev — نتیجه‌ی چک این دور (v0.8.3) */
+    workersDevGuard?: WorkersDevGuardResult;
 }
 
 /**
@@ -307,6 +310,22 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
     if (bot && (sweep.swept.length || sweep.expiringSoon.length)) {
         await notifyAdmin(bot, buildSweepText(sweep.swept, sweep.expiringSoon));
         result.notified = true;
+    }
+
+    // ---------- ۲b) 🛡️ گارد ضد-abuse — workers.dev باید همیشه بسته بماند ----------
+    // گزارش‌های abuse واقعی (2512190207a0dbbf و 92750cec97857ec6) نشواند که
+    // اسکنرها *.workers.dev را ۲۴/۷ گزارش می‌کنند؛ یک deploy اشتباه کافی است تا
+    // دوباره باز شود. این گارد هر دور چک می‌کند، بسته می‌کند و خبر می‌دهد.
+    try {
+        const guard = await runWorkersDevGuard(env, bot ? (html) => notifyAdmin(bot, html) : null);
+        if (guard) {
+            result.workersDevGuard = guard;
+            if (guard.enabledFound.length) {
+                console.log(`automation: workers.dev guard — found open [${guard.enabledFound.join(', ')}], disabled [${guard.disabled.join(', ') || 'NONE'}], left open [${guard.leftOpen.join(', ') || 'none'}]`);
+            }
+        }
+    } catch (error) {
+        console.log(`automation: workers.dev guard failed — ${safeError(error)}`);
     }
 
     // ---------- ۳) Auto-Tune ProxyIP (هر ۶ ساعت — بدون بات هم کار می‌کند) ----------
