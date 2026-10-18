@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title data-i18n="meta.title">Flash Panel — Serverless Proxy Panel for Cloudflare Workers</title>
-<meta name="description" data-i18n-attr="content:meta.desc" content="High-performance, serverless proxy panel for Cloudflare Workers. VLESS &amp; Trojan rewritten from scratch, edge telemetry with closed-loop auto-tuning, anti-probing stealth, Telegram bot control, TOTP 2FA, multi-user subscriptions — 470 tests, E2E-verified.">
+<meta name="description" data-i18n-attr="content:meta.desc" content="They said you need a VPS. You don't. Flash Panel runs a full VLESS &amp; Trojan proxy platform on a free Cloudflare Workers account — rebuilt protocol core, self-tuning edge telemetry, censorship-proof self-update, unkillable Telegram bot — 470 tests, field-verified with real traffic.">
 <meta property="og:title" content="⚡ Flash Panel">
-<meta property="og:description" content="Serverless proxy panel for Cloudflare Workers — rewritten protocol core, edge telemetry auto-tuning, anti-probing stealth, Telegram bot, TOTP 2FA, 470 tests.">
+<meta property="og:description" content="They said you need a VPS. You don't. Flash Panel on free Cloudflare Workers — rebuilt protocol core, self-tuning telemetry, censorship-proof updates, 470 tests, field-verified.">
 <meta property="og:image" content="assets/panel-dashboard.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23fbbf24'/%3E%3Cstop offset='1' stop-color='%23ea580c'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='6' fill='%2309090b'/%3E%3Cpath d='M13.5 3 6 13.5h4.5L10 21l7.5-10.5H13L13.5 3z' fill='url(%23g)'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -111,7 +111,7 @@
   .btn-ghost{background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text-1)}
   .btn-ghost:hover{border-color:rgba(245,158,11,.5);background:rgba(245,158,11,.10);transform:translateY(-2px)}
   .stats-row{
-    display:grid;grid-template-columns:repeat(4,1fr);gap:14px;max-width:860px;margin:0 auto;
+    display:grid;grid-template-columns:repeat(6,1fr);gap:14px;max-width:1020px;margin:0 auto;
   }
   .stat{
     background:var(--card);border:1px solid var(--border-soft);border-radius:var(--radius);
@@ -222,6 +222,49 @@
   .foot-links a:hover{color:var(--amber-soft)}
   .foot-note{width:100%;text-align:center;color:var(--text-3);font-size:.78rem;margin-top:18px}
 
+  /* ---------- the gap (vs table) ---------- */
+  .vs-wrap{max-width:940px;margin:0 auto}
+  .vs-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border:1px solid var(--border-soft);border-radius:var(--radius);overflow:hidden;backdrop-filter:blur(8px)}
+  .vs-table th,.vs-table td{padding:14px 18px;text-align:start;font-size:.88rem;border-bottom:1px solid var(--border-soft);vertical-align:top;line-height:1.5}
+  .vs-table tr:last-child th,.vs-table tr:last-child td{border-bottom:none}
+  .vs-table thead th{font-size:.72rem;letter-spacing:1.4px;text-transform:uppercase;color:var(--text-3);background:rgba(9,9,11,.55);font-weight:700}
+  [dir="rtl"] .vs-table thead th{letter-spacing:0}
+  .vs-table thead th.flash-col{color:var(--amber-soft);background:rgba(245,158,11,.10)}
+  .vs-table td.crit{color:var(--text-2);font-weight:700;width:22%}
+  .vs-table td.flash-col{background:rgba(245,158,11,.06);color:var(--text-1);font-weight:600}
+  .vs-table td.them{color:var(--text-3)}
+  .vs-table .yes{color:var(--green);font-weight:800;margin-inline-end:7px}
+  .vs-table .no{color:var(--red);font-weight:800;margin-inline-end:7px}
+  .vs-punch{text-align:center;margin-top:20px;font-size:1.05rem;font-weight:700;color:var(--amber-soft)}
+
+  /* ---------- field receipts ---------- */
+  .rc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .rc-card{
+    background:var(--card);border:1px solid var(--border-soft);border-radius:var(--radius);
+    padding:22px;backdrop-filter:blur(8px);transition:.2s;
+  }
+  .rc-card:hover{transform:translateY(-3px);border-color:rgba(245,158,11,.4)}
+  .rc-card .big{font-size:1.75rem;font-weight:800;color:var(--amber-soft);letter-spacing:-.5px;margin-bottom:6px}
+  .rc-card .lbl{font-size:.88rem;font-weight:700;color:var(--text-1);margin-bottom:6px}
+  .rc-card p{font-size:.79rem;color:var(--text-3);line-height:1.55}
+
+  /* ---------- manifesto ---------- */
+  .manifesto{padding:74px 0;text-align:center}
+  .manifesto p{font-size:clamp(1.3rem,3.4vw,2.05rem);font-weight:800;line-height:1.55;letter-spacing:-.4px;max-width:840px;margin:0 auto}
+  [dir="rtl"] .manifesto p{letter-spacing:0}
+  .manifesto .grad{
+    background:linear-gradient(92deg,#fde68a 0%,#f59e0b 45%,#f97316 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+
+  @media(max-width:900px){.rc-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:640px){
+    .rc-grid{grid-template-columns:1fr}
+    .stats-row{grid-template-columns:repeat(2,1fr)}
+    .vs-table th,.vs-table td{padding:11px 10px;font-size:.78rem}
+    .vs-table td.crit{width:auto}
+  }
+
   /* ---------- reveal ---------- */
   .reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease}
   .reveal.in{opacity:1;transform:none}
@@ -231,7 +274,7 @@
     .features-grid{grid-template-columns:repeat(2,1fr)}
     .deploy-grid{grid-template-columns:1fr}
     .shots{grid-template-columns:1fr 1fr}
-    .stats-row{grid-template-columns:repeat(2,1fr)}
+    .stats-row{grid-template-columns:repeat(3,1fr)}
     .tl-grid{grid-template-columns:repeat(2,1fr)}
     .verified{flex-direction:column;align-items:flex-start}
   }
@@ -259,7 +302,8 @@
     </a>
     <nav class="nav" aria-label="Main">
       <a href="#features" data-i18n="nav.features">Features</a>
-      <a href="#changelog" data-i18n="nav.log">Changelog</a>
+      <a href="#vs" data-i18n="nav.vs">Why us</a>
+      <a href="#receipts" data-i18n="nav.rec">Receipts</a>
       <a href="#deploy" data-i18n="nav.deploy">Deploy</a>
       <a href="#screenshots" data-i18n="nav.shots">Screenshots</a>
     </nav>
@@ -280,11 +324,11 @@
   <section class="hero wrap">
     <a class="release-badge reveal" href="https://github.com/CheginiSoroush/flash-panel/releases/tag/v0.8.10" target="_blank" rel="noopener">
       <span class="dot" aria-hidden="true"></span>
-      <span data-i18n="hero.badge">v0.8.10 released — resilient under censorship, quotas and dead buttons</span>
+      <span data-i18n="hero.badge">v0.8.10 — battle-proven under real censorship · 6/6 field-test layers green</span>
     </a>
     <h1 class="title reveal">
-      <span data-i18n="hero.t1">The fastest</span> <span class="grad" data-i18n="hero.t2">proxy panel</span>
-      <span data-i18n="hero.t3">for Cloudflare Workers</span>
+      <span data-i18n="hero.t1">They said you need a VPS.</span> <span class="grad" data-i18n="hero.t2">You don't.</span>
+      <span data-i18n="hero.t3">Meet Flash Panel.</span>
     </h1>
     <p class="tagline reveal" data-i18n="hero.tagline"></p>
     <div class="cta-row reveal">
@@ -301,7 +345,9 @@
       <div class="stat"><b>470</b><span data-i18n="stats.tests">tests passing</span></div>
       <div class="stat"><b>139.4 KB</b><span data-i18n="stats.bundle">bundle (gzip)</span></div>
       <div class="stat"><b>0</b><span data-i18n="stats.deps">runtime dependencies</span></div>
+      <div class="stat"><b>$0</b><span data-i18n="stats.cost">forever — free tier</span></div>
       <div class="stat"><b>3</b><span data-i18n="stats.cores">config cores (Xray/Clash/sing-box)</span></div>
+      <div class="stat"><b>205</b><span data-i18n="stats.live">live configs verified</span></div>
     </div>
   </section>
 
@@ -324,6 +370,8 @@
       <span class="v-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span data-i18n="verify.2"><b>17</b> connect addresses — domain + Clean IPs</span></span>
       <span class="v-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span data-i18n="verify.3"><b>3 mirrors</b> byte-identical on every release</span></span>
       <span class="v-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span data-i18n="verify.4"><b>E2E-verified</b> with real xray traffic through the panel</span></span>
+      <span class="v-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span data-i18n="verify.5"><b>723 KB/s</b> measured end-to-end throughput</span></span>
+      <span class="v-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span data-i18n="verify.6"><b>6/6</b> field-test layers green — code to live panel</span></span>
     </div>
   </section>
 
@@ -335,6 +383,38 @@
       <p data-i18n="feat.sub"></p>
     </div>
     <div class="features-grid" id="featuresGrid"></div>
+  </section>
+
+  <!-- THE GAP -->
+  <section id="vs" class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker" data-i18n="vs.kicker">The gap</div>
+      <h2 data-i18n="vs.title">Same protocol. Different league.</h2>
+      <p data-i18n="vs.sub"></p>
+    </div>
+    <div class="vs-wrap reveal">
+      <table class="vs-table">
+        <thead>
+          <tr>
+            <th data-i18n="vs.crit">Criterion</th>
+            <th class="flash-col">⚡ Flash Panel</th>
+            <th data-i18n="vs.them">Typical VPS panels</th>
+          </tr>
+        </thead>
+        <tbody id="vsBody"></tbody>
+      </table>
+      <p class="vs-punch" data-i18n="vs.punch"></p>
+    </div>
+  </section>
+
+  <!-- FIELD RECEIPTS -->
+  <section id="receipts" class="wrap">
+    <div class="sec-head reveal">
+      <div class="kicker" data-i18n="rc.kicker">Field receipts</div>
+      <h2 data-i18n="rc.title">Measured against the live panel. Not a demo.</h2>
+      <p data-i18n="rc.sub"></p>
+    </div>
+    <div class="rc-grid" id="rcGrid"></div>
   </section>
 
   <!-- DEPLOY -->
@@ -394,6 +474,11 @@ cp deploy/settings.example.js deploy/settings.js
       </figure>
     </div>
   </section>
+
+  <!-- MANIFESTO -->
+  <section class="manifesto wrap reveal" aria-label="Manifesto">
+    <p><span data-i18n="mani.1">One developer.</span> <span data-i18n="mani.2">Zero funding.</span> <span data-i18n="mani.3">Zero servers.</span> <span class="grad" data-i18n="mani.4">Every feature above survived real censorship first.</span></p>
+  </section>
 </main>
 
 <footer>
@@ -419,16 +504,16 @@ cp deploy/settings.example.js deploy/settings.js
   /* ---------------- i18n dictionary ---------------- */
   var I18N = {
     en: {
-      "meta.title": "Flash Panel — Serverless Proxy Panel for Cloudflare Workers",
-      "meta.desc": "High-performance, serverless proxy panel for Cloudflare Workers. VLESS & Trojan rewritten from scratch, edge telemetry with closed-loop auto-tuning, anti-probing stealth, Telegram bot control, TOTP 2FA, multi-user subscriptions — 470 tests, E2E-verified.",
+      "meta.title": "Flash Panel — The Proxy Panel That Made VPS Panels Obsolete",
+      "meta.desc": "They said you need a VPS. You don't. Flash Panel runs a full VLESS & Trojan proxy platform on a free Cloudflare Workers account — rebuilt protocol core, self-tuning edge telemetry, censorship-proof self-update, unkillable Telegram bot, TOTP 2FA — 470 tests, field-verified with real traffic.",
       "brand": "Flash Panel",
       "brandTag": "v0.8.10",
-      "nav.features": "Features", "nav.log": "Changelog", "nav.deploy": "Deploy", "nav.shots": "Screenshots",
-      "hero.badge": "v0.8.10 released — resilient under censorship, quotas and dead buttons",
-      "hero.t1": "The fastest", "hero.t2": "proxy panel", "hero.t3": "for Cloudflare Workers",
-      "hero.tagline": "A high-performance serverless proxy panel for Cloudflare Workers — VLESS & Trojan rewritten from scratch, edge telemetry with closed-loop auto-tuning, anti-probing stealth, full Telegram bot control and TOTP 2FA. No cold starts, no VMs, no drama.",
+      "nav.features": "Features", "nav.vs": "Why us", "nav.rec": "Receipts", "nav.log": "Changelog", "nav.deploy": "Deploy", "nav.shots": "Screenshots",
+      "hero.badge": "v0.8.10 — battle-proven under real censorship · 6/6 field-test layers green",
+      "hero.t1": "They said you need a VPS.", "hero.t2": "You don't.", "hero.t3": "Meet Flash Panel.",
+      "hero.tagline": "A full proxy platform on a free Cloudflare account — VLESS & Trojan rebuilt from scratch, edge telemetry that re-tunes itself, self-updates that survive censorship, a Telegram bot that refuses to die. Panels backed by teams ship a settings page. This ships 470 passing tests and field receipts.",
       "hero.cta1": "Deploy in 60 seconds", "hero.cta2": "View source",
-      "stats.tests": "tests passing", "stats.bundle": "bundle (gzip)", "stats.deps": "runtime dependencies", "stats.cores": "config cores (Xray/Clash/sing-box)",
+      "stats.tests": "tests passing", "stats.bundle": "bundle (gzip)", "stats.deps": "runtime dependencies", "stats.cost": "forever — free tier", "stats.cores": "config cores (Xray/Clash/sing-box)", "stats.live": "live configs verified",
       "log.kicker": "Recently engineered",
       "log.title": "Every release is a live battle-test",
       "log.sub": "The last five releases were driven by real-world failures — censorship, quota walls, dead buttons — and every fix is verified end-to-end with real traffic before it ships.",
@@ -446,9 +531,11 @@ cp deploy/settings.example.js deploy/settings.js
       "verify.2": "17 connect addresses — domain + Clean IPs",
       "verify.3": "3 mirrors byte-identical on every release",
       "verify.4": "E2E-verified with real xray traffic through the panel",
+      "verify.5": "723 KB/s measured end-to-end throughput",
+      "verify.6": "6/6 field-test layers green — code to live panel",
       "feat.kicker": "Features",
-      "feat.title": "Everything a panel should have. Nothing it shouldn't.",
-      "feat.sub": "Built like production software: 470 automated tests, a CI bundle-size gate, strict typing — and every release verified live with real traffic.",
+      "feat.title": "The feature list other panels copy.",
+      "feat.sub": "Built like production software — 470 automated tests, a CI bundle-size gate, strict typing — and every claim on this page comes with a receipt.",
       "feat.items": [
         ["Protocol core from scratch", "VLESS & Trojan parsers and writers hand-built in strict TypeScript — no runtime dependencies, fully auditable, zero-copy where it matters."],
         ["Multi-core config builders", "Native subscription output for Xray, Clash and sing-box — pick your client, get an optimized config instantly, with per-client routing, DNS and geo rules."],
@@ -456,8 +543,8 @@ cp deploy/settings.example.js deploy/settings.js
         ["Stealth & anti-probing", "WebSocket paths are token-gated from your secret path, TLS fingerprints rotate deterministically (Chrome/iOS/Firefox) to defeat JA3 clustering, and unauthenticated probes land on a realistic camouflage site."],
         ["TOTP two-factor login", "RFC 6238-compatible authenticator support protects the panel. Secrets stay in your KV; codes rotate every 30 seconds."],
         ["Multi-user subscriptions", "Independent subscription UUID per user, individual revocation, per-user fetch statistics, auto-expiry and optional Telegram linking."],
-        ["Daily usage dashboard — honest", "A dependency-free SVG chart of your CF Worker usage with quota lines and automatic daily sampling — and since v0.8.7 it never fakes zeros: failures are visible, not hidden."],
-        ["Telegram bot control — unkillable", "Manage settings, users and stats straight from chat. Since v0.8.10 every button stays alive even when the KV quota is dead: prompts open, errors explain, nothing silently breaks."],
+        ["Daily usage dashboard — honest", "A dependency-free SVG chart of your CF Worker usage with quota lines and automatic daily sampling — and since 0.8.7 it never fakes zeros: failures are visible, not hidden."],
+        ["Telegram bot control — unkillable", "Manage settings, users and stats straight from chat. Since 0.8.10 every button stays alive even when the KV quota is dead: prompts open, errors explain, nothing silently breaks."],
         ["Smart DoH cache", "TTL-aware DNS-over-HTTPS cache with query coalescing and stale-on-error fallback — upstream never sees a stampede."],
         ["WebSocket guardian", "Actively reaps zombie connections after NAT death while a bidirectional activity registry guarantees active downloads are never cut."],
         ["Settings backup & restore", "One-click JSON export/import with whitelisted merge — secrets are warned about, unknown fields are skipped, version migration is automatic."],
@@ -469,6 +556,33 @@ cp deploy/settings.example.js deploy/settings.js
         ["Quota-dead resilience", "Free-tier KV write quota exhausted? The panel degrades gracefully: bootstrap writes become best-effort, caches absorb reads, and everything self-heals after the daily reset — with zero silent failures."],
         ["CI bundle-size gate", "Every commit is benchmarked in GitHub Actions; the build fails if the gzipped bundle ever crosses the 150 KB line — currently at 139.4 KB with all of the above inside."]
       ],
+      "vs.kicker": "The gap",
+      "vs.title": "Same protocol. Different league.",
+      "vs.sub": "Flash Panel against the panels that still need a VPS — the checklist they'd rather you never run.",
+      "vs.crit": "Criterion", "vs.them": "Typical VPS panels",
+      "vs.rows": [
+        ["Runs on", "A free Cloudflare Workers account", "A VPS you rent, patch and babysit"],
+        ["Monthly cost", "$0 — 100,000 requests/day included", "$3–15, every single month"],
+        ["Protocol core", "VLESS & Trojan rebuilt from scratch in strict TypeScript", "Inherited code — patches on patches"],
+        ["Automated tests", "470 passing, CI-gated on every push", "#Usually none"],
+        ["Self-update under censorship", "3 mirrors + server-side edge fallback", "#One GitHub URL — dead where filtered"],
+        ["KV-quota death", "Degrades gracefully, self-heals after reset", "#Crashes or hides it"],
+        ["Telemetry & self-tuning", "Closed-loop per-ASN RTT tuning with Telegram alerts", "#None — flies blind"],
+        ["Exposure", "Hidden behind Cloudflare's edge; workers.dev auto-disabled", "Your VPS IP is the front door"]
+      ],
+      "vs.punch": "Both serve configs. Only one was engineered like it matters.",
+      "rc.kicker": "Field receipts",
+      "rc.title": "Measured against the live panel. Not a demo.",
+      "rc.sub": "Every number below came out of a live audit of the production panel — real client, real traffic, no staging.",
+      "rc.cards": [
+        ["723 KB/s", "E2E via domain + SNI", "A real xray 26.x client pulled traffic through the panel's generated config — HTTP 200, real exit IP verified."],
+        ["416 KB/s", "E2E via Clean IP", "Same client, same panel, routed through a verified Clean IP — full tunnel established, throughput measured end-to-end."],
+        ["205", "configs per subscription", "One subscription fetch returned 205 healthy configs across 17 connect addresses — every single one client-parseable."],
+        ["470/470", "tests green", "Protocol parsers, KV migrations, telemetry, tuners, bot resilience — typechecked and tested on every push."],
+        ["3/3", "mirrors byte-identical", "Releases, Pages and jsDelivr ship the exact same worker.js — sha256-compared, not assumed."],
+        ["6/6", "field-test layers", "Code, types, tests, build, mirrors, live panel — every layer probed green before this page was allowed to ship."]
+      ],
+      "mani.1": "One developer.", "mani.2": "Zero funding.", "mani.3": "Zero servers.", "mani.4": "Every feature above survived real censorship first.",
       "dep.kicker": "Deployment",
       "dep.title": "Up and running in one minute",
       "dep.sub": "Deploy straight to Cloudflare Workers' free plan — 100,000 requests/day included, no credit card, no server to babysit.",
@@ -492,16 +606,16 @@ cp deploy/settings.example.js deploy/settings.js
       "foot.note": "Released under the GPL-3.0 License. Flash Panel is an independent open-source project — use responsibly and in accordance with your local laws and Cloudflare's ToS."
     },
     fa: {
-      "meta.title": "فلش پنل — پنل پروکسی سرورلس برای کلادفلر ورکرز",
-      "meta.desc": "پنل پروکسی پرسرعت و سرورلس برای کلادفلر ورکرز. پیاده‌سازی از صفرِ VLESS و Trojan، تلهمتری لبه با خودتنظیمی حلقه‌بسته، استتار ضدپروب، کنترل با ربات تلگرام، ورود دومرحله‌ای TOTP و اشتراک چندکاربره — ۴۷۰ تست، وریفای E2E.",
+      "meta.title": "فلش پنل — پنلی که پنل‌های VPS را منسوخ کرد",
+      "meta.desc": "گفتند باید VPS بخری. نمی‌خواد. فلش پنل یک پلتفرم کامل VLESS و Trojan روی اکانت رایگان کلادفلر ورکرز اجرا می‌کند — هسته‌ی بازنویسی‌شده از صفر، تلهمتری خودتیون، سلف‌آپدیت مقاوم به فیلترینگ، ربات تلگرام کشنده‌ناپذیر — ۴۷۰ تست، وریفای میدانی با ترافیک واقعی.",
       "brand": "فلش پنل",
       "brandTag": "v0.8.10",
-      "nav.features": "قابلیت‌ها", "nav.log": "تغییرات", "nav.deploy": "نصب", "nav.shots": "تصاویر",
-      "hero.badge": "نسخه v0.8.10 منتشر شد — تاب‌آور زیر فیلترینگ، سقف مصرف و دکمه‌های مرده",
-      "hero.t1": "سریع‌ترین", "hero.t2": "پنل پروکسی", "hero.t3": "برای کلادفلر ورکرز",
-      "hero.tagline": "پنل پروکسی پرسرعت و سرورلس برای کلادفلر ورکرز — پیاده‌سازی از صفرِ VLESS و Trojan، تلهمتری لبه با خودتنظیمی حلقه‌بسته، استتار ضدپروب، کنترل کامل با ربات تلگرام و ورود دومرحله‌ای TOTP. بدون سرد شدن، بدون سرور، بدون دردسر.",
+      "nav.features": "قابلیت‌ها", "nav.vs": "چرا ما", "nav.rec": "رسیدها", "nav.log": "تغییرات", "nav.deploy": "نصب", "nav.shots": "تصاویر",
+      "hero.badge": "نسخه v0.8.10 — آزمون‌شده در جنگ واقعی با فیلترینگ · ۶/۶ لایه تست میدانی سبز",
+      "hero.t1": "گفتند باید سرور بخری.", "hero.t2": "نمی‌خواد.", "hero.t3": "فلش پنل را ببین.",
+      "hero.tagline": "یک پلتفرم کامل پروکسی روی اکانت رایگان کلادفلر — VLESS و Trojan بازنویسی‌شده از صفر، تلهمتری لبه که خودش را دوباره تیون می‌کند، آپدیت‌هایی که از فیلترینگ جان سالم به در می‌برند و رباتی که حاضر نیست بمیرد. پنل‌هایی که تیم و اسپانسر دارند یک صفحه‌ی تنظیمات می‌فروشند؛ این یکی ۴۷۰ تست پاس‌شده و رسید میدانی می‌دهد.",
       "hero.cta1": "نصب در ۶۰ ثانیه", "hero.cta2": "مشاهده سورس",
-      "stats.tests": "تست خودکار پاس‌شده", "stats.bundle": "حجم باندل (gzip)", "stats.deps": "وابستگی ران‌تایم", "stats.cores": "هسته خروجی (Xray/Clash/sing-box)",
+      "stats.tests": "تست خودکار پاس‌شده", "stats.bundle": "حجم باندل (gzip)", "stats.deps": "وابستگی ران‌تایم", "stats.cost": "برای همیشه — پلن رایگان", "stats.cores": "هسته خروجی (Xray/Clash/sing-box)", "stats.live": "کانفیگ زنده‌ی وریفای‌شده",
       "log.kicker": "مهندسی اخیر",
       "log.title": "هر ریلیز یک تست میدانی واقعی است",
       "log.sub": "پنج ریلیز آخر از دل شکست‌های واقعی آمده‌اند — فیلترینگ، دیوار سقف مصرف، دکمه‌های مرده — و هر فیکس قبل از انتشار با ترافیک واقعی به‌صورت سرتاسری وریفای می‌شود.",
@@ -519,9 +633,11 @@ cp deploy/settings.example.js deploy/settings.js
       "verify.2": "۱۷ آدرس اتصال — دامنه + Clean IP ها",
       "verify.3": "۳ آینه در هر ریلیز بایت‌دقیق یکسان",
       "verify.4": "وریفای E2E با ترافیک واقعی xray از دل پنل",
+      "verify.5": "۷۲۳ کیلوبایت بر ثانیه توان سرتاسری اندازه‌گیری‌شده",
+      "verify.6": "۶/۶ لایه تست میدانی سبز — از کد تا پنل زنده",
       "feat.kicker": "قابلیت‌ها",
-      "feat.title": "هر چیزی که یک پنل لازم دارد. و هیچ چیز اضافه‌ای.",
-      "feat.sub": "ساخته‌شده مثل نرم‌افزار عملیاتی: ۴۷۰ تست خودکار، گیت حجم باندل در CI، تایپ سخت‌گیرانه — و وریفای زنده‌ی هر ریلیز با ترافیک واقعی.",
+      "feat.title": "لیست قابلیت‌هایی که بقیه از رویش کپی می‌کنند.",
+      "feat.sub": "ساخته‌شده مثل نرم‌افزار عملیاتی — ۴۷۰ تست خودکار، گیت حجم باندل در CI، تایپ سخت‌گیرانه — و هر ادعای این صفحه رسید دارد.",
       "feat.items": [
         ["هسته پروتکل از صفر", "پارسر و رایتِ VLESS و Trojan به‌صورت دستی در TypeScript سخت‌گیرانه — بدون وابستگی ران‌تایم، کاملاً قابل ممیزی، zero-copy هرجا که مهم است."],
         ["سازنده کانفیگ چندهسته‌ای", "خروجی اشتراک بومی برای Xray، Clash و sing-box — کلاینتت را انتخاب کن، کانفیگ بهینه را فوری بگیر؛ با routing و DNS و قوانین geo کامل برای هر کلاینت."],
@@ -529,8 +645,8 @@ cp deploy/settings.example.js deploy/settings.js
         ["استتار و ضدپروب", "مسیرهای WebSocket با توکن مشتق از مسیر مخفی گیت می‌شوند، اثرانگشت TLS به‌صورت قطعی می‌چرخد (Chrome/iOS/Firefox) تا خوشه‌بندی JA3 شکست بخورد، و پروب‌های بی‌مجوز به یک سایت استتاری واقعی می‌خورند."],
         ["ورود دومرحله‌ای TOTP", "پشتیبانی از اپلیکیشن‌های احراز هویت مطابق RFC 6238. رمزها هر ۳۰ ثانیه عوض می‌شوند و راز در KV خودت می‌ماند."],
         ["اشتراک چندکاربره", "UUID اشتراک مستقل برای هر کاربر، لغو جداگانه، آمار واکشی هر نفر، انقضای خودکار و لینک اختیاری به تلگرام."],
-        ["داشبورد مصرف روزانه — صادق", "نمودار SVG بدون وابستگی از مصرف Worker با خط سهمیه و نمونه‌برداری خودکار روزانه — و از v0.8.7 هرگز صفر قلابی نشان نمی‌دهد: شکست‌ها دیده می‌شوند، نه پنهان."],
-        ["ربات تلگرام — کشنده‌ناپذیر", "مدیریت تنظیمات، کاربران و آمار مستقیم از چت. از v0.8.10 هر دکمه حتی با سقف KV مرده زنده می‌ماند: پرامپت باز می‌شود، خطا توضیح می‌دهد، هیچ‌چیز بی‌صدا نمی‌شکند."],
+        ["داشبورد مصرف روزانه — صادق", "نمودار SVG بدون وابستگی از مصرف Worker با خط سهمیه و نمونه‌برداری خودکار روزانه — و از 0.8.7 هرگز صفر قلابی نشان نمی‌دهد: شکست‌ها دیده می‌شوند، نه پنهان."],
+        ["ربات تلگرام — کشنده‌ناپذیر", "مدیریت تنظیمات، کاربران و آمار مستقیم از چت. از 0.8.10 هر دکمه حتی با سقف KV مرده زنده می‌ماند: پرامپت باز می‌شود، خطا توضیح می‌دهد، هیچ‌چیز بی‌صدا نمی‌شکند."],
         ["کش هوشمند DoH", "کش DNS-over-HTTPS آگاه از TTL با ادغام درخواست‌ها و پاسخ کهنه در خطا — آپاستریم هرگز زیر سیل درخواست نمی‌رود."],
         ["نگهبان اتصال WS", "پاکسازی فعال اتصال‌های زامبی بعد از مرگ NAT، درحالی‌که رجیستری فعالیت دوموطرفه تضمین می‌کند دانلود فعال هرگز قطع نشود."],
         ["پشتیبان‌گیری تنظیمات", "خروجی/ورودی JSON یک‌کلیکی با ادغام سفیدلیستی — رازها هشدار می‌گیرند، فیلد ناشناس رد می‌شود و مهاجرت نسخه خودکار است."],
@@ -542,6 +658,33 @@ cp deploy/settings.example.js deploy/settings.js
         ["تاب‌آوری زیر سقف مرده", "سقف نوشتن KV پلن رایگان تمام شد؟ پنل باشکوه تنزل می‌کند: نوشتن‌های بوت‌استرپ best-effort می‌شوند، کش‌ها خواندن را جبران می‌کنند و بعد از ریست روزانه همه‌چیز خودش ترمیم می‌شود — با صفر شکست بی‌صدا."],
         ["گیت حجم باندل در CI", "هر کامیت در GitHub Actions بنچمارک می‌شود؛ اگر باندل gzip از ۱۵۰ کیلوبایت عبور کند، بیلد می‌سوزد — الان با همه‌ی این‌ها ۱۳۹.۴ کیلوبایتی."]
       ],
+      "vs.kicker": "شکاف",
+      "vs.title": "همان پروتکل. لیگِ دیگر.",
+      "vs.sub": "فلش پنل در برابر پنل‌هایی که هنوز به VPS نیاز دارند — چک‌لیستی که دوست ندارند اجرایش کنی.",
+      "vs.crit": "معیار", "vs.them": "پنل‌های VPS معمولی",
+      "vs.rows": [
+        ["اجرا روی", "یک اکانت رایگان کلادفلر ورکرز", "یک VPS که اجاره می‌کنی، پچ می‌کنی و نگهبانی‌اش می‌دهی"],
+        ["هزینه‌ی ماهانه", "$0 — روزی ۱۰۰٬۰۰۰ درخواست مجانی", "$۳ تا ۱۵، هر ماهِ هر ماه"],
+        ["هسته‌ی پروتکل", "بازنویسی کامل VLESS و Trojan از صفر در TypeScript سخت‌گیرانه", "کد به‌ارث‌رسیده — پچ روی پچ"],
+        ["تست خودکار", "۴۷۰ تست پاس، با گیت CI روی هر push", "#معمولاً هیچ"],
+        ["سلف‌آپدیت زیر فیلترینگ", "۳ آینه + فالبک لبه سمت سرور", "#یک URL گیت‌هاب — آنجا که فیلتر است، مرده"],
+        ["مرگ سقف KV", "تنزل باشکوه، خودترمیمی بعد از ریست", "#کرش یا پنهان‌کاری"],
+        ["تلمتری و خودتیونی", "حلقه‌بسته: خودتیونی RTT به تفکیک ASN با هشدار تلگرام", "#هیچ — کورپرواز"],
+        ["نشان‌پذیری", "پشت لبه‌ی کلادفلر پنهان؛ workers.dev خودکار خاموش", "IP وی‌پی‌اس‌ت درِ جلویی است"]
+      ],
+      "vs.punch": "هر دو کانفیگ سرو می‌کنند. فقط یکی مثل یک چیز جدی مهندسی شده.",
+      "rc.kicker": "رسیدهای میدانی",
+      "rc.title": "اندازه‌گیری‌شده روی پنل زنده. نه دموی ساختگی.",
+      "rc.sub": "هر عدد پایین از دل ممیزی زنده‌ی پنل عملیاتی درآمده — کلاینت واقعی، ترافیک واقعی، بدون استیجینگ.",
+      "rc.cards": [
+        ["۷۲۳ KB/s", "E2E از مسیر دامنه + SNI", "کلاینت واقعی xray 26.x ترافیک را از کانفیگ تولیدی پنل عبور داد — HTTP 200، IP خروجی واقعی وریفای شد."],
+        ["۴۱۶ KB/s", "E2E از مسیر Clean IP", "همان کلاینت، همان پنل، از مسیر یک Clean IP وریفای‌شده — تونل کامل برقرار و توان سرتاسری اندازه‌گیری شد."],
+        ["۲۰۵", "کانفیگ در هر اشتراک", "یک واکشی اشتراک ۲۰۵ کانفیگ سالم روی ۱۷ آدرس اتصال برگرداند — تک‌تک‌شان قابل پارس برای کلاینت."],
+        ["۴۷۰/۴۷۰", "تست سبز", "پارسرهای پروتکل، مهاجرت‌های KV، تلمتری، تیونرها، تاب‌آوری ربات — روی هر push تایپ‌چک و تست می‌شوند."],
+        ["۳/۳", "آینه بایت‌دقیق", "Releases و Pages و jsDelivr دقیقاً همان یک worker.js را می‌دهند — مقایسه‌شده با sha256، نه فرض‌شده."],
+        ["۶/۶", "لایه تست میدانی", "کد، تایپ، تست، بیلد، آینه‌ها، پنل زنده — هیچ لایه‌ای اجازه‌ی انتشار این صفحه را بدون سبز شدن نداشت."]
+      ],
+      "mani.1": "یک توسعه‌دهنده.", "mani.2": "صفر بودجه.", "mani.3": "صفر سرور.", "mani.4": "هر قابلیتِ بالا اول زیر فیلترینگ واقعی جان سالم به در برده.",
       "dep.kicker": "نصب و راه‌اندازی",
       "dep.title": "یک دقیقه تا اجرا",
       "dep.sub": "مستقیم روی پلن رایگان کلادفلر ورکرز دیپلوی کن — روزی ۱۰۰٬۰۰۰ درخواست رایگان، بدون کارت بانکی، بدون سرور برای نگهبانی.",
@@ -617,6 +760,35 @@ cp deploy/settings.example.js deploy/settings.js
     observeReveals();
   }
 
+  function buildVs(){
+    var body = document.getElementById("vsBody");
+    var rows = I18N[current]["vs.rows"];
+    if (!body || !rows) return;
+    var out = "";
+    for (var i = 0; i < rows.length; i++){
+      var f = rows[i][1], th = rows[i][2];
+      var fN = f.charAt(0) === "#", tN = th.charAt(0) === "#";
+      out += '<tr><td class="crit">' + rows[i][0] + '</td>'
+        + '<td class="flash-col">' + (fN ? f.slice(1) : '<span class="yes">✓</span>' + f) + '</td>'
+        + '<td class="them">' + (tN ? th.slice(1) : '<span class="no">✕</span>' + th) + '</td></tr>';
+    }
+    body.innerHTML = out;
+  }
+
+  function buildReceipts(){
+    var grid = document.getElementById("rcGrid");
+    var cards = I18N[current]["rc.cards"];
+    if (!grid || !cards) return;
+    var out = "";
+    for (var i = 0; i < cards.length; i++){
+      out += '<article class="rc-card reveal"><div class="big">' + cards[i][0] + '</div>'
+        + '<div class="lbl">' + cards[i][1] + '</div>'
+        + '<p>' + cards[i][2] + '</p></article>';
+    }
+    grid.innerHTML = out;
+    observeReveals();
+  }
+
   function apply(lang){
     current = (lang === "fa") ? "fa" : "en";
     var rtl = (current === "fa");
@@ -650,6 +822,8 @@ cp deploy/settings.example.js deploy/settings.js
     btnEn.classList.toggle("active", current === "en");
     btnFa.classList.toggle("active", current === "fa");
     buildFeatures();
+    buildVs();
+    buildReceipts();
     try { localStorage.setItem("fp-site-lang", current); } catch(e){}
     try {
       var url = new URL(location.href);

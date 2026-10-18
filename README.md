@@ -4,7 +4,7 @@
 
 <img src="assets/readme/hero.svg" alt="Flash Panel emblem — animated lightning, rotating rings, orbiting particles" width="720" />
 
-<a href="https://github.com/CheginiSoroush/flash-panel"><img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=22&duration=2600&pause=800&color=F59E0B&center=true&vCenter=true&width=820&height=70&lines=Fast+as+a+flash.+Light+as+a+feather.;VLESS+%C2%B7+TROJAN+%C2%B7+WARP+on+Cloudflare+Workers;Reverse-engineered+for+the+edge;470+tests.+Zero+servers.+100%25+serverless." alt="Flash Panel in one line" /></a>
+<a href="https://github.com/CheginiSoroush/flash-panel"><img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=22&duration=2600&pause=800&color=F59E0B&center=true&vCenter=true&width=820&height=70&lines=Fast+as+a+flash.+Light+as+a+feather.;VLESS+%C2%B7+TROJAN+%C2%B7+WARP+on+Cloudflare+Workers;Reverse-engineered+for+the+edge;470+tests.+Zero+servers.+100%25+serverless.;One+developer.+Zero+excuses." alt="Flash Panel in one line" /></a>
 
 [![Release](https://img.shields.io/github/v/release/CheginiSoroush/flash-panel?style=for-the-badge&logo=github&label=Release&color=f59e0b)](https://github.com/CheginiSoroush/flash-panel/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CheginiSoroush/flash-panel/ci.yml?branch=main&style=for-the-badge&logo=githubactions&label=CI&color=34d399)](https://github.com/CheginiSoroush/flash-panel/actions)
@@ -28,9 +28,9 @@
 
 | | | | |
 |:---:|:---:|:---:|:---:|
-| **0** servers | **3** config cores | **470** unit tests | **139 KB** gzipped |
-| **ETag** instant 304s | **gzip** sub responses | **QR** memoized | **3-mirror** self-update |
-| **24/7** self-tuning | **edge telemetry** | **scanner-proof** | **100%** serverless |
+| **$0** forever | **0** servers | **470** unit tests | **139 KB** gzipped |
+| **3** config cores | **205** live configs | **6/6** field-test layers | **100%** serverless |
+| **ETag** instant 304s | **gzip** sub responses | **3-mirror** self-update | **24/7** self-tuning |
 
 <img src="assets/readme/divider.svg" alt="animated divider" width="70%" />
 
@@ -50,7 +50,7 @@ Every connection is **token-gated**, measured, and remembered — the panel lear
 
 ## ✨ Why Flash?
 
-Most forks change the **brand**. Flash Panel rebuilt the **engine**:
+Most forks change the **brand**. Flash Panel rebuilt the **engine** — then took it into the field and made it prove every claim:
 
 <details open>
 <summary><b>🔥 Protocol core — rewritten from scratch</b></summary>
@@ -218,6 +218,33 @@ The one-click **Update panel** button fetches the latest `worker.js` and redeplo
 | Lowest ping | **Flash** ✅ | — |
 
 **+22% more working configs** — measured, not claimed.
+
+<img src="assets/readme/divider.svg" alt="animated divider" width="70%" />
+
+### ⚔️ The gap — Flash Panel vs typical VPS panels
+
+| | ⚡ **Flash Panel** | Typical VPS panels |
+|---|:---:|:---:|
+| Runs on | **free Cloudflare Workers account** | a VPS you rent, patch & babysit |
+| Monthly cost | **$0** — 100k requests/day included | $3–15, every month |
+| Protocol core | **rebuilt from scratch**, strict TypeScript | inherited code, patch on patch |
+| Automated tests | **470 passing**, CI-gated | usually none |
+| Self-update under censorship | **3 mirrors + edge fallback** | one GitHub URL |
+| KV-quota death | **degrades & self-heals** | crashes or hides it |
+| Telemetry & self-tuning | **closed-loop, per-ASN** | none — flies blind |
+| Exposure | **hidden behind Cloudflare's edge** | your VPS IP is the front door |
+
+### 🧾 Field receipts — measured against the live panel
+
+| Receipt | Result |
+|---|:---:|
+| Real xray 26.x via domain + SNI | **HTTP 200 · ~723 KB/s** · exit IP verified |
+| Real xray 26.x via Clean IP | **HTTP 200 · ~416 KB/s** · full tunnel |
+| Live subscription audit | **205 configs · 17 addresses**, all client-parseable |
+| Release mirrors | **3/3 byte-identical** (sha256-compared) |
+| Field-test layers | **6/6 green** — code → live panel |
+
+**Same protocol. Different league.**
 
 <img src="assets/readme/divider.svg" alt="animated divider" width="70%" />
 
