@@ -4,7 +4,9 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 // رفتار بر اساس hostname: تأخیر مشخص + پاسخ سالم، یا مرده/خطا
 
 const HOST_DELAY_MS: Record<string, number> = {
-    'fast.test': 5,
+    // 30 (نه 5) — setTimeout(5) با ساعت درشت Date.now گاهی 4ms اندازه‌گیری می‌شد
+    // و تست لاتنسی روی رانر سریع CI فِیکی می‌شد؛ 30ms حاشیه‌ی امن می‌دهد
+    'fast.test': 30,
     'admin.test': 50,
     'slow.test': 100
 };
