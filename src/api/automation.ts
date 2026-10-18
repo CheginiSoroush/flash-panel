@@ -6,6 +6,7 @@ import { getSubUsers, isSubUserExpired, sweepExpiredSubUsers, SubUser } from '@s
 import { tuneProxyIPs, ProxyTuneResult } from './proxy-tuner';
 import { tuneCleanIPs, CleanTuneResult } from './clean-tuner';
 import { runWorkersDevGuard, WorkersDevGuardResult } from './workersdev-guard';
+import { buildEdgeSummary, getEdgeTelemetry } from '@settings/edge-telemetry';
 import { TelegramBot } from '#types/settings';
 
 /**
@@ -147,6 +148,8 @@ export interface DigestInput {
     bestProxyIP?: string | null;
     /** بهترین CleanIP از Auto-Tune — اگر موجود باشد نمایش داده می‌شود */
     bestCleanIP?: string | null;
+    /** 🛰️ خلاصه‌ی یک‌خطی Edge Telemetry (colo/RTT ترافیک واقعی) — از buildEdgeSummary */
+    edgeSummary?: string | null;
 }
 
 /**
@@ -216,6 +219,10 @@ export function buildDigestText(input: DigestInput): string {
         lines.push('', `🧹 <b>Auto-tuned cleanIPs:</b> ${esc(input.bestCleanIP)}`);
     }
 
+    if (input.edgeSummary) {
+        lines.push('', `🛰️ ${esc(input.edgeSummary)}`);
+    }
+
     return lines.join('\n');
 }
 
@@ -253,6 +260,8 @@ export interface AutomationRunResult {
     clean?: CleanTuneResult;
     /** 🛡️ گارد ضد-abuse workers.dev — نتیجه‌ی چک این دور (v0.8.3) */
     workersDevGuard?: WorkersDevGuardResult;
+    /** 🛰️ خلاصه‌ی یک‌خطی Edge Telemetry (colo/RTT ترافیک واقعی) */
+    edgeSummary?: string | null;
 }
 
 /**
@@ -387,7 +396,14 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
     try {
         if (bot && !state.digestSent) {
             const users = await getSubUsers(env);
-            await notifyAdmin(bot, buildDigestText({ usage, users, date: today, bestProxyIP: result.bestProxyIP, bestCleanIP: result.bestCleanIP }));
+            // 🛰️ خلاصه‌ی لبه — ترافیک واقعی کلاینت‌ها (colo/RTT/ISP)
+            let edgeSummary: string | null = null;
+            try {
+                edgeSummary = buildEdgeSummary(await getEdgeTelemetry(env));
+            } catch {
+                // بدون telemetry — digest بدون این خط
+            }
+            await notifyAdmin(bot, buildDigestText({ usage, users, date: today, bestProxyIP: result.bestProxyIP, bestCleanIP: result.bestCleanIP, edgeSummary }));
             state.digestSent = true;
             result.digestSent = true;
             await saveState(env, state);
@@ -404,10 +420,11 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
  * usage را تازه می‌گیرد؛ اگر fail شود، خلاصه بدون بخش مصرف ساخته می‌شود.
  */
 export async function buildDigestForCommand(env: Env): Promise<string> {
-    const [users, usage] = await Promise.all([
+    const [users, usage, telemetry] = await Promise.all([
         getSubUsers(env),
-        getCfWorkerUsage().catch(() => ({ success: false }))
+        getCfWorkerUsage().catch(() => ({ success: false })),
+        getEdgeTelemetry(env).catch(() => null)
     ]);
 
-    return buildDigestText({ usage, users });
+    return buildDigestText({ usage, users, edgeSummary: buildEdgeSummary(telemetry) });
 }

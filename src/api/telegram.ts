@@ -1,6 +1,7 @@
 import { HttpStatus, respond, safeError } from '@common';
 import { clients, getGlobals, subscriptions } from '@settings';
 import { getSubUsers } from '@settings/sub-users';
+import { buildEdgeText, getEdgeTelemetry } from '@settings/edge-telemetry';
 import { getCfWorkerUsage } from './usage';
 import {
     BroadcastRecipient,
@@ -108,6 +109,7 @@ export async function setTelegramBot(path: string, token: string) {
                     { command: 'usage', description: '📊 Monitor usage' },
                     { command: 'users', description: '👥 Subscription users & stats' },
                     { command: 'digest', description: '📋 Daily summary (usage + users)' },
+                    { command: 'edge', description: '🛰️ Edge telemetry (colo/ISP/RTT)' },
                     { command: 'broadcast', description: '📢 Message all linked users' },
                     { command: 'settings', description: '⚙️ Change panel settings' },
 
@@ -1223,6 +1225,15 @@ export async function handleTelegramWebhook(request: Request, env: Env): Promise
                 await tgFetch(botToken, 'sendMessage', {
                     chat_id: chatId,
                     text: await buildDigestForCommand(env),
+                    parse_mode: 'HTML',
+                    reply_markup: mainKeyboard()
+                });
+                break;
+
+            case '/edge':
+                await tgFetch(botToken, 'sendMessage', {
+                    chat_id: chatId,
+                    text: buildEdgeText(await getEdgeTelemetry(env)),
                     parse_mode: 'HTML',
                     reply_markup: mainKeyboard()
                 });

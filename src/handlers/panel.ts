@@ -3,6 +3,7 @@ import { deployPages, deletePagesProject } from '@api/pages';
 import { getUsage, getUsageHistoryEndpoint } from '@api/usage';
 import { fetchWarpAccounts } from '@api/warp';
 import { deployWorkers, deleteWorker } from '@api/workers';
+import { getEdgeTelemetryEndpoint } from '@settings/edge-telemetry';
 import { resetPassword, logout, authenticate, invalidateTotpCache } from '@auth';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotp } from '@auth/totp';
 import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
@@ -89,6 +90,9 @@ export async function handlePanel(request: Request, env: Env): Promise<Response>
 
         case 'panel/usage/history':
             return getUsageHistoryEndpoint(request, env);
+
+        case 'panel/edge':
+            return getEdgeTelemetryEndpoint(request, env);
 
         case 'panel/logout':
             return logout();

@@ -9,17 +9,18 @@ import { handleSubscriptions } from '@handlers/subscription';
 import { handleTelegram } from '@handlers/telegram';
 import { fallback, hardenResponse, robotsResponse } from '@handlers/utils';
 import { handleWebsocket } from '@handlers/websocket';
+import { recordEdgeSample } from '@settings/edge-telemetry';
 import { runScheduledAutomation } from '@api/automation';
 import { init, getGlobals } from '@settings';
 
 export default {
-    async fetch(request: Request, env: Env) {
+    async fetch(request: Request, env: Env, ctx: ExecutionContext) {
         try {
             init(request, env);
 
             // Upgrade باید case-insensitive باشه (RFC 6455)
             if ((request.headers.get('Upgrade') || '').toLowerCase() === 'websocket') {
-                return handleWebsocket(request, env);
+                return handleWebsocket(request, env, ctx);
             }
 
             const { securePath, pathname } = getGlobals();
@@ -48,6 +49,8 @@ export default {
                     break;
 
                 case 'sub':
+                    // 🛰️ Edge telemetry — ترافیک واقعی کاربران (cf.colo/clientTcpRtt/asn)
+                    recordEdgeSample(request, env, ctx, 'http');
                     response = await handleSubscriptions(request, env);
                     break;
 
