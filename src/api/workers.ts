@@ -1,6 +1,7 @@
 import { safeError } from '@common';
 import { getGlobals } from '@settings';
 import { resolveWorkerName } from './worker-name';
+import { cfAuthFromGlobals } from './cf-auth';
 
 /**
  * پیام‌های خطای Cloudflare API را به راهنمای عملی تبدیل می‌کند —
@@ -36,7 +37,7 @@ export async function deployWorkers(script: string) {
     try {
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts/${scriptName}`, {
             method: 'PUT',
-            headers: { 'Authorization': `Bearer ${apiToken}` },
+            headers: cfAuthFromGlobals(),
             body: uploadForm
         });
 
@@ -53,7 +54,7 @@ export async function getWorkerDomains(): Promise<string[]> {
 
     try {
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/domains?service=${scriptName}`, {
-            headers: { 'Authorization': `Bearer ${apiToken}` }
+            headers: cfAuthFromGlobals()
         });
 
         const data: any = await res.json();
@@ -72,7 +73,7 @@ export async function setWorkerDomain(domain: string) {
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/domains`, {
             method: 'PUT',
             headers: {
-                'Authorization': `Bearer ${apiToken}`,
+                ...cfAuthFromGlobals(),
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
@@ -103,9 +104,7 @@ export async function setWorkersDevRoute(enabled: boolean) {
 
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts/${scriptName}/settings`, {
             method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${apiToken}`
-            },
+            headers: cfAuthFromGlobals(),
             body: form
         });
 
@@ -123,7 +122,7 @@ export async function deleteWorker() {
     try {
         const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts/${scriptName}`, {
             method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${apiToken}` }
+            headers: cfAuthFromGlobals()
         });
 
         const data: any = await res.json();

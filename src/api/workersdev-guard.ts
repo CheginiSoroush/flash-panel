@@ -1,6 +1,7 @@
 import { safeError } from '@common';
 import { getGlobals } from '@settings';
 import { resolveWorkerName } from './worker-name';
+import { cfAuthHeaders } from './cf-auth';
 
 /**
  * 🛡️ گارد ضد-abuse — workers.dev باید همیشه بسته بماند.
@@ -43,10 +44,12 @@ const MAX_SCRIPTS = 25;
 async function cfJson(accID: string, apiToken: string, path: string, method: string = 'GET', body?: unknown) {
     let res: Response;
     try {
+        // v0.8.7: احراز دوحالته — Global API Key (۳۷ hex) با X-Auth-Key و API Token با Bearer
+        const auth = cfAuthHeaders(apiToken, getGlobals().accEmail);
         res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts${path}`, {
             method,
             headers: {
-                'Authorization': `Bearer ${apiToken}`,
+                ...auth,
                 ...(body !== undefined ? { 'Content-Type': 'application/json' } : {})
             },
             ...(body !== undefined ? { body: JSON.stringify(body) } : {})

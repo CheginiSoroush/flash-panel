@@ -1,14 +1,13 @@
 import { safeError } from '@common';
 import { getGlobals } from '@settings';
+import { cfAuthHeaders } from './cf-auth';
 
 export async function listZones() {
-    const { apiToken } = getGlobals();
+    const { apiToken, accEmail } = getGlobals();
 
     try {
         const res = await fetch('https://api.cloudflare.com/client/v4/zones', {
-            headers: {
-                'Authorization': `Bearer ${apiToken}`
-            }
+            headers: cfAuthHeaders(apiToken, accEmail)
         });
 
         const data: any = await res.json();
@@ -20,14 +19,14 @@ export async function listZones() {
 }
 
 export async function createCNAME(zoneID: string, domain: string) {
-    const { apiToken, mainDomain } = getGlobals();
+    const { apiToken, accEmail, mainDomain } = getGlobals();
     const projectName = mainDomain.split('.')[0];
 
     try {
         const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneID}/dns_records`, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${apiToken}`,
+                ...cfAuthHeaders(apiToken, accEmail),
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({

@@ -1,25 +1,28 @@
 import { safeError } from '@common';
 import { getGlobals } from '@settings';
+import { cfAuthHeaders } from './cf-auth';
 
 interface PagesContext {
     accID: string;
     apiToken: string;
+    accEmail?: string;
     projectName: string;
 }
 
 function getPagesContext(): PagesContext {
-    const { accID, apiToken, mainDomain } = getGlobals();
-    return { accID, apiToken, projectName: mainDomain.split('.')[0] };
+    const { accID, apiToken, accEmail, mainDomain } = getGlobals();
+    return { accID, apiToken, accEmail, projectName: mainDomain.split('.')[0] };
 }
 
 /**
  * هلپر مشترک برای فراخوانی Cloudflare API — حذف تکرار ۴ تابع
  */
 async function cfApi(path: string, init: RequestInit = {}): Promise<any> {
-    const { accID, apiToken } = getPagesContext();
+    const { accID, apiToken, accEmail } = getPagesContext();
 
+    // v0.8.7: احراز دوحالته — Global API Key با X-Auth-Key، API Token با Bearer
     const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${apiToken}`);
+    for (const [k, v] of Object.entries(cfAuthHeaders(apiToken, accEmail))) headers.set(k, v);
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}${path}`, {
         ...init,
