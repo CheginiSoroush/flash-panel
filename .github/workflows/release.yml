@@ -56,3 +56,19 @@ jobs:
               sleep 5
             done
           fi
+
+      # آینه‌ی gh-pages باید همین‌جا دیپلوی شود — پوشِ GITHUB_TOKEN هیچ ورک‌فلوی
+      # دیگری را تریگر نمی‌کند (pages.yml هرگز روی mirror-commit ها فایر نشد
+      # و gh-pages عقب افتاد)؛ پس بدون واسطه همین‌جا سرو می‌کنیم
+      - name: Deploy site/ (with fresh mirror) to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
+          user_name: CheginiSoroush
+          user_email: lmsoroush@proton.me
+          keep_files: false
+          force_orphan: false
+          commit_message: 'deploy: release ${{ github.ref_name }} — landing site + worker.js mirror'
+          enable_jekyll: false
