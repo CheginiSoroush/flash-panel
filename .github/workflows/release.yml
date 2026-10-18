@@ -57,6 +57,18 @@ jobs:
             done
           fi
 
+      # نسخه‌ی صفحه‌ی لندینگ هیچ‌وقت کهنه نماند: در هر ریلیز، v0.x.y های
+      # index.html و version.json با نسخه‌ی همین تگ جایگزین می‌شوند.
+      # صفحه هم در runtime از version.json می‌خواند (دو لایه محافظت).
+      # توجه: sed عمداً با الگوی [0-9] است — regex های JS داخل index.html
+      # با \d نوشته شده‌اند تا توسط این جایگزینی خراب نشوند.
+      - name: Inject release version into landing site
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+/v${VERSION}/g" site/index.html
+          printf '{\n  "version": "%s"\n}\n' "${VERSION}" > site/version.json
+          echo "Landing site version → v${VERSION}"
+
       # آینه‌ی gh-pages باید همین‌جا دیپلوی شود — پوشِ GITHUB_TOKEN هیچ ورک‌فلوی
       # دیگری را تریگر نمی‌کند (pages.yml هرگز روی mirror-commit ها فایر نشد
       # و gh-pages عقب افتاد)؛ پس بدون واسطه همین‌جا سرو می‌کنیم
