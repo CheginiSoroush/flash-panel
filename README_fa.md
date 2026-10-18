@@ -22,7 +22,7 @@
 
 <div align="center">
 
-### 📊 بنچمارک — در برابر فورک «بهینه‌شده»‌ی BPB
+### 📊 بنچمارک — در برابر فورک‌های «بهینه‌شده»
 
 *تنظیمات یکسان، IP های یکسان، پورت‌های یکسان — کنار هم*
 
@@ -39,7 +39,7 @@
 
 ## ✨ چرا فلش؟
 
-اکثر فورک‌های BPB فقط **اسم** را عوض می‌کنند. فلش پنل **موتور** را بازسازی کرده:
+اکثر فورک‌ها فقط **اسم** را عوض می‌کنند. فلش پنل **موتور** را بازسازی کرده:
 
 ### 🔥 هسته‌ی پروتکل — بازنویسی‌شده از صفر
 
@@ -172,9 +172,9 @@ Object.assign(globalThis, { EMBEDED_SETTINGS: {
 - 🇬🇧 [مستندات انگلیسی](README.md)
 - 🪄 [فلش ویزارد](https://github.com/CheginiSoroush/flash-wizard) — ابزار نصب
 
-## 🙏 اعتبار
+## 👤 سازنده
 
-فلش پنل یه هارد‌فورک از [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) است — تشکر فراوان از [bia-pain-bache](https://github.com/bia-pain-bache) و جامعه‌ی BPB برای پایه‌ی محکم.
+فلش پنل ساخته، متعلق به و نگهداری‌شده توسط [CheginiSoroush](https://github.com/CheginiSoroush) است.
 
 **لایسنس:** GPL-3.0 — فایل [LICENSE](LICENSE)
 

@@ -14,7 +14,7 @@ import { subBodyCache } from './optimize';
 // انکودر سطح ماژول — ساختنش در هر درخواست هدرِ SHA-256 هدر کوچکی هم دارد
 const etagEncoder = new TextEncoder();
 
-// نام‌های مسیر پنل‌های قدیمی (BPB-مانند) → نوع فعلی — سازگاری با لینک‌های قبلی
+// نام‌های مسیر پنل‌های قدیمی (legacy) → نوع فعلی — سازگاری با لینک‌های قبلی
 const SUB_PATH_ALIASES: Record<string, string> = {
     frag: 'fragment',
     warpro: 'warp-pro',

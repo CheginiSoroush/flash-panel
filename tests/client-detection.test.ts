@@ -13,7 +13,7 @@ describe('resolveClientApp — پارامتر app اشتراک', () => {
         expect(resolveClientApp('SING-BOX', null)).toBe('sing-box');
     });
 
-    it('نام‌های قدیمی کلاینت‌ها (BPB) را به core نگاشت می‌کند', () => {
+    it('نام‌های قدیمی کلاینت‌ها (legacy) را به core نگاشت می‌کند', () => {
         expect(resolveClientApp('v2rayNG', '')).toBe('xray');
         expect(resolveClientApp('v2rayN', '')).toBe('xray');
         expect(resolveClientApp('v2rayN-PRO', '')).toBe('xray-knocker');
@@ -53,7 +53,7 @@ describe('resolveClientApp — پارامتر app اشتراک', () => {
         expect(resolveClientApp('', 'com.wireguard.android/1.0')).toBe('wireguard');
     });
 
-    it('بدون app و بدون UA شناخته‌شده → پیش‌فرض xray (رفتار BPB)', () => {
+    it('بدون app و بدون UA شناخته‌شده → پیش‌فرض xray (رفتار legacy)', () => {
         expect(resolveClientApp('', null)).toBe('xray');
         expect(resolveClientApp('', undefined)).toBe('xray');
         expect(resolveClientApp('', 'curl/8.6.0')).toBe('xray');

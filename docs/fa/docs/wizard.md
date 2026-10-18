@@ -1,17 +1,17 @@
-# :material-new-box:{ .md .middle } راه‌اندازی خودکار با BPB Wizard
+# :material-new-box:{ .md .middle } راه‌اندازی خودکار با فلش ویزارد
 
-برای ساده‌تر کردن فرآیند راه‌اندازی و جلوگیری از اشتباهات کاربرها، پروژه [BPB Wizard](https://github.com/bia-pain-bache/BPB-Wizard) در دو نسخه تحت وب و ترمینال برای سیستم‌عامل‌های مختلف راه‌اندازی شده. این ابزار از هر دو روش Workers و Pages پشتیبانی می‌کنه و فقط چند ثانیه زمان می‌بره تا پنل رو نصب کنه.
+برای ساده‌تر کردن فرآیند راه‌اندازی و جلوگیری از اشتباهات کاربرها، پروژه [فلش ویزارد](https://github.com/CheginiSoroush/flash-wizard) در دو نسخه تحت وب و ترمینال برای سیستم‌عامل‌های مختلف راه‌اندازی شده. این ابزار از هر دو روش Workers و Pages پشتیبانی می‌کنه و فقط چند ثانیه زمان می‌بره تا پنل رو نصب کنه.
 
 <p align="center" class="img-wrapper">
-  <img src="/BPB-Worker-Panel/images/wizard-web.jpg" width="400" alt="wizard-web" />
-  <img src="/BPB-Worker-Panel/images/wizard-cli.jpg" width="400" alt="wizard-cli" />
+  <img src="/flash-panel/images/wizard-web.jpg" width="400" alt="wizard-web" />
+  <img src="/flash-panel/images/wizard-cli.jpg" width="400" alt="wizard-cli" />
 </p>
 
 ## ۱. حساب Cloudflare
 
 برای استفاده از این روش، فقط به یه حساب Cloudflare نیاز دارید. می‌تونید [از اینجا ثبت‌نام کنید](https://dash.cloudflare.com/sign-up/). بعدش یادتون نره ایمیلتون رو چک کنید تا حساب رو تأیید کنید.
 
-## ۲. نصب پنل BPB
+## ۲. نصب فلش پنل
 
 ### نسخه تحت وب
 
@@ -20,17 +20,20 @@
 بعد از اولین نصب هم بهتون یه `Private Link` میده که قابلیت نصب تک کلیک رو روی اکانتتون فعال می‌کنه.
 
 ```url title="نصب آنلاین"
-https://wizard.bpb-panel.workers.dev
+# لینک زنده در مخزن فلش ویزارد منتشر می‌شود:
+# https://github.com/CheginiSoroush/flash-wizard
 ```
 
 ### نسخه ترمینال
 
 ```bash title="Windows PowerShell"
-irm https://raw.githubusercontent.com/bia-pain-bache/BPB-Wizard/main/install.ps1 | iex
+# دستور نصب در مخزن فلش ویزارد منتشر می‌شود:
+# https://github.com/CheginiSoroush/flash-wizard
 ```
 
 ```bash title="Android (Termux) - Linux - macOS"
-bash <(curl -fsSL https://raw.githubusercontent.com/bia-pain-bache/BPB-Wizard/main/install.sh)
+# دستور نصب در مخزن فلش ویزارد منتشر می‌شود:
+# https://github.com/CheginiSoroush/flash-wizard
 ```
 
 !!! warning "توصیه‌های استفاده از Termux"

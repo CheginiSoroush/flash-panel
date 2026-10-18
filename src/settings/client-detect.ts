@@ -1,7 +1,7 @@
 /**
  * تشخیص core اشتراک از پارامتر app و User-Agent
  *
- * پنل‌های قدیمی‌تر (BPB-مانند) در لینک اشتراک «نام کلاینت» را می‌فرستادند
+ * پنل‌های قدیمی‌تر (legacy) در لینک اشتراک «نام کلاینت» را می‌فرستادند
  * (مثل app=v2rayNG یا app=Hiddify) و بعضی کلاینت‌ها هم هنگام آپدیت اشتراک،
  * پارامترهای query را حذف/دستکاری می‌کنند. اگر فقط core های دقیق پذیرفته
  * شوند، این لینک‌ها به صفحه‌ی fallback (404) می‌روند و کلاینت «خطای آپدیت —
@@ -11,7 +11,7 @@
  *   1. core دقیق (xray, sing-box, clash, xray-knocker, wireguard, amnezia)
  *   2. نام کلاینت قدیمی → نگاشت به core
  *   3. تشخیص از User-Agent
- *   4. پیش‌فرض xray (رایج‌ترین core — همان رفتار BPB)
+ *   4. پیش‌فرض xray (رایج‌ترین core — همان رفتار legacy)
  */
 
 /** core های معتبر مسیر اشتراک */
@@ -82,7 +82,7 @@ export function detectClientFromUA(userAgent: string): string {
     if (ua.includes('wgtunnel') || ua.includes('wg tunnel')) return 'amnezia';
     if (ua.includes('wireguard')) return 'wireguard';
 
-    // پیش‌فرض — رایج‌ترین core (رفتار پنل‌های BPB-مانند)
+    // پیش‌فرض — رایج‌ترین core (رفتار پنل‌های legacy)
     return 'xray';
 }
 

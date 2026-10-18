@@ -20,7 +20,7 @@
 
 <div align="center">
 
-### 📊 Benchmark — vs "optimized" BPB fork
+### 📊 Benchmark — vs "optimized" forks
 
 *Same settings, same IPs, same ports — side by side*
 
@@ -37,7 +37,7 @@
 
 ## ✨ Why Flash?
 
-Most BPB forks change the **brand**. Flash Panel rebuilt the **engine**:
+Most forks change the **brand**. Flash Panel rebuilt the **engine**:
 
 ### 🔥 Protocol Core — rewritten from scratch
 
@@ -171,9 +171,9 @@ Object.assign(globalThis, { EMBEDED_SETTINGS: {
 - 🇮🇷 [مستندات فارسی](README_fa.md)
 - 🪄 [Flash Wizard](https://github.com/CheginiSoroush/flash-wizard) — deploy tool
 
-## 🙏 Credits
+## 👤 Author
 
-Flash Panel is a hard fork of [BPB-Worker-Panel](https://github.com/bia-pain-bache/BPB-Worker-Panel) — massive thanks to [bia-pain-bache](https://github.com/bia-pain-bache) and the BPB community for the foundation.
+Flash Panel is created, owned and maintained by [CheginiSoroush](https://github.com/CheginiSoroush).
 
 **License:** GPL-3.0 — see [LICENSE](LICENSE)
 

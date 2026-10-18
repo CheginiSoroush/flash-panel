@@ -22,7 +22,7 @@
     ```
 
 ??? question "Why configs connect using v2rayNG and not Streisand for example?"
-    BPB tries adapting new cores' features ASAP, meanwhile some developers just upgrade cores to the latest version regardless of full features adaption and optimizations. So you should communicate such issues with their own developers.
+    Flash Panel tries adapting new cores' features ASAP, meanwhile some developers just upgrade cores to the latest version regardless of full features adaption and optimizations. So you should communicate such issues with their own developers.
 
 ??? question "Why Fragment configs speed is slow on my ISP?"
     Each ISP has its own prefered Fragment settings. Most are fine with the panel defaults, but these values may work well on yours. You may need to change Fragment profile to `Medium`, `High` or even manually change settings in `Custom` profile to achieve better results. Also MahsaNG is recommended to connect to fragment configs.
@@ -36,10 +36,10 @@
     If you use a single IP, it may stop working after some time and many sites won’t open. You need to redo the steps. Preferably, if you're not doing anything that needs a static IP, just use the panel default and don't use a single proxy IP.  
 
 ??? question "Why do I get an error when I go to the `panel/` address?"
-    You can only install BPB using BPB Wizard and save panel address immediately. If you lost it install another one.  
+    You can only install Flash Panel using Flash Wizard and save panel address immediately. If you lost it install another one.  
 
 ??? question "I deployed it but Cloudflare returns error 1101!"
-    Your Cloudflare account has likely been flagged. Create a new Cloudflare account with an official email like Gmail and. Also, make sure the project name doesn't include the word "bpb".  
+    Your Cloudflare account has likely been flagged. Create a new Cloudflare account with an official email like Gmail and. Also, make sure the project name doesn't include the word "Flash Panel".  
     It is recommended to use **Wizard** for installation.  
 
 ??? question "Can I use this for trading?"
@@ -67,7 +67,7 @@
     The wizard app lacks `Code signing certificate` and this is common across Go applications known as False Positive. So you have to temporarily disable Windows defender or any other Anti Virus program.
 
 ??? question "Why v2rayN cannot ping test configs?"
-    Right now v2rayN is experiencing some issues with custom configs and BPB panel configs are all custom. No worries, just enable config and use it. You also have Best Ping config in all subscriptions which connects to best IP automatically, so you don't need to test all configs everytime.
+    Right now v2rayN is experiencing some issues with custom configs and Flash Panel panel configs are all custom. No worries, just enable config and use it. You also have Best Ping config in all subscriptions which connects to best IP automatically, so you don't need to test all configs everytime.
 
 ??? question "Why sing-box throws error while importing subscription?"
-    BPB only supports sing-box 1.12.0 or higher
+    Flash Panel only supports sing-box 1.12.0 or higher

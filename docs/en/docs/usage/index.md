@@ -1,6 +1,6 @@
 # :material-lan-connect:{ .md .middle } How to use
 
-First, update your client to the latest version or refer to the table below. These are the tested and verified clients officially supported by the BPB project. You may use other clients at your own risk.
+First, update your client to the latest version or refer to the table below. These are the tested and verified clients officially supported by the Flash Panel project. You may use other clients at your own risk.
 
 |       Client        | Minimum version |  Fragment support  |  Warp Pro support  |
 | :-----------------: | :-------------: | :----------------: | :----------------: |

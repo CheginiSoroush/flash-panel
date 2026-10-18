@@ -64,7 +64,7 @@ This setting applies to **Normal** and **Fragment** subscriptions. After applyin
 
 ## Clean IP/Domains
 
-For non-**Normal** subscription, you may want to use clean IPs. The panel includes a scanner, downloadable as a zip file for your operating system. Run the CloudflareScanner, and results will be saved in `result.csv`, allowing you to select IPs based on delay and download speed. Windows is recommended for this process, and ensure your VPN is disconnected during the test. For advanced scanning, refer to [this guide](https://github.com/bia-pain-bache/Cloudflare-Clean-IP-Scanner/blob/master/README.md).
+For non-**Normal** subscription, you may want to use clean IPs. The panel includes a scanner, downloadable as a zip file for your operating system. Run the CloudflareScanner, and results will be saved in `result.csv`, allowing you to select IPs based on delay and download speed. Windows is recommended for this process, and ensure your VPN is disconnected during the test. For advanced scanning, refer to [this guide](https://github.com/CheginiSoroush/flash-panel).
 
 !!! tip "Tip for Iranian Users"
     On ISPs supporting IPv6 (e.g., Rightel, Irancell, Asiatech), enable IPv6 on your SIM card, activate the **Prefer IPv6** option in client settings, and use the last two or first default configs. IPv6 IPs generally perform better.
@@ -125,7 +125,7 @@ You can change the Proxy IP mode and fill in NAT64 Prefixes via the panel by app
 !!! note
     Changing the NAT64 Prefixes via the panel requires updating the subscription if the IP stops working. This can disrupt donated configs, as users without an active subscription cannot update them. Use this method only for personal usage. Other methods don’t require subscription updates.
 
-You can find available NAT64 Prefixes [in here](https://github.com/bia-pain-bache/BPB-Worker-Panel/blob/main/docs/NAT64Prefixes.md), which lists IPs by region and ISP.
+You can find available NAT64 Prefixes [in here](https://github.com/CheginiSoroush/flash-panel/blob/main/docs/NAT64Prefixes.md), which lists IPs by region and ISP.
 
 !!! info
     To use multiple Prefixes, fill them in below each other.

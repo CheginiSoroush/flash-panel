@@ -1,13 +1,15 @@
-# ⚠️ Legacy docs — pending rewrite
+# 📚 Flash Panel documentation (mkdocs source)
 
-This folder still contains the **upstream BPB Panel documentation** (inherited from the
-hard-fork). It has **not** been rewritten for Flash Panel yet: some pages still reference
-BPB branding, BPB donation wallets and BPB Wizard links.
+These are the Flash Panel docs sources, buildable with [mkdocs-material](https://squid-fonts.readthedocs.io) style tooling:
+
+```bash
+cd docs/en && mkdocs build   # → ../../site-docs/en
+cd docs/fa && mkdocs build   # → ../../site-docs/fa
+```
 
 - `mkdocs.yml` builds to `../../site-docs/` (NOT `site/`) so it can never clobber the
   Flash Panel landing page — keep it that way.
 - Do not link users here from the READMEs; the single source of truth is
   [`README.md`](../README.md) / [`README_fa.md`](../README_fa.md).
 
-> Rewriting these docs for Flash Panel (wizard flow, clean-IP engine, automation suite,
-> mirror update engine) is tracked in the project roadmap.
+**Project author & owner:** [CheginiSoroush](https://github.com/CheginiSoroush)

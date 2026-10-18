@@ -36,8 +36,8 @@ jobs:
         run: |
           mkdir -p site/download
           cp dist/worker.js site/download/worker.js
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "CheginiSoroush"
+          git config user.email "lmsoroush@proton.me"
           git add site/download/worker.js
           if git diff --cached --quiet; then
             echo "Mirror unchanged — skipping commit"

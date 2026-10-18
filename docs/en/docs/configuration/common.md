@@ -55,6 +55,6 @@ This is your secure path for accessing panel or getting subscriptions, if you ch
 
 ## Fallback Domain
 
-BPB Panel provides camouflage feature. By default, accessing the wrong addresses or invalid requests returns 404.
+Flash Panel provides camouflage feature. By default, accessing the wrong addresses or invalid requests returns 404.
 
 You can change this behaviour by setting a desired well known domain here. Please note that some websites blocked or restricted workers, so you should set and test them.

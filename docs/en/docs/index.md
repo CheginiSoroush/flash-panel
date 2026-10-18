@@ -1,16 +1,10 @@
-# BPB Panel
+# Flash Panel
 
 ![Pages Application](images/panel-overview.jpg)
 
 ## Introduction
 
-This project is aimed to provide a user panel to access FREE, SECURE, PRIVATE proxies and tools including **VLESS**, **Trojan** and **Warp** configs alongside a **private DoH** server for cross-platform clients. It ensures connectivity even when domains or Warp services are blocked by ISPs, offering **Workers** and **Pages** deployments using [BPB Wizard](https://github.com/bia-pain-bache/BPB-Wizard) in a few seconds!
-
-🌟 If you found **BPB Panel** valuable, Your donations make all the difference 🌟
-
-```title="USDT (BEP20)"
-0xbdf15d41C56f861f25b2b11C835bd45dfD5b792F
-```
+This project is aimed to provide a user panel to access FREE, SECURE, PRIVATE proxies and tools including **VLESS**, **Trojan** and **Warp** configs alongside a **private DoH** server for cross-platform clients. It ensures connectivity even when domains or Warp services are blocked by ISPs, offering **Workers** and **Pages** deployments using [Flash Wizard](https://github.com/CheginiSoroush/flash-wizard) in a few seconds!
 
 ## Features
 
@@ -25,8 +19,8 @@ This project is aimed to provide a user panel to access FREE, SECURE, PRIVATE pr
 9. **Broad client compatibility:** Offers subscription links for Xray, Sing-box and Clash-Mihomo core cross-platform clients.
 10. **Password-protected panel:** Provides secure and private panel with full authentication.
 11. **Fully customizable:** Supports setting up clean IPs-domains, Proxy IPs, DNS servers, choosing ports and protocols, Warp endpoints and more.
-12. **Node ability:** Can share settings and proxies across other BPB users.
-13. **Proxy aggregation:** Supports aggregating another proxies into BPB proxies and deliver in a single subscription
+12. **Node ability:** Can share settings and proxies across other Flash Panel users.
+13. **Proxy aggregation:** Supports aggregating another proxies into Flash Panel proxies and deliver in a single subscription
 
 ## Limitations
 

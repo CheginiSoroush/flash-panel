@@ -4,7 +4,7 @@ import { HttpStatus, respond, safeError } from '@common';
 /**
  * 🛰️ Edge Telemetry — معکوس‌مهندسی پلتفرم Cloudflare (v0.8.4)
  *
- * کشف: `request.cf` در هر درخواست Worker شامل داده‌هایی است که هیچ فورک BPB
+ * کشف: `request.cf` در هر درخواست Worker شامل داده‌هایی است که هیچ پنل مشابه‌ای
  * استفاده نمی‌کند:
  *   - `colo`          → کدام دیتاسنتر CF به کاربر سرویس داد (anycast واقعی)
  *   - `clientTcpRtt`  → RTT واقعی TCP کلاینت تا لبه (میلی‌ثانیه!) — اوراکل

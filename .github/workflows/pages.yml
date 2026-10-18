@@ -35,6 +35,8 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
           publish_branch: gh-pages
+          user_name: CheginiSoroush
+          user_email: lmsoroush@proton.me
           keep_files: false
           force_orphan: false
           commit_message: 'deploy: ${{ github.sha }} — bilingual landing site'

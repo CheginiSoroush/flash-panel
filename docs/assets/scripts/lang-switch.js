@@ -2,7 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const langLink = document.querySelector('a[hreflang="fa"], a[hreflang="en"]');
     if (!langLink) return;
     const currentPath = window.location.pathname;
-    const base = "/BPB-Worker-Panel";
+    const base = "/flash-panel";
 
     let newPath;
     if (currentPath.startsWith(`${base}/fa/`)) {

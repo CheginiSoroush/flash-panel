@@ -1,36 +1,39 @@
-# :material-new-box:{ .md .middle } BPB Wizard
+# :material-new-box:{ .md .middle } Flash Wizard
 
-To simplify the setup process and prevent user mistakes during installation, the [BPB Wizard](https://github.com/bia-pain-bache/BPB-Wizard) project was launched which provides online and CLI installations. It supports both Workers and Pages methods and just takes a few seconds to install panel!
+To simplify the setup process and prevent user mistakes during installation, the [Flash Wizard](https://github.com/CheginiSoroush/flash-wizard) project provides online and CLI installations. It supports both Workers and Pages methods and just takes a few seconds to install panel!
 
 <p align="center" class="img-wrapper">
-  <img src="/BPB-Worker-Panel/images/wizard-web.jpg" width="400" alt="wizard-web" />
-  <img src="/BPB-Worker-Panel/images/wizard-cli.jpg" width="400" alt="wizard-cli" />
+  <img src="/flash-panel/images/wizard-web.jpg" width="400" alt="wizard-web" />
+  <img src="/flash-panel/images/wizard-cli.jpg" width="400" alt="wizard-cli" />
 </p>
 
 ## 1. Cloudflare account
 
 To use this method, all you need is a Cloudflare account. You can [sign up here](https://dash.cloudflare.com/sign-up/), and don’t forget to check your email afterward to verify your account.
 
-## 2. Install BPB Panel
+## 2. Install Flash Panel
 
 ### Web edition
 
 This is a ready to use edition and provides a `Private Link` after first installation which enables `ONE-CLICK` installation on your account.
 
-To easily install the latest stable version of BPB Panel online:
+To easily install the latest stable version of Flash Panel online, get the current web installation link from the [Flash Wizard repository](https://github.com/CheginiSoroush/flash-wizard):
 
 ```url title="Web installation"
-https://wizard.bpb-panel.workers.dev
+# Live link is published in the Flash Wizard repository
+# https://github.com/CheginiSoroush/flash-wizard
 ```
 
 ### CLI edition
 
 ```bash title="Windows PowerShell"
-irm https://raw.githubusercontent.com/bia-pain-bache/BPB-Wizard/main/install.ps1 | iex
+# Installer commands are published in the Flash Wizard repository:
+# https://github.com/CheginiSoroush/flash-wizard
 ```
 
 ```bash title="Android (Termux) - Linux - macOS"
-bash <(curl -fsSL https://raw.githubusercontent.com/bia-pain-bache/BPB-Wizard/main/install.sh)
+# Installer commands are published in the Flash Wizard repository:
+# https://github.com/CheginiSoroush/flash-wizard
 ```
 
 !!! warning "Termux usage attention"

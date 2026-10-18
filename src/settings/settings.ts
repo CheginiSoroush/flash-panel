@@ -120,7 +120,7 @@ export function init(request: Request, env: Env) {
     globalSettings = {
         ...getStaticGlobals(),
         deployType: env.CF_PAGES === '1' ? 'pages' : 'workers',
-        // نرمال‌سازی app: core دقیق / نام کلاینت قدیمی (BPB) / تشخیص از User-Agent —
+        // نرمال‌سازی app: core دقیق / نام کلاینت قدیمی (legacy) / تشخیص از User-Agent —
         // لینک‌های قدیمی و کلاینت‌هایی که query را حذف می‌کنند هم کانفیگ می‌گیرند نه 404
         client: resolveClientApp(safeDecode(searchParams.get('app') ?? ''), request.headers.get('User-Agent')),
         origin: origin,
