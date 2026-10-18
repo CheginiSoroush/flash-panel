@@ -1,24 +1,196 @@
 <div align="center">
 
-# ⚡ Flash Panel
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:78350f,50:f59e0b,100:ea580c&height=230&section=header&text=%E2%9A%A1%20FLASH%20PANEL&fontSize=58&fontColor=fff8eb&animation=twinkling&fontAlignY=36&desc=Serverless%20VLESS%20%C2%B7%20Trojan%20%C2%B7%20WARP%20proxy%20panel%20for%20Cloudflare%20Workers&descAlignY=57&descSize=17" alt="Flash Panel" width="100%" />
 
-### A high-performance, serverless proxy panel for Cloudflare Workers
+<img src="assets/readme/hero.svg" alt="Flash Panel emblem — animated lightning, rotating rings, orbiting particles" width="720" />
 
-**VLESS · Trojan · WARP** — built for speed, hardened for real-world use
+<a href="https://github.com/CheginiSoroush/flash-panel"><img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=22&duration=2600&pause=800&color=F59E0B&center=true&vCenter=true&width=820&height=70&lines=Fast+as+a+flash.+Light+as+a+feather.;VLESS+%C2%B7+TROJAN+%C2%B7+WARP+on+Cloudflare+Workers;Reverse-engineered+for+the+edge;391+tests.+Zero+servers.+100%25+serverless." alt="Flash Panel in one line" /></a>
 
-[🇮🇷 فارسی](README_fa.md) · [🪄 Quick Deploy](https://github.com/CheginiSoroush/flash-wizard)
+[![Release](https://img.shields.io/github/v/release/CheginiSoroush/flash-panel?style=for-the-badge&logo=github&label=Release&color=f59e0b)](https://github.com/CheginiSoroush/flash-panel/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/CheginiSoroush/flash-panel/ci.yml?branch=main&style=for-the-badge&logo=githubactions&label=CI&color=34d399)](https://github.com/CheginiSoroush/flash-panel/actions)
+[![Tests](https://img.shields.io/badge/Tests-391%20passing-34d399?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/actions)
+[![Bundle](https://img.shields.io/badge/Bundle-137.1%20KB%20gzip-f59e0b?style=for-the-badge&logo=esbuild&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/blob/main/scripts/build.js)
 
-![Cloudflare Workers](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=flat-square&logo=cloudflare)
-![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-295%20passing-34d399?style=flat-square)
-![License](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)
-![Size](https://img.shields.io/badge/Bundle-130.4KB%20gzipped-9333ea?style=flat-square)
+[![Platform](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#-how-a-request-flows)
+[![License](https://img.shields.io/github/license/CheginiSoroush/flash-panel?style=for-the-badge&label=License&color=e11d48)](LICENSE)
+[![Repo](https://img.shields.io/github/repo-size/CheginiSoroush/flash-panel?style=for-the-badge&label=Repo&color=fb7185)](#)
+[![Visitors](https://hits.sh/github.com/CheginiSoroush/flash-panel.svg?style=for-the-badge&color=f59e0b)](https://github.com/CheginiSoroush/flash-panel)
+
+[🇮🇷 فارسی](README_fa.md) · [🪄 Flash Wizard](https://github.com/CheginiSoroush/flash-wizard) · [📖 Documentation](#-documentation) · [⬆ Install](#-deploy)
 
 </div>
+
+<div align="center">
+
+<img src="assets/readme/divider.svg" alt="animated divider" width="70%" />
+
+### ⚡ At a glance
+
+| | | | |
+|:---:|:---:|:---:|:---:|
+| **0** servers | **3** config cores | **391** unit tests | **137 KB** gzipped |
+| **ETag** instant 304s | **gzip** sub responses | **QR** memoized | **3-mirror** self-update |
+| **24/7** self-tuning | **edge telemetry** | **scanner-proof** | **100%** serverless |
+
+<img src="assets/readme/divider.svg" alt="animated divider" width="70%" />
+
+</div>
+
+## 🌀 How a request flows
+
+<div align="center">
+
+<img src="assets/readme/architecture.svg" alt="Animated diagram: client connects through Cloudflare Edge (Flash Panel) to origins — packets flow, edge reports telemetry and self-tunes" width="820" />
+
+</div>
+
+Every connection is **token-gated**, measured, and remembered — the panel learns from its own traffic and re-tunes itself. No fork does this.
+
+---
+
+## ✨ Why Flash?
+
+Most forks change the **brand**. Flash Panel rebuilt the **engine**:
+
+<details open>
+<summary><b>🔥 Protocol core — rewritten from scratch</b></summary>
+
+| Fix | Impact |
+|-----|--------|
+| Race condition on socket writer | Connections dying mid-handshake → eliminated |
+| SHA-224 recomputed **every connection** | Now cached — Trojan auth costs ~zero |
+| Copy-heavy VLESS parsing (10× `slice()`) | Zero-copy views — CPU per connection dropped |
+| Writer lock acquired per-chunk | Cached per-socket — sustained throughput |
+| KV read on **every request** | Isolate-level cache + 5s TTL + anti-stampede |
+| Subscription regeneration on every fetch | ETag/304 — configs served instantly when unchanged |
+| Pretty-printed JSON configs (~20MB) | Minified — **94% smaller subscriptions** |
+
+</details>
+
+<details open>
+<summary><b>🛰️ Edge Intelligence — the panel that watches itself</b> <i>(v0.8.4 / v0.8.5)</i></summary>
+
+Most panels fly blind. Flash Panel turned Cloudflare's own per-request metadata into a **closed quality-control loop**:
+
+- 🛰️ **`request.cf` edge telemetry** — every real WS handshake (after the token gate) and 25% of subscription fetches silently record `colo`, `clientTcpRtt`, `ASN + organization`, `tlsVersion`, `httpProtocol`. No extra pings, **no IPs stored** — your own clients become the probe fleet
+- 📊 **Per-connection byte counters** — WS up/down bytes + duration per connection, zero cost on the hot path (WeakMap, GC'd on close) → *"which ISP moves how much traffic through which datacenter"*
+- 💰 **Free-plan budget engineering** — in-isolate buffering → batched flush (12 samples / 15s), 2,000 samples/day cap, 40 flushes per isolate, 48h pruning, top-12 colos + top-24 ASNs → far under 1,000 KV writes/day
+- 🎯 **Closed-loop auto-tuning** — a daily RTT baseline (EMA 85/15); when today's average jumps (≥ +40 ms **and** ≥ 1.5×, ≥ 8 samples) the **ProxyIP / CleanIP tuners fire automatically** and Telegram receives the worst-ASN list (6h tune cooldown / 12h alert cooldown)
+- 🧭 **Visible everywhere** — `/edge` bot command, a daily-digest line, and an authenticated panel endpoint with human-readable byte formatting (B → TB)
+- 🔬 **Reverse-engineered transports** — HTTPUpgrade is *free* server-side (proven: `101 Switching Protocols`) but deprecated/dead in modern Xray clients → 35 dead profiles were built, tested and **killed before ever reaching production**; the real future path is XHTTP + Durable Objects (v0.9.0 candidate)
+- 🩺 **Incident forensics** — the *"zero-byte connection"* signature (101 answered, no bytes exchanged) cleanly separates platform egress flakiness from code regressions
+
+</details>
+
+<details>
+<summary><b>🛡️ Security — not an afterthought</b></summary>
+
+- 🔐 **Login rate-limiting** + constant-time credential comparison
+- 🤖 **Telegram webhook secret validation** — forged updates rejected
+- 🔒 Login page / settings / subscriptions fully separated
+- ⚡ `workers.dev` route **auto-disabled** — scanner-proof by design (auto-guard re-checks every 30 minutes, alerts via Telegram)
+
+</details>
+
+<details>
+<summary><b>⚙️ Automation — the panel runs itself</b></summary>
+
+Set the cron trigger once (`'0 * * * *'` in `wrangler.jsonc`) and the panel takes care of the rest:
+
+- ⏰ **Auto-expiry for subscription users** — give any user an expiry date; their links stop the second it passes (self-enforcing at resolve time, no cron needed), the hourly sweep marks them revoked in the panel, and you get a Telegram notification
+- 📋 **Daily digest** — one message per day: usage vs quota, active/expired/revoked counts, next expirations, top users, an edge-telemetry line (also on demand: `/digest`)
+- 🔴 **Usage alert** — a one-time warning when total requests cross 80% of the daily Free quota
+- 📊 **Usage sampling without visits** — the 31-day chart stays complete even on days nobody opens the panel
+- ⚡ **Auto best ProxyIP** — one click tests every configured Proxy IP (batched, 2 attempts each) and redeploys the worker with the fastest healthy one as primary
+- 🧹 **workers.dev guard** — if anyone re-enables `*.workers.dev` previews, the next tick closes them again before scanners can latch on
+
+</details>
+
+<details>
+<summary><b>⚡ Performance — less CPU, less data</b></summary>
+
+- 🧠 **Per-ETag subscription body cache** — generated configs (Xray JSON / Clash YAML / raw base64) are memoized inside the isolate keyed by their ETag, which already covers version + all settings + client + user. Repeat fetches within the 5-minute TTL skip config generation *entirely* — no DNS resolve, no JSON building, no btoa — near-zero CPU for the most-hit endpoint
+- 🗜️ **gzip subscription responses** — bodies ≥ 1 KB are compressed with the native `CompressionStream` when the client sends `Accept-Encoding: gzip` (v2rayNG, Hiddify, Streisand and friends all do). Config JSON/YAML compresses ~70–80% — directly less mobile data burned on every update, and `Vary: Accept-Encoding` keeps variants from mixing
+- 🖼️ **QR memoization** — the QR PNG encoder (RGBA loop + deflate) runs once per unique config link; the panel's QR modal re-opens now cost zero CPU. Browser cache headers (`max-age=3600`) prevent re-fetching altogether
+- 🔧 **Micro-hygiene** — module-level `TextEncoder` for ETag hashing, header snapshots stored with the cache instead of per-request rebuilds
+
+All of it is memory-bounded (LRU + size caps) and covered by unit tests — **391/391 green across 26 files**.
+
+</details>
+
+<details>
+<summary><b>🧭 Anti-403 — configs that just connect</b></summary>
+
+A `403` means your connect address (usually `workers.dev`) is blocked by your ISP. Flash Panel now fights back automatically:
+
+- 🧪 **Clean IP optimizer** (`/clean-ip` page) — one click **Auto-optimize**: discovers fresh candidate IPs from public aggregators, probes every configured Clean IP + candidate (TCP edge probe, 2 attempts), reorders the list **healthy-first, fastest on top**, adds up to 5 newly found healthy IPs and redeploys — the whole loop without touching the settings form
+- 🥇 **Clean IPs First (Anti-403)** — when enabled, Clean IPs become the *first* connect address in every generated config instead of the (often-blocked) worker domain
+- 🩺 **Per-endpoint health & latency** — every row shows success rate and TCP latency, so dead endpoints are visible at a glance
+- 📰 **Smart subscription headers** — `profile-update-interval`, `profile-web-page-url` and `subscription-userinfo` (auto expiry countdown for subscription users) are served to modern clients (Hiddify, v2rayNG, Streisand)
+
+</details>
+
+<details>
+<summary><b>✈️ Telegram — first-class through the tunnel</b></summary>
+
+A classic MTProto proxy can't run on Cloudflare Workers (Telegram apps connect to MTProto proxies over raw TCP — Workers only accept HTTP/WebSocket). Your subscription already tunnels Telegram the reliable way:
+
+- 🧲 **Telegram Routing (Always Tunnel)** — on by default: explicit rules in every generated config (Xray / sing-box / Clash) route Telegram's official domains **and all 13 datacenter CIDRs** (IPv4 + IPv6) through the tunnel — *before* any block/bypass rule, so even `bypass Iran/China` profiles can never send Telegram direct
+- 🧾 **Geo-file independent** — rules are plain domain/IP lists baked into the config: no geosite download needed, works on old client geo databases
+- 🤖 **`/tg` bot command** — step-by-step Telegram setup guide (v2rayNG / Hiddify / Streisand) straight from the bot
+- 📞 **Honest voice-call note** — normal configs carry messages, media and files (TCP); for voice/video calls use the **Warp** subscription type (UDP)
+
+</details>
+
+<details>
+<summary><b>🤖 Telegram Bot — full panel control from your pocket</b></summary>
+
+The panel URL is often filtered. Your Telegram isn't.
+
+```text
+/config    — get configs + QR codes
+/status    — live panel overview
+/edge      — edge telemetry: RTT/bytes per datacenter & ASN
+/tg        — Telegram setup guide
+/users     — per-user stats + expiry countdowns
+/digest    — daily summary on demand
+/settings  — 18 editable fields (DNS, protocols, clean IPs, routing rules...)
+/restart   — instant cache reset
+```
+
+</details>
+
+<details>
+<summary><b>🔄 Panel self-update — built to survive GitHub 403s</b></summary>
+
+The one-click **Update panel** button fetches the latest `worker.js` and redeploys it with your settings intact. Server-side downloads of GitHub release assets used to fail from shared Cloudflare edge IPs (`403`/`429` rate limits) — the update engine now:
+
+- **3 mirrors with automatic fallback** — GitHub Releases → GitHub Pages mirror (`site/download/worker.js`, republished on every release) → jsDelivr CDN
+- **Retries with backoff** on `403`/`429`/`5xx`/timeouts; `404` short-circuits to the next mirror
+- **Content validation** — an HTML error page or truncated body is never deployed (length + `export default` checks)
+- **10-minute edge cache + request coalescing** — repeated clicks cost zero extra fetches
+- **Honest errors** — the panel toast shows the real reason (GitHub 403 / token permission / quota) instead of a blind *"please try again"*
+- **Client-side version check fallback** — `raw.githubusercontent.com` first, jsDelivr second
+
+> 💡 If your panel is older than **v0.7.1** and the update button fails, retry in a few minutes (the 403 is transient) or upload `worker.js` manually via the Cloudflare dashboard / Flash Wizard — after that, every future update uses the mirror engine.
+
+</details>
+
+<details>
+<summary><b>🧪 Engineering — built like production software</b></summary>
+
+- **391 unit tests** across 26 files — protocol parsers, settings validators, KV migrations, sub-users, telemetry, tuners, guards
+- **CI on every push** — typecheck → tests → build → **bundle gate** (gzip ≤ 150 KB, ~4.5% of the Workers free-plan limit)
+- **Automated releases** — tag → build → publish → Pages mirror
+- **Self-update from panel** — zero-downtime upgrades via the 3-mirror engine
+
+</details>
 
 ---
 
 <div align="center">
+
+<img src="assets/readme/divider.svg" alt="animated divider" width="70%" />
 
 ### 📊 Benchmark — vs "optimized" forks
 
@@ -31,105 +203,9 @@
 
 **+22% more working configs** — measured, not claimed.
 
+<img src="assets/readme/divider.svg" alt="animated divider" width="70%" />
+
 </div>
-
----
-
-## ✨ Why Flash?
-
-Most forks change the **brand**. Flash Panel rebuilt the **engine**:
-
-### 🔥 Protocol Core — rewritten from scratch
-
-| Fix | Impact |
-|-----|--------|
-| Race condition on socket writer | Connections dying mid-handshake → eliminated |
-| SHA-224 recomputed **every connection** | Now cached — Trojan auth costs ~zero |
-| Copy-heavy VLESS parsing (10× `slice()`) | Zero-copy views — CPU per connection dropped |
-| Writer lock acquired per-chunk | Cached per-socket — sustained throughput |
-| KV read on **every request** | Isolate-level cache + 5s TTL + anti-stampede |
-| Subscription regeneration on every fetch | ETag/304 — configs served instantly when unchanged |
-| Pretty-printed JSON configs (~20MB) | Minified — **94% smaller subscriptions** |
-
-### 🛡️ Security — not an afterthought
-
-- 🔐 **Login rate-limiting** + constant-time credential comparison
-- 🤖 **Telegram webhook secret validation** — forged updates rejected
-- 🔒 Login page / settings / subscriptions fully separated
-- ⚡ `workers.dev` route **auto-disabled** — scanner-proof by design
-
-### ⚙️ Automation — the panel runs itself
-
-Set the cron trigger once (`'0 * * * *'` in `wrangler.jsonc`) and the panel takes care of the rest:
-
-- ⏰ **Auto-expiry for subscription users** — give any user an expiry date; their links stop the second it passes (self-enforcing at resolve time, no cron needed), the hourly sweep marks them revoked in the panel, and you get a Telegram notification
-- 📋 **Daily digest** — one message per day: usage vs quota, active/expired/revoked counts, next expirations, top users (also on demand: `/digest`)
-- 🔴 **Usage alert** — a one-time warning when total requests cross 80% of the daily Free quota
-- 📊 **Usage sampling without visits** — the 31-day chart stays complete even on days nobody opens the panel
-- ⚡ **Auto best ProxyIP** — one click tests every configured Proxy IP (batched, 2 attempts each) and redeploys the worker with the fastest healthy one as primary
-
-### ⚡ Performance — less CPU, less data
-
-v0.6.0 is a pure efficiency release — the worker does less work per request and subscription updates shrink dramatically:
-
-- 🧠 **Per-ETag subscription body cache** — generated configs (Xray JSON / Clash YAML / raw base64) are memoized inside the isolate keyed by their ETag, which already covers version + all settings + client + user. Repeat fetches within the 5-minute TTL skip config generation *entirely* — no DNS resolve, no JSON building, no btoa — near-zero CPU for the most-hit endpoint
-- 🗜️ **gzip subscription responses** — bodies ≥ 1 KB are compressed with the native `CompressionStream` when the client sends `Accept-Encoding: gzip` (v2rayNG, Hiddify, Streisand and friends all do). Config JSON/YAML compresses ~70–80% — directly less mobile data burned on every update, and `Vary: Accept-Encoding` keeps variants from mixing
-- 🖼️ **QR memoization** — the QR PNG encoder (RGBA loop + deflate) runs once per unique config link; the panel's QR modal re-opens now cost zero CPU. Browser cache headers (`max-age=3600`) prevent re-fetching altogether
-- 🔧 **Micro-hygiene** — module-level `TextEncoder` for ETag hashing, header snapshots stored with the cache instead of per-request rebuilds
-
-All of it is memory-bounded (LRU + size caps) and fully covered by 14 new unit tests — **266/266 green**.
-
-### 🧭 Anti-403 — configs that just connect
-
-A `403` means your connect address (usually `workers.dev`) is blocked by your ISP. Flash Panel now fights back automatically:
-
-- 🧪 **Clean IP optimizer** (`/clean-ip` page) — one click **Auto-optimize**: discovers fresh candidate IPs from public aggregators, probes every configured Clean IP + candidate (TCP edge probe, 2 attempts), reorders the list **healthy-first, fastest on top**, adds up to 5 newly found healthy IPs and redeploys — the whole loop without touching the settings form
-- 🥇 **Clean IPs First (Anti-403)** — new setting: when enabled, Clean IPs become the *first* connect address in every generated config instead of the (often-blocked) worker domain
-- 🩺 **Per-endpoint health & latency** — every row shows success rate and TCP latency, so dead endpoints are visible at a glance
-- 📰 **Smart subscription headers** — `profile-update-interval`, `profile-web-page-url` and `subscription-userinfo` (auto expiry countdown for subscription users) are served to modern clients (Hiddify, v2rayNG, Streisand)
-
-### ✈️ Telegram — first-class through the tunnel
-
-No, a classic MTProto proxy can't run on Cloudflare Workers (Telegram apps connect to MTProto proxies over raw TCP — Workers only accept HTTP/WebSocket). Your subscription already tunnels Telegram the reliable way:
-
-- 🧲 **Telegram Routing (Always Tunnel)** — new setting (on by default): explicit rules in every generated config (Xray / sing-box / Clash) route Telegram's official domains **and all 13 datacenter CIDRs** (IPv4 + IPv6) through the tunnel — before any block/bypass rule, so even `bypass Iran/China` profiles can never send Telegram direct
-- 🧾 **Geo-file independent** — rules are plain domain/IP lists baked into the config: no geosite download needed, works on old client geo databases
-- 🤖 **`/tg` bot command** — step-by-step Telegram setup guide (v2rayNG / Hiddify / Streisand) straight from the bot
-- 📞 **Honest voice-call note** — normal configs carry messages, media and files (TCP); for voice/video calls use the **Warp** subscription type (UDP)
-
-### 🤖 Telegram Bot — full panel control
-
-The panel URL is often filtered. Your Telegram isn't.
-
-```
-/config    — get configs + QR codes
-/status    — live panel overview
-/tg        — Telegram setup guide
-/users     — per-user stats + expiry countdowns
-/digest    — daily summary on demand
-/settings  — 18 editable fields (DNS, protocols, clean IPs, routing rules...)
-/restart   — instant cache reset
-```
-
-### 🧪 Engineering — built like production software
-
-- **295 unit tests** — protocol parsers, settings validators, KV migrations, sub-users, update engine
-- **CI on every push** — check, test, build
-- **Automated releases** — tag → build → publish
-- **Self-update from panel** — zero-downtime upgrades, now with a 3-mirror engine
-
-### 🔄 Panel self-update — built to survive GitHub 403s
-
-The one-click **Update panel** button fetches the latest `worker.js` and redeploys it with your settings intact. Server-side downloads of GitHub release assets used to fail from shared Cloudflare edge IPs (`403`/`429` rate limits) — the update engine now:
-
-- **3 mirrors with automatic fallback** — GitHub Releases → GitHub Pages mirror (`site/download/worker.js`, republished on every release) → jsDelivr CDN
-- **Retries with backoff** on `403`/`429`/`5xx`/timeouts; `404` short-circuits to the next mirror
-- **Content validation** — an HTML error page or truncated body is never deployed (length + `export default` checks)
-- **10-minute edge cache + request coalescing** — repeated clicks cost zero extra fetches
-- **Honest errors** — the panel toast now shows the real reason (GitHub 403 / token permission / quota) instead of a blind *"please try again"*
-- **Client-side version check fallback** — `raw.githubusercontent.com` first, jsDelivr second
-
-> 💡 If your panel is older than **v0.7.1** and the update button fails, retry in a few minutes (the 403 is transient) or upload `worker.js` manually via the Cloudflare dashboard / Flash Wizard — after that, every future update uses the mirror engine.
 
 ---
 
@@ -166,21 +242,83 @@ Object.assign(globalThis, { EMBEDED_SETTINGS: {
 
 ---
 
+## 📈 Stats
+
+<div align="center">
+
+<table>
+<tr>
+<td width="50%">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github-readme-stats.vercel.app/api?username=CheginiSoroush&show_icons=true&hide_border=true&bg_color=00000000&title_color=f59e0b&icon_color=fb7185&text_color=e6edf3" />
+  <img src="https://github-readme-stats.vercel.app/api?username=CheginiSoroush&show_icons=true&hide_border=true&bg_color=00000000&title_color=b45309&icon_color=ea580c&text_color=57606a" alt="GitHub stats" />
+</picture>
+
+</td>
+<td width="50%">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://streak-stats.demolab.com?user=CheginiSoroush&hide_border=true&background=00000000&stroke=f59e0b&ring=f97316&fire=fbbf24&currStreakNum=e6edf3&sideNums=e6edf3&currStreakLabel=f59e0b&sideLabels=a8a29e&dates=9ca3af" />
+  <img src="https://streak-stats.demolab.com?user=CheginiSoroush&hide_border=true&background=00000000&stroke=ea580c&ring=f59e0b&fire=ea580c&currStreakNum=24292f&sideNums=24292f&currStreakLabel=b45309&sideLabels=6e7781&dates=57606a" alt="GitHub streak" />
+</picture>
+
+</td>
+</tr>
+</table>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github-readme-stats.vercel.app/api/top-langs/?username=CheginiSoroush&layout=compact&hide_border=true&bg_color=00000000&title_color=f59e0b&text_color=e6edf3&langs_count=8" />
+  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=CheginiSoroush&layout=compact&hide_border=true&bg_color=00000000&title_color=b45309&text_color=57606a&langs_count=8" alt="Top languages" width="42%" />
+</picture>
+
+### 🐍 The endless contribution
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/CheginiSoroush/flash-panel/output/github-contribution-grid-snake-dark.svg" />
+  <img src="https://raw.githubusercontent.com/CheginiSoroush/flash-panel/output/github-contribution-grid-snake.svg" alt="Contribution snake animation" width="100%" />
+</picture>
+
+</div>
+
+### 🧰 Built with
+
+<div align="center">
+
+<img src="https://skillicons.dev/icons?i=ts,js,bun,cloudflare,git,github,linux,vscode&perrow=8" alt="TypeScript, JavaScript, Bun, Cloudflare, Git, GitHub, Linux, VS Code" />
+
+<details>
+<summary><b>⭐ Star history</b></summary>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=CheginiSoroush/flash-panel&type=Date&theme=dark" />
+  <img src="https://api.star-history.com/svg?repos=CheginiSoroush/flash-panel&type=Date&theme=light" alt="Star history chart" width="80%" />
+</picture>
+
+</details>
+
+</div>
+
+---
+
 ## 📖 Documentation
 
-- 🇮🇷 [مستندات فارسی](README_fa.md)
+- 🇮🇷 [مستندات فارسی — README_fa](README_fa.md)
+- 📚 [In-repo docs (EN)](docs/en/docs/index.md) · [مستندات داخل ریپو (FA)](docs/fa/docs/index.md)
 - 🪄 [Flash Wizard](https://github.com/CheginiSoroush/flash-wizard) — deploy tool
 
 ## 👤 Author
 
 Flash Panel is created, owned and maintained by [CheginiSoroush](https://github.com/CheginiSoroush).
 
-**License:** GPL-3.0 — see [LICENSE](LICENSE)
-
 <div align="center">
 
----
+<img src="https://contrib.rocks/image?repo=CheginiSoroush/flash-panel" alt="Contributors" />
 
-**⚡ Flash Panel** — *fast because it's engineered to be.*
+**License:** GPL-3.0 — see [LICENSE](LICENSE)
+
+<img src="assets/readme/divider.svg" alt="animated divider" width="70%" />
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:ea580c,50:f59e0b,100:78350f&height=140&section=footer&text=fast%20because%20it%20is%20engineered%20to%20be&fontSize=20&fontColor=fff8eb&animation=fadeIn&fontAlignY=70" alt="footer" width="100%" />
 
 </div>

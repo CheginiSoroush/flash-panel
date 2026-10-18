@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 300" role="img" aria-labelledby="hTitle hDesc">
+<title id="hTitle">Flash Panel — animated emblem</title>
+<desc id="hDesc">Lightning bolt emblem inside rotating rings with orbiting particles and VLESS, Trojan, WARP chips</desc>
+<style>
+.txt{fill:#57606a;font-family:ui-sans-serif,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+.chip{fill:#ffffff;fill-opacity:.85;stroke:#eab308;stroke-opacity:.5;stroke-width:1.5}
+.chipT{fill:#b45309;font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-weight:700;font-size:15px;letter-spacing:2px}
+.stT{fill:#57606a;font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:2px}
+@media (prefers-color-scheme:dark){
+.txt{fill:#8b949e}
+.chip{fill:#161b22;fill-opacity:.92}
+.chipT{fill:#fbbf24}
+.stT{fill:#9ca3af}
+}
+</style>
+<defs>
+<radialGradient id="glowG" cx="50%" cy="50%" r="50%">
+<stop offset="0%" stop-color="#f59e0b" stop-opacity=".45"/>
+<stop offset="45%" stop-color="#f97316" stop-opacity=".16"/>
+<stop offset="100%" stop-color="#f97316" stop-opacity="0"/>
+</radialGradient>
+<linearGradient id="boltG" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0%" stop-color="#fde047"/>
+<stop offset="55%" stop-color="#f59e0b"/>
+<stop offset="100%" stop-color="#ea580c"/>
+</linearGradient>
+<linearGradient id="ringG" x1="0" y1="0" x2="1" y2="1">
+<stop offset="0%" stop-color="#f59e0b"/>
+<stop offset="55%" stop-color="#f97316"/>
+<stop offset="100%" stop-color="#f43f5e"/>
+</linearGradient>
+</defs>
+
+<g>
+<rect x="300" y="12" width="280" height="30" rx="15" class="chip"/>
+<circle cx="318" cy="27" r="4" fill="#34d399">
+<animate attributeName="r" values="3;4.6;3" dur="2s" repeatCount="indefinite"/>
+<animate attributeName="opacity" values="1;.45;1" dur="2s" repeatCount="indefinite"/>
+</circle>
+<text class="stT" x="446" y="31" text-anchor="middle">SYSTEM OPERATIONAL · v0.8.5</text>
+</g>
+
+<circle cx="440" cy="150" r="148" fill="url(#glowG)">
+<animate attributeName="opacity" values=".65;1;.65" dur="4s" repeatCount="indefinite"/>
+</circle>
+
+<circle cx="440" cy="150" r="126" fill="none" stroke="#f59e0b" stroke-opacity=".16"/>
+<circle cx="440" cy="150" r="112" fill="none" stroke="url(#ringG)" stroke-width="1.6" stroke-dasharray="3 10" stroke-linecap="round">
+<animateTransform attributeName="transform" type="rotate" from="0 440 150" to="360 440 150" dur="60s" repeatCount="indefinite"/>
+</circle>
+<circle cx="440" cy="150" r="94" fill="none" stroke="url(#ringG)" stroke-width="3"/>
+
+<g>
+<circle cx="552" cy="150" r="4.5" fill="#fbbf24"/>
+<circle cx="540" cy="150" r="2" fill="#fbbf24" opacity=".55"/>
+<animateTransform attributeName="transform" type="rotate" from="0 440 150" to="360 440 150" dur="9s" repeatCount="indefinite"/>
+</g>
+<g>
+<circle cx="534" cy="150" r="3.2" fill="#fb7185"/>
+<animateTransform attributeName="transform" type="rotate" from="0 440 150" to="-360 440 150" dur="14s" repeatCount="indefinite"/>
+</g>
+<g>
+<circle cx="566" cy="150" r="2.6" fill="#f97316"/>
+<animateTransform attributeName="transform" type="rotate" from="0 440 150" to="360 440 150" dur="21s" repeatCount="indefinite"/>
+</g>
+
+<path d="M466 58 L396 170 L438 170 L418 242 L502 130 L456 130 Z" fill="url(#boltG)" stroke="#fde047" stroke-width="1" stroke-opacity=".6">
+<animate attributeName="fill-opacity" values=".92;1;.92" dur="2.8s" repeatCount="indefinite"/>
+</path>
+<path d="M459 74 L418 150" stroke="#fffbeb" stroke-width="3" stroke-linecap="round" opacity=".3">
+<animate attributeName="opacity" values=".15;.45;.15" dur="2.8s" repeatCount="indefinite"/>
+</path>
+
+<g>
+<rect x="224" y="258" width="130" height="34" rx="17" class="chip">
+<animate attributeName="stroke-opacity" values=".35;1;.35" dur="2.6s" repeatCount="indefinite"/>
+</rect>
+<text class="chipT" x="289" y="280" text-anchor="middle">VLESS</text>
+<rect x="370" y="258" width="150" height="34" rx="17" class="chip">
+<animate attributeName="stroke-opacity" values=".35;1;.35" dur="2.6s" begin="0.45s" repeatCount="indefinite"/>
+</rect>
+<text class="chipT" x="445" y="280" text-anchor="middle">TROJAN</text>
+<rect x="536" y="258" width="120" height="34" rx="17" class="chip">
+<animate attributeName="stroke-opacity" values=".35;1;.35" dur="2.6s" begin="0.9s" repeatCount="indefinite"/>
+</rect>
+<text class="chipT" x="596" y="280" text-anchor="middle">WARP</text>
+</g>
+</svg>
