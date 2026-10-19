@@ -7,11 +7,12 @@ import { fetchLatestWorkerScript } from '@api/fetch-latest';
 import { decompressGzipBase64, safeError } from '@common';
 
 export async function updateMainSettings(newSettings: PanelSettings | null): Promise<Partial<EmbededSettings>> {
-    const { accID, accEmail, apiToken, mainDomain, vlUUID, trPass, securePath, forceProxyDomains } = getGlobals();
+    const { accID, accEmail, mainDomain, vlUUID, trPass, securePath, forceProxyDomains } = getGlobals();
     const settings: EmbededSettings = {
         accID,
         accEmail,
-        apiToken,
+        // v0.8.12 — توکن در هیچ مسیر build/بازگشتی جاری نمی‌شود؛ فقط از KV خوانده می‌شود
+        apiToken: '',
         vlUUID: newSettings ? newSettings.vlUUID : vlUUID,
         trPass: newSettings ? newSettings.trPass : trPass,
         securePath: newSettings ? newSettings.securePath : securePath,
@@ -102,6 +103,35 @@ export async function setCustomDomain(customDomain: string) {
     }
 }
 
+/**
+ * ساخت EMBEDED_SETTINGS برای ورکر تازه‌ساخته — نقطه‌ی یکتای embed.
+ *
+ * v0.8.12 (no-credentials-in-source): apiToken همیشه '' است — هیچ اعتبارنامه‌ی
+ * زنده‌ای در سورس آپلودی embed نمی‌شود (الگوی توکن-داخل-سورس ماشه‌ی اسکنر CF و
+ * بلاک اجرای ورکر شد — Task 48-51). ورکر تازه توکن را از همان namespace در
+ * نخستین init با loadApiToken (کلید KV: cfApiToken) می‌خواند.
+ */
+export function buildEmbededSettings(settings: MainSettings): EmbededSettings {
+    const { accID, accEmail, mainDomain } = getGlobals();
+
+    return {
+        accID,
+        accEmail,
+        // v0.8.12 — هیچ اعتبارنامه زنده‌ای در سورس آپلودی؛ توکن از KV کلید cfApiToken در اولین init خوانده می‌شود
+        apiToken: '',
+        vlUUID: settings.vlUUID,
+        trPass: settings.trPass,
+        securePath: settings.securePath,
+        proxyIpMode: settings.proxyIpMode,
+        proxyIPs: settings.proxyIPs,
+        prefixes: settings.prefixes,
+        forceProxyDomains: settings.forceProxyDomains,
+        fallback: settings.fallback,
+        dohUrl: settings.dohUrl,
+        mainDomain
+    };
+}
+
 export async function buildScript(upgradePanel: boolean, settings?: MainSettings): Promise<string> {
     let script = '';
 
@@ -118,22 +148,8 @@ export async function buildScript(upgradePanel: boolean, settings?: MainSettings
         settings = settings ?? getSettings();
     }
 
-    const { accID, accEmail, apiToken, mainDomain } = getGlobals();
-    const embededSettings = {
-        accID,
-        accEmail,
-        apiToken,
-        vlUUID: settings.vlUUID,
-        trPass: settings.trPass,
-        securePath: settings.securePath,
-        proxyIpMode: settings.proxyIpMode,
-        proxyIPs: settings.proxyIPs,
-        prefixes: settings.prefixes,
-        forceProxyDomains: settings.forceProxyDomains,
-        fallback: settings.fallback,
-        dohUrl: settings.dohUrl,
-        mainDomain
-    };
+    const { accID, accEmail, mainDomain } = getGlobals();
+    const embededSettings = buildEmbededSettings(settings);
 
     const embededContents = {
         ...(typeof SOURCE_CONTENT === 'string' ? { SOURCE_CONTENT } : {}),

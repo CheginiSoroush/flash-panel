@@ -1,5 +1,5 @@
 import { HttpStatus, respond, safeError } from '@common';
-import { clients, getGlobals, subscriptions } from '@settings';
+import { applyApiToken, clients, getGlobals, maskApiToken, subscriptions } from '@settings';
 import { getSubUsers } from '@settings/sub-users';
 import { buildEdgeText, getEdgeTelemetry } from '@settings/edge-telemetry';
 import { getCfWorkerUsage } from './usage';
@@ -114,6 +114,7 @@ export async function setTelegramBot(path: string, token: string) {
                     { command: 'edge', description: '🛰️ Edge telemetry (colo/ISP/RTT)' },
                     { command: 'broadcast', description: '📢 Message all linked users' },
                     { command: 'settings', description: '⚙️ Change panel settings' },
+                    { command: 'cftoken', description: '🔑 CF API token — status / set (admin)' },
 
                 ]
             })
@@ -1315,6 +1316,14 @@ async function handleTelegramUpdate(request: Request, env: Env): Promise<Respons
             }
         }
 
+        // ---------- 🔑 /cftoken — مدیریت توکن CF API (v0.8.12 — no-credentials-in-source) ----------
+        // دستور با آرگومان می‌آید (/cftoken <value>) — قبل از switch دقیقِ متن بررسی می‌شود
+        if (text === '/cftoken' || text.startsWith('/cftoken ')) {
+            await handleCfTokenCommand(botToken, chatId, env, text);
+            await checkCfUsageWarning(botToken, chatId);
+            return new Response(null, { status: 200 });
+        }
+
         switch (text) {
             case '/usage':
                 // فیکس Task 39 — همان رندر مشترک دکمه‌ی Usage (sendUsageCard):
@@ -1488,6 +1497,103 @@ async function checkCfUsageWarning(botToken: string, chatId: number): Promise<vo
         });
     }
 }
+// ============================================================
+// 🔑 /cftoken — مدیریت توکن CF API از ربات (v0.8.12 — no-credentials-in-source)
+//
+// تا v0.8.11 توکن زنده‌ی CF داخل سورس آپلودشده‌ی ورکر embed می‌شد و همین الگو
+// («credential in source») ماشه‌ی اسکنر CF و بلاک اجرای ورکر شد (Task 48-51).
+// از این نسخه توکن فقط در KV (کلید cfApiToken — raw string) زندگی می‌کند و در
+// نخستین init با loadApiToken به globals تزریق می‌شود.
+//
+// قواعد امنیتی این دستور:
+//   • فقط ادمین (همان گارد سراسری webhook — پیام‌های غیر از telegramUserId رد می‌شوند)
+//   • توکن کامل هرگز در پاسخ/لاگ بازتاب نمی‌شود — فقط ماسکِ ۴ کاراکتر آخر
+//   • سقف KV (429) = پیام صادق «Save failed» (هم‌الگوی بقیه‌ی مسیرهای ذخیره)
+//   • not in main keyboard — فقط دستور؛ سطح تماس حداقلی
+// ============================================================
+
+const CF_TOKEN_KV_KEY = 'cfApiToken';
+
+/** verify زنده‌ی توکن نزد کلادفلر — فقط وضعیت برمی‌گردد؛ خود توکن در پیام نمی‌آید */
+async function verifyCfToken(value: string): Promise<string> {
+    try {
+        const res = await fetch('https://api.cloudflare.com/client/v4/user/tokens/verify', {
+            headers: { Authorization: `Bearer ${value}` }
+        });
+        const data: any = await res.json().catch(() => null);
+        if (data?.success && data?.result?.status === 'active') {
+            return '✅ CF says: <b>active</b>';
+        }
+        // خطای واقعی CF (توکن باطل/سکوپ ناکافی/…) — صادقانه گزارش می‌شود
+        const detail = data?.errors?.[0]?.message ?? `HTTP ${res.status}`;
+        return `⚠️ CF says: ${escapeHtml(String(detail))}`;
+    } catch (error) {
+        return `⚠️ CF verify failed: ${escapeHtml(safeError(error))}`;
+    }
+}
+
+async function handleCfTokenCommand(botToken: string, chatId: number, env: Env, text: string): Promise<void> {
+    const value = text.slice('/cftoken'.length).trim();
+
+    // ---------- بدون آرگومان: وضعیت — فقط ماسک، هرگز توکن کامل ----------
+    if (!value) {
+        let current = '';
+        try {
+            current = (await env.kv.get(CF_TOKEN_KV_KEY)) || '';
+        } catch {
+            // خواندن ناموفق — همان «not configured» صادقانه نمایش داده می‌شود
+        }
+
+        await tgFetch(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: [
+                '🔑 <b>CF API token</b>',
+                `Status: <code>${current ? maskApiToken(current) : 'not configured'}</code>`,
+                '',
+                'Set or replace it with: <code>/cftoken &lt;token&gt;</code>',
+                '<i>(the token lives in KV only — never embedded in the worker source)</i>'
+            ].join('\n'),
+            parse_mode: 'HTML',
+            reply_markup: mainKeyboard()
+        });
+        return;
+    }
+
+    // ---------- ذخیره در KV — سقف KV (429) هم باید پیام صادق بدهد ----------
+    let saved = false;
+    let saveError = '';
+    try {
+        await env.kv.put(CF_TOKEN_KV_KEY, value);
+        saved = true;
+    } catch (error) {
+        // توکن در پیام خطا بازتاب نمی‌شود (قاعده‌ی امنیتی)
+        saveError = safeError(error);
+    }
+
+    if (!saved) {
+        await tgFetch(botToken, 'sendMessage', {
+            chat_id: chatId,
+            text: `⚠️ <b>Save failed:</b> ${escapeHtml(saveError)}\n\nTry again in a moment. ${TG_OFFLINE_HINT}`,
+            parse_mode: 'HTML'
+        });
+        return;
+    }
+
+    // کش حافظه‌ی isolate فوراً تازه می‌شود — بقیه‌ی فیچرهای CF-API همین الان
+    // توکن تازه را می‌بینند (بدون انتظار برای انقضای TTL پنج‌ثانیه‌ای)
+    applyApiToken(value);
+
+    await tgFetch(botToken, 'sendMessage', {
+        chat_id: chatId,
+        text: [
+            `🔑 <b>CF API token saved</b> (<code>${escapeHtml(maskApiToken(value))}</code>).`,
+            await verifyCfToken(value)
+        ].join('\n'),
+        parse_mode: 'HTML',
+        reply_markup: mainKeyboard()
+    });
+}
+
 // ---------- state ورودی Settings (KV با TTL) ----------
 // force_reply بعضی کلاینت‌های تلگرام قابل‌اعتماد نیست — پس هم reply واقعی
 // رو قبول می‌کنیم هم پیام تکی رو (اگه user توی حالت انتظار باشه)

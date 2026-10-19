@@ -11,6 +11,7 @@ import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
 import { getDataset, updateDataset } from '@kv';
 import { buildScript, updateMainSettings } from '@main';
 import { getGlobals, getMainSettings, getDefaultKvSettings, subscriptions, clients } from '@settings';
+import { CF_TOKEN_MISSING_ERROR } from '@api/cf-auth';
 import { createSubUser, deleteSubUser, getSubUsers, isValidSubUserId, saveSubUsers, updateSubUser } from '@settings/sub-users';
 import {
     buildSettingsBackup,
@@ -162,6 +163,13 @@ async function updatePanel(request: Request, env: Env): Promise<Response> {
         const auth = await authenticate(request, env);
         if (!auth) {
             return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
+        }
+
+        // v0.8.12 — دکمه‌ی Update بدون توکن به‌جای 401 مبهم CF، پیام صادق می‌دهد
+        // (خود deployWorkers هم گارد دارد؛ این گارد پیام را تمیزتر به UI می‌رساند)
+        const { apiToken } = getGlobals();
+        if (!apiToken) {
+            return respond(false, HttpStatus.SERVICE_UNAVAILABLE, CF_TOKEN_MISSING_ERROR);
         }
 
         const { deployType } = getGlobals();

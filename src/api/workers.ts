@@ -1,7 +1,7 @@
 import { safeError } from '@common';
 import { getGlobals } from '@settings';
 import { resolveWorkerName } from './worker-name';
-import { cfAuthFromGlobals } from './cf-auth';
+import { cfAuthFromGlobals, CF_TOKEN_MISSING_ERROR } from './cf-auth';
 
 /**
  * پیام‌های خطای Cloudflare API را به راهنمای عملی تبدیل می‌کند —
@@ -22,6 +22,12 @@ function humanizeDeployError(message: string): string {
 
 export async function deployWorkers(script: string) {
     const { accID, apiToken, mainDomain } = getGlobals();
+
+    // v0.8.12 — بدون توکن، درخواست با 401 مبهم CF می‌مرد؛ پیام صادق و قابل‌اقدام
+    if (!apiToken) {
+        throw new Error(CF_TOKEN_MISSING_ERROR);
+    }
+
     const metadata = {
         main_module: 'worker.js',
         keep_bindings: ['kv_namespace'],
@@ -50,6 +56,12 @@ export async function deployWorkers(script: string) {
 
 export async function getWorkerDomains(): Promise<string[]> {
     const { accID, apiToken } = getGlobals();
+
+    // v0.8.12 — گارد توکن مثل deployWorkers
+    if (!apiToken) {
+        throw new Error(CF_TOKEN_MISSING_ERROR);
+    }
+
     const scriptName = resolveWorkerName();
 
     try {

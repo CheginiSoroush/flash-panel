@@ -11,12 +11,15 @@ import { fallback, hardenResponse, robotsResponse } from '@handlers/utils';
 import { handleWebsocket } from '@handlers/websocket';
 import { recordEdgeSample } from '@settings/edge-telemetry';
 import { runScheduledAutomation } from '@api/automation';
-import { init, getGlobals } from '@settings';
+import { init, getGlobals, loadApiToken } from '@settings';
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext) {
         try {
             init(request, env);
+            // v0.8.12 — توکن CF از KV (کلید cfApiToken) قبل از هر فیچر CF-API؛
+            // کش ۵ ثانیه‌ای دارد و failure-safe است (هرگز مسیر درخواست را نمی‌شکند)
+            await loadApiToken(env);
 
             // Upgrade باید case-insensitive باشه (RFC 6455)
             if ((request.headers.get('Upgrade') || '').toLowerCase() === 'websocket') {

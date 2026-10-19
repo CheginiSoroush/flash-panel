@@ -1,6 +1,17 @@
 import { getGlobals } from '@settings';
 
 /**
+ * پیام خطای صادق وقتی هیچ توکن CF پیکربندی نشده (v0.8.12 — no-credentials-in-source).
+ *
+ * توکن دیگر در سورس آپلودی embed نمی‌شود (الگوی «credential in source» ماشه‌ی
+ * اسکنر CF شد) — در KV کلید cfApiToken با /cftoken ست می‌شود. ورودی‌های اصلی
+ * CF-API قبل از هر فراخوانی این را چک می‌کنند تا به‌جای 401 مبهم، راهنمای
+ * عملی بدهند.
+ */
+export const CF_TOKEN_MISSING_ERROR =
+    'CF API token is not configured — set it with /cftoken <token> in the Telegram bot';
+
+/**
  * 🔐 احراز دوحالته‌ی Cloudflare API داخل ورکر (v0.8.7)
  *
  * دیپلوی‌های Flash Panel همیشه accEmail را embed می‌کنند، ولی apiToken بسته به

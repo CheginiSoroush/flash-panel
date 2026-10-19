@@ -1,4 +1,5 @@
 import { getDataset } from '@kv';
+import { safeError } from '@common';
 import { resolveClientApp } from './client-detect';
 import {
     KvSettings,
@@ -68,6 +69,72 @@ function getStaticGlobals() {
     };
 
     return staticGlobals;
+}
+
+// ---------- توکن API کلادفلر از KV (v0.8.12 — خروج اعتبارنامه از سورس) ----------
+//
+// تا v0.8.11 توکن زنده‌ی CF داخل EMBEDED_SETTINGS (سورس آپلودشده‌ی ورکر) embed
+// می‌شد — الگوی «credential in source» ماشه‌ی اسکنر CF شد و با گزارش abuse
+// اجرای ورکر بلاک شد (Task 48-51). از v0.8.12 سورس همیشه apiToken='' دارد؛
+// توکن واقعی در کلید KV «cfApiToken» (raw string، بدون JSON) نگه داشته می‌شود
+// و در نخستین init هر isolate اینجا خوانده و به globals تزریق می‌شود.
+// کش ۵ ثانیه‌ای = حداکثر یک خواندن KV اضافه در هر isolate (هم‌الگوی dataset).
+
+const API_TOKEN_KV_KEY = 'cfApiToken';
+const API_TOKEN_CACHE_TTL = 5_000; // ۵ ثانیه
+
+let apiTokenCache: { expiresAt: number } | null = null;
+
+/** ریست کش توکن بین تست‌ها */
+export function _resetApiTokenCacheForTest(): void {
+    apiTokenCache = null;
+}
+
+/**
+ * خواندن توکن CF از KV و تزریق به globals — failure-safe مطلق:
+ * هر خطای KV فقط log می‌شود و توکن فعلی دست‌نخورده می‌ماند؛ هرگز boot یا
+ * مسیر درخواست را نمی‌شکند. در worker.ts (بعد از init) و مسیر cron صدا زده
+ * می‌شود تا هر فیچر CF-API توکن تازه را ببیند.
+ */
+export async function loadApiToken(env: Env): Promise<void> {
+    if (apiTokenCache && Date.now() < apiTokenCache.expiresAt) return;
+
+    try {
+        const raw = await env.kv?.get(API_TOKEN_KV_KEY);
+        const token = typeof raw === 'string' ? raw.trim() : '';
+        if (token) {
+            setRuntimeApiToken(token);
+        }
+        apiTokenCache = { expiresAt: Date.now() + API_TOKEN_CACHE_TTL };
+    } catch (error) {
+        // KV در دسترس نیست؟ توکن قبلی می‌ماند — هیچ مسیری crash نمی‌کند
+        console.log(`[settings] cfApiToken read skipped (best-effort): ${safeError(error)}`);
+    }
+}
+
+/**
+ * تزریق فوری توکن تازه (بعد از /cftoken) — بدون انتظار برای انقضای کش.
+ * هم staticGlobals (برای init های بعدی) و هم globalSettings جاری آپدیت می‌شوند.
+ * هرگز throw نمی‌کند (globals ممکن است هنوز ساخته نشده باشند).
+ */
+export function applyApiToken(token: string): void {
+    try {
+        setRuntimeApiToken(token);
+    } catch {
+        // بدون EMBEDED_SETTINGS، globals هنوز وجود ندارد — بی‌خطر رد شو
+    }
+    apiTokenCache = { expiresAt: Date.now() + API_TOKEN_CACHE_TTL };
+}
+
+function setRuntimeApiToken(token: string): void {
+    getStaticGlobals().apiToken = token;
+    // init/initForScheduled از staticGlobals کپی می‌سازند — snapshot جاری هم تازه شود
+    if (globalSettings) globalSettings.apiToken = token;
+}
+
+/** وضعیت ماسک‌شده برای نمایش — فقط ۴ کاراکتر آخر؛ توکن کامل هرگز بازتاب نمی‌یابد */
+export function maskApiToken(token: string): string {
+    return token ? `****${token.slice(-4)}` : 'not configured';
 }
 
 /**

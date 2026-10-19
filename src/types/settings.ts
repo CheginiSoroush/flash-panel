@@ -97,6 +97,11 @@ export interface TelegramBot {
 export interface EmbededSettings {
     accID: string;
     accEmail: string;
+    /**
+     * v0.8.12 — در سورس آپلودی همیشه '' (no-credentials-in-source: توکن زنده‌ی
+     * داخل سورس ماشه‌ی اسکنر CF شد). توکن واقعی در KV کلید cfApiToken است و
+     * در نخستین init با loadApiToken به globals تزریق می‌شود.
+     */
     apiToken: string;
     /** نام اسکریپت ورکر در CF — تزریق‌شده موقع دیپلوی؛ نبودِ کلید = derive از mainDomain */
     scriptName?: string;

@@ -1,8 +1,9 @@
 import { authenticate } from '@auth';
 import { HttpStatus, respond, safeError } from '@common';
-import { getGlobals, initForScheduled } from '@settings';
+import { getGlobals, initForScheduled, loadApiToken } from '@settings';
 import { getUsageHistory, recordUsageSample } from '@settings/usage-history';
 import { resolveWorkerName } from './worker-name';
+import { CF_TOKEN_MISSING_ERROR } from './cf-auth';
 
 interface CfUsageResult {
     success: boolean;
@@ -105,6 +106,13 @@ function buildUsageError(attempts: GqlAttempt[]): string {
 
 export async function getCfWorkerUsage(): Promise<CfUsageResult> {
     const { accID, accEmail, apiToken } = getGlobals();
+
+    // v0.8.12 — بدون توکن هیچ تلاشی برای CF بی‌معناست؛ هم «صفرِ دروغین» ممنوع است
+    // و هم خطای 401 مبهم CF — پیام صادق و قابل‌اقدام برمی‌گردد
+    if (!apiToken) {
+        return { success: false, error: CF_TOKEN_MISSING_ERROR };
+    }
+
     // v0.8.3: قبلاً mainDomain.split('.')[0] بود که برای دامنه‌ی شخصی «fp» می‌داد
     // و فیلتر scriptName در GraphQL هیچ‌وقت match نمی‌شد (Panel requests همیشه ۰)
     const scriptName = resolveWorkerName();
@@ -175,6 +183,8 @@ export async function getCfWorkerUsage(): Promise<CfUsageResult> {
 export async function sampleUsageNow(env: Env): Promise<void> {
     try {
         initForScheduled(env);
+        // v0.8.12 — توکن CF از KV قبل از نمونه‌گیری (مسیر کرون)
+        await loadApiToken(env);
 
         const usage = await getCfWorkerUsage();
         if (usage.success) {

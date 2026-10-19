@@ -1,5 +1,5 @@
 import { safeError } from '@common';
-import { initForScheduled } from '@settings';
+import { initForScheduled, loadApiToken } from '@settings';
 import { getCfWorkerUsage } from '@api/usage';
 import { recordUsageSample } from '@settings/usage-history';
 import { getSubUsers, isSubUserExpired, sweepExpiredSubUsers, SubUser } from '@settings/sub-users';
@@ -279,6 +279,9 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
     // globals بدون Request — برای getCfWorkerUsage (فیلدهای استاتیک embeded)
     try {
         initForScheduled(env);
+        // v0.8.12 — توکن CF از KV قبل از usage/guard های CF-API در کرون
+        // (failure-safe — شکست خواندن توکن، کرون را نمی‌کشد)
+        await loadApiToken(env);
     } catch (error) {
         console.log(`automation: init failed — ${safeError(error)}`);
         return result;
