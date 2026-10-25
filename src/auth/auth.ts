@@ -31,20 +31,24 @@ export async function getPwd(env: Env): Promise<string | null> {
     return cachedPwd;
 }
 
-// ---------- محدودکننده نرخ لاگین (per-IP: حافظه سریع + قاطع سراسری KV) ----------
-// v0.8.13: شمارنده‌ی حافظه فقط برای isolate خودش معنا دارد — در تولید، CF درخواست‌های
+// ---------- محدودکننده نرخ لاگین (per-IP: حافظه سریع + شمارش سراسری KV) ----------
+// v0.8.14/15: شمارنده‌ی حافظه فقط برای isolate خودش معنا دارد — در تولید، CF درخواست‌های
 // یک IP را بین چند isolate پخش می‌کند و سقف ۵تایی عملاً per-isolate اعمال می‌شد.
-// لایه‌ی دوم: مارکر بلاک در KV — هر isolate که آستانه را رد کند مارکر را با TTL می‌نویسد
-// و همه‌ی isolateها قبل از پردازش لاگین آن را می‌خوانند (1 خواندن به‌ازای هر تلاش لاگین —
-// لاگین نادر است؛ نوشتن فقط در عبور از آستانه — رژیم نوشتار KV دست‌نخورده می‌ماند).
+// لایه‌ی دوم (سراسری): شمارنده‌ی strikeها در KV + مارکر بلاک — مستقل از isolate؛
+// بعد از مارکر، درخواست‌ها با 429 قبل از هر نوشتن برمی‌گردند → سقف نوشتن KV محفوظ.
 
 const LOGIN_ATTEMPTS_LIMIT = 5;
 const LOGIN_WINDOW_MS = 60_000;
-const LOGIN_BLOCK_TTL = 300;   // ثانیه — مارکر بلاک سراسری (حداقل مجاز KV: ۶۰)
+const LOGIN_BLOCK_TTL = 900;   // ثانیه — مارکر بلاک سراسری ۱۵دقیقه‌ای (سقف نوشتن KV را کنترل می‌کند)
+const LOGIN_FAILS_TTL = 60;    // ثانیه — شمارنده‌ی سراسری خطاها (هم‌پنجره‌ی memory)
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 
 function loginBlockKey(ip: string): string {
     return `loginBlock:${ip}`;
+}
+
+function loginFailsKey(ip: string): string {
+    return `loginFails:${ip}`;
 }
 
 async function isRateLimited(ip: string, env: Env): Promise<boolean> {
@@ -63,13 +67,10 @@ async function recordFailedLogin(ip: string, env: Env): Promise<void> {
     const now = Date.now();
     const entry = loginAttempts.get(ip);
 
-    let crossed = false;
     if (!entry || now > entry.resetAt) {
         loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
     } else {
         entry.count++;
-        // فقط در عبور از آستانه مارکر سراسری نوشته می‌شود — نه هر بار
-        crossed = entry.count === LOGIN_ATTEMPTS_LIMIT;
     }
 
     // پاکسازی دوره‌ای — جلوگیری از رشد بی‌نهایت Map
@@ -79,12 +80,20 @@ async function recordFailedLogin(ip: string, env: Env): Promise<void> {
         }
     }
 
-    if (crossed) {
-        try {
+    // شمارش سراسری strikeها — مستقل از isolate (هر خطا ۱ نوشتن تا بلاک؛
+    // بعد از مارکر، مسیر 429 قبل از اینجا برمی‌گردد → نوشتن متوقف می‌شود.
+    // سقف بدترین حالت: ~۶ نوشتن در هر پنجره‌ی بلاک ۱۵دقیقه‌ای ≈ ۵۷۶/روز — زیر سقف رایگان)
+    try {
+        const failsKey = loginFailsKey(ip);
+        const n = Number((await env.kv.get(failsKey)) ?? 0);
+        if (!Number.isFinite(n) || n + 1 >= LOGIN_ATTEMPTS_LIMIT) {
             await env.kv.put(loginBlockKey(ip), '1', { expirationTtl: LOGIN_BLOCK_TTL });
-        } catch {
-            // سقف/خرابی KV — حافظه‌ی همین isolate همچنان محافظت می‌کند
+            await env.kv.delete(failsKey);
+        } else {
+            await env.kv.put(failsKey, String(n + 1), { expirationTtl: LOGIN_FAILS_TTL });
         }
+    } catch {
+        // سقف/خرابی KV — لایه‌ی memory همچنان همین isolate را محافظت می‌کند
     }
 }
 
