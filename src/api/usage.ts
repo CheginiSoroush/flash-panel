@@ -199,7 +199,9 @@ export async function getUsage(request: Request, env: Env) {
     try {
         const auth = await authenticate(request, env);
         if (!auth) {
-            throw new Error('Unauthorized or expired session.');
+            // v0.8.13 — 401 صریح (نه 500): خطای احراز نباید داخل catch-all بیفتد
+            // هم‌الگوی getUsageHistoryEndpoint؛ 500 دروغین شمارش خطای سرور را خراب می‌کند
+            return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized or expired session.');
         }
 
         const usage = await getCfWorkerUsage();
