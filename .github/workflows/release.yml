@@ -23,10 +23,29 @@ jobs:
       - run: npm run test
       - run: npm run build
 
+      # نسخه‌ی صفحه‌ی لندینگ هیچ‌وقت کهنه نماند: در هر ریلیز، v0.x.y های
+      # index.html و version.json با نسخه‌ی همین تگ جایگزین می‌شوند.
+      # عمداً قبل از stage آینه اجرا می‌شود تا دو فایل نسخه هم‌راه mirror
+      # به main کامیت شوند (قبلاً فقط checkout محلی عوض می‌شد و repo
+      # روی نسخه کهنه می‌ماند — باگ لندینگ 0.8.10).
+      # صفحه هم در runtime از version.json می‌خواند (دو لایه محافظت).
+      # توجه: sed عمداً با الگوی [0-9] است — regex های JS داخل index.html
+      # با \d نوشته شده‌اند تا توسط این جایگزینی خراب نشوند.
+      - name: Inject release version into landing site
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+/v${VERSION}/g" site/index.html
+          printf '{\n  "version": "%s"\n}\n' "${VERSION}" > site/version.json
+          echo "Landing site version → v${VERSION}"
+
+      # release ها همیشه به نام خود کاربر منتشر شوند — GITHUB_TOKEN به‌عنوان
+      # github-actions[bot] منتشر می‌کرد؛ اگر secret یه PAT شخصی (RELEASE_PAT)
+      # باشد، نویسنده‌ی release خود کاربر می‌شود؛ وگرنه fallback به GITHUB_TOKEN
       - name: Create release with worker.js
         uses: softprops/action-gh-release@v2
         with:
           files: dist/worker.js
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
       # آینه‌ی دانلود برای به‌روزرسانی خودکار پنل:
       # worker.js به site/download/ commit می‌شود → gh-pages سرو می‌کند
@@ -38,11 +57,11 @@ jobs:
           cp dist/worker.js site/download/worker.js
           git config user.name "CheginiSoroush"
           git config user.email "lmsoroush@proton.me"
-          git add site/download/worker.js
+          git add site/download/worker.js site/index.html site/version.json
           if git diff --cached --quiet; then
             echo "Mirror unchanged — skipping commit"
           else
-            git commit -m "chore: publish worker.js mirror (${GITHUB_REF_NAME}) for panel auto-update"
+            git commit -m "chore: publish worker.js mirror (${GITHUB_REF_NAME}) for panel auto-update + landing version sync"
             # checkout تگ است → detached HEAD — باید HEAD:main پوش شود نه main؛
             # اگر main در این حین جلو رفته باشد، rebase و یک retry — وگرنه آینه عقب می‌ماند
             for i in 1 2 3; do
@@ -56,18 +75,6 @@ jobs:
               sleep 5
             done
           fi
-
-      # نسخه‌ی صفحه‌ی لندینگ هیچ‌وقت کهنه نماند: در هر ریلیز، v0.x.y های
-      # index.html و version.json با نسخه‌ی همین تگ جایگزین می‌شوند.
-      # صفحه هم در runtime از version.json می‌خواند (دو لایه محافظت).
-      # توجه: sed عمداً با الگوی [0-9] است — regex های JS داخل index.html
-      # با \d نوشته شده‌اند تا توسط این جایگزینی خراب نشوند.
-      - name: Inject release version into landing site
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          sed -i -E "s/v[0-9]+\.[0-9]+\.[0-9]+/v${VERSION}/g" site/index.html
-          printf '{\n  "version": "%s"\n}\n' "${VERSION}" > site/version.json
-          echo "Landing site version → v${VERSION}"
 
       # آینه‌ی gh-pages باید همین‌جا دیپلوی شود — پوشِ GITHUB_TOKEN هیچ ورک‌فلوی
       # دیگری را تریگر نمی‌کند (pages.yml هرگز روی mirror-commit ها فایر نشد
