@@ -26,14 +26,18 @@ jobs:
             dist/github-contribution-grid-snake.svg?palette=github-light
             dist/github-contribution-grid-snake-dark.svg?palette=github-dark
 
+      # انتشار با git خام — هویت کامیت همیشه خود کاربر، هرگز bot.
+      # (اکشن قبلی crazy-max ورودی username/email ندارد و بی‌صدا
+      #  به‌عنوان github-actions[bot] کامیت می‌کرد — ردپای هویتی ممنوع)
       - name: Publish to output branch
-        uses: crazy-max/ghaction-github-pages@v4
-        with:
-          target_branch: output
-          build_dir: dist
-          # هویت کامیت‌ها همیشه خود کاربر — هرگز bot
-          username: CheginiSoroush
-          email: lmsoroush@proton.me
-          commit_message: "chore: regenerate contribution snake"
+        run: |
+          cd dist
+          git init -q -b output
+          git config user.name "CheginiSoroush"
+          git config user.email "lmsoroush@proton.me"
+          git add -A
+          git commit -q -m "chore: regenerate contribution snake"
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -q --force origin output:output
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
