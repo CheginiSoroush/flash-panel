@@ -8,7 +8,7 @@
 
 [![Release](https://img.shields.io/github/v/release/CheginiSoroush/flash-panel?style=for-the-badge&logo=github&label=Release&color=f59e0b)](https://github.com/CheginiSoroush/flash-panel/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CheginiSoroush/flash-panel/ci.yml?branch=main&style=for-the-badge&logo=githubactions&label=CI&color=34d399)](https://github.com/CheginiSoroush/flash-panel/actions)
-[![Tests](https://img.shields.io/badge/Tests-470%20passing-34d399?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/actions)
+[![Tests](https://img.shields.io/badge/Tests-497%20passing-34d399?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/actions)
 [![Bundle](https://img.shields.io/badge/Bundle-139%20KB%20gzip-f59e0b?style=for-the-badge&logo=esbuild&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/blob/main/scripts/build.js)
 
 [![Platform](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#-چطور-یک-درخواست-جریان-مییابد)

@@ -71,3 +71,18 @@
 
 ??? question "Why sing-box throws error while importing subscription?"
     Flash Panel only supports sing-box 1.12.0 or higher
+
+??? question "Why do I get `429 Too Many Requests` when logging in?"
+    After **5 failed login attempts** from one IP, that IP is blocked for **15 minutes** (HTTP 429 with `Retry-After`). The guard is global and KV-backed, so it works no matter how Cloudflare routes your requests across isolates. Just wait ~15 minutes and log in with the correct credentials — there is deliberately no early-reset.
+
+??? question "Why should I keep the workers.dev subdomain disabled?"
+    The `*.workers.dev` domain is continuously crawled by automated scanners and abuse-report bots — it was the trigger of the abuse report that once got this panel blocked (error 1101). Since v0.8.12 the panel treats workers.dev as disabled-by-design (`enabled=false`, `previews=false`), ships a guard against accidental re-deploys there, and serves everything from your own custom domain. See [Security & Recovery](security.md).
+
+??? question "Is it risky to download large files through the configs?"
+    A single WebSocket connection carries the whole download — it counts as **1 request** with near-zero CPU, so occasional multi-GB downloads are normal personal-scale usage. What stands out is sustained 24/7 saturation or multi-threaded download managers (each thread opens its own tunnel). Prefer single-connection downloads. The destination sites only see the proxy IP, not your Cloudflare account. Full analysis in [Security & Recovery](security.md#traffic-volume-what-cloudflare-actually-sees).
+
+??? question "How does the panel update itself?"
+    The update engine fetches the latest `worker.js` from three mirrors in order — GitHub Releases, GitHub Pages (`/download/worker.js`), then jsDelivr — preserves your embedded settings and KV bindings, and deploys with the cron schedule intact. CI refreshes the mirrors on every release, and `version.json` on the Pages site always states the latest published version.
+
+??? question "Cloudflare sent me an abuse report — what do I do?"
+    Don't panic: these are usually automated reports against a URL, not verdicts. Identify the reported URL — if it is your `workers.dev` address, it is already disabled by design. Verify your panel still answers on the custom domain, then reply to `abusereply@cloudflare.com` with the report ID in the subject and the facts (subdomain permanently disabled, personal-use panel on custom domain only). If execution is actually blocked (error 1101), the full recovery procedure — delete + recreate, route restoration, cron re-apply — is documented step by step in [Security & Recovery](security.md#abuse-report-playbook).

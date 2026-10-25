@@ -4,11 +4,11 @@
 
 <img src="assets/readme/hero.svg" alt="Flash Panel emblem — animated lightning, rotating rings, orbiting particles" width="720" />
 
-<a href="https://github.com/CheginiSoroush/flash-panel"><img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=22&duration=2600&pause=800&color=F59E0B&center=true&vCenter=true&width=820&height=70&lines=Fast+as+a+flash.+Light+as+a+feather.;VLESS+%C2%B7+TROJAN+%C2%B7+WARP+on+Cloudflare+Workers;Reverse-engineered+for+the+edge;470+tests.+Zero+servers.+100%25+serverless.;One+developer.+Zero+excuses." alt="Flash Panel in one line" /></a>
+<a href="https://github.com/CheginiSoroush/flash-panel"><img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=22&duration=2600&pause=800&color=F59E0B&center=true&vCenter=true&width=820&height=70&lines=Fast+as+a+flash.+Light+as+a+feather.;VLESS+%C2%B7+TROJAN+%C2%B7+WARP+on+Cloudflare+Workers;Reverse-engineered+for+the+edge;497+tests.+Zero+servers.+100%25+serverless.;One+developer.+Zero+excuses." alt="Flash Panel in one line" /></a>
 
 [![Release](https://img.shields.io/github/v/release/CheginiSoroush/flash-panel?style=for-the-badge&logo=github&label=Release&color=f59e0b)](https://github.com/CheginiSoroush/flash-panel/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CheginiSoroush/flash-panel/ci.yml?branch=main&style=for-the-badge&logo=githubactions&label=CI&color=34d399)](https://github.com/CheginiSoroush/flash-panel/actions)
-[![Tests](https://img.shields.io/badge/Tests-470%20passing-34d399?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/actions)
+[![Tests](https://img.shields.io/badge/Tests-497%20passing-34d399?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/actions)
 [![Bundle](https://img.shields.io/badge/Bundle-139%20KB%20gzip-f59e0b?style=for-the-badge&logo=esbuild&logoColor=white)](https://github.com/CheginiSoroush/flash-panel/blob/main/scripts/build.js)
 
 [![Platform](https://img.shields.io/badge/Platform-Cloudflare%20Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white)](#-how-a-request-flows)
@@ -28,7 +28,7 @@
 
 | | | | |
 |:---:|:---:|:---:|:---:|
-| **$0** forever | **0** servers | **470** unit tests | **139 KB** gzipped |
+| **$0** forever | **0** servers | **497** unit tests | **139 KB** gzipped |
 | **3** config cores | **205** live configs | **6/6** field-test layers | **100%** serverless |
 | **ETag** instant 304s | **gzip** sub responses | **3-mirror** self-update | **24/7** self-tuning |
 
@@ -130,7 +130,7 @@ Set the cron trigger once (`'0 * * * *'` in `wrangler.jsonc`) and the panel take
 - 🖼️ **QR memoization** — the QR PNG encoder (RGBA loop + deflate) runs once per unique config link; the panel's QR modal re-opens now cost zero CPU. Browser cache headers (`max-age=3600`) prevent re-fetching altogether
 - 🔧 **Micro-hygiene** — module-level `TextEncoder` for ETag hashing, header snapshots stored with the cache instead of per-request rebuilds
 
-All of it is memory-bounded (LRU + size caps) and covered by unit tests — **470/470 green across 32 files**.
+All of it is memory-bounded (LRU + size caps) and covered by unit tests — **497/497 green across 34 files**.
 
 </details>
 
@@ -195,7 +195,7 @@ The one-click **Update panel** button fetches the latest `worker.js` and redeplo
 <details>
 <summary><b>🧪 Engineering — built like production software</b></summary>
 
-- **470 unit tests** across 32 files — protocol parsers, settings validators, KV migrations, sub-users, telemetry, tuners, guards, update-check, telegram resilience, KV-degrade harnesses
+- **497 unit tests** across 34 files — protocol parsers, settings validators, KV migrations, sub-users, telemetry, tuners, guards, update-check, telegram resilience, KV-degrade harnesses
 - **CI on every push** — typecheck → tests → build → **bundle gate** (gzip ≤ 150 KB, ~4.5% of the Workers free-plan limit)
 - **Automated releases** — tag → build → publish → Pages mirror
 - **Self-update from panel** — zero-downtime upgrades via the 3-mirror engine
@@ -228,7 +228,7 @@ The one-click **Update panel** button fetches the latest `worker.js` and redeplo
 | Runs on | **free Cloudflare Workers account** | a VPS you rent, patch & babysit |
 | Monthly cost | **$0** — 100k requests/day included | $3–15, every month |
 | Protocol core | **rebuilt from scratch**, strict TypeScript | inherited code, patch on patch |
-| Automated tests | **470 passing**, CI-gated | usually none |
+| Automated tests | **497 passing**, CI-gated | usually none |
 | Self-update under censorship | **3 mirrors + edge fallback** | one GitHub URL |
 | KV-quota death | **degrades & self-heals** | crashes or hides it |
 | Telemetry & self-tuning | **closed-loop, per-ASN** | none — flies blind |

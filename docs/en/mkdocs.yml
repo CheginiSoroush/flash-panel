@@ -99,4 +99,5 @@ nav:
     - DoH: usage/doh.md
     - My IP: usage/my-ip.md
     - Supported Clients: usage/supported-clients.md
+  - Security & Recovery: security.md
   - FAQ: faq.md
