@@ -31,32 +31,59 @@ export async function getPwd(env: Env): Promise<string | null> {
     return cachedPwd;
 }
 
-// ---------- محدودکننده نرخ لاگین (per-IP در حافظه isolate) ----------
+// ---------- محدودکننده نرخ لاگین (per-IP: حافظه سریع + قاطع سراسری KV) ----------
+// v0.8.13: شمارنده‌ی حافظه فقط برای isolate خودش معنا دارد — در تولید، CF درخواست‌های
+// یک IP را بین چند isolate پخش می‌کند و سقف ۵تایی عملاً per-isolate اعمال می‌شد.
+// لایه‌ی دوم: مارکر بلاک در KV — هر isolate که آستانه را رد کند مارکر را با TTL می‌نویسد
+// و همه‌ی isolateها قبل از پردازش لاگین آن را می‌خوانند (1 خواندن به‌ازای هر تلاش لاگین —
+// لاگین نادر است؛ نوشتن فقط در عبور از آستانه — رژیم نوشتار KV دست‌نخورده می‌ماند).
 
 const LOGIN_ATTEMPTS_LIMIT = 5;
 const LOGIN_WINDOW_MS = 60_000;
+const LOGIN_BLOCK_TTL = 300;   // ثانیه — مارکر بلاک سراسری (حداقل مجاز KV: ۶۰)
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 
-function isRateLimited(ip: string): boolean {
-    const entry = loginAttempts.get(ip);
-    if (!entry || Date.now() > entry.resetAt) return false;
-    return entry.count >= LOGIN_ATTEMPTS_LIMIT;
+function loginBlockKey(ip: string): string {
+    return `loginBlock:${ip}`;
 }
 
-function recordFailedLogin(ip: string) {
+async function isRateLimited(ip: string, env: Env): Promise<boolean> {
+    // مسیر سریع — حافظه‌ی isolate (صفر KV)
+    const entry = loginAttempts.get(ip);
+    if (entry && Date.now() <= entry.resetAt && entry.count >= LOGIN_ATTEMPTS_LIMIT) return true;
+    // قاطع سراسری — مارکر KV (failure-safe: خرابی KV → fail-open مثل بقیه‌ی پنل)
+    try {
+        return (await env.kv.get(loginBlockKey(ip))) === '1';
+    } catch {
+        return false;
+    }
+}
+
+async function recordFailedLogin(ip: string, env: Env): Promise<void> {
     const now = Date.now();
     const entry = loginAttempts.get(ip);
 
+    let crossed = false;
     if (!entry || now > entry.resetAt) {
         loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
     } else {
         entry.count++;
+        // فقط در عبور از آستانه مارکر سراسری نوشته می‌شود — نه هر بار
+        crossed = entry.count === LOGIN_ATTEMPTS_LIMIT;
     }
 
     // پاکسازی دوره‌ای — جلوگیری از رشد بی‌نهایت Map
     if (loginAttempts.size > 1000) {
         for (const [key, e] of loginAttempts) {
             if (now > e.resetAt) loginAttempts.delete(key);
+        }
+    }
+
+    if (crossed) {
+        try {
+            await env.kv.put(loginBlockKey(ip), '1', { expirationTtl: LOGIN_BLOCK_TTL });
+        } catch {
+            // سقف/خرابی KV — حافظه‌ی همین isolate همچنان محافظت می‌کند
         }
     }
 }
@@ -93,7 +120,7 @@ export async function generateJWTToken(request: Request, env: Env): Promise<Resp
 
     // محدودسازی brute-force — ۵ تلاش ناموفق در دقیقه برای هر IP
     const clientIP = request.headers.get('CF-Connecting-IP') || 'unknown';
-    if (isRateLimited(clientIP)) {
+    if (await isRateLimited(clientIP, env)) {
 return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try again later.');    }
 
     const username = typeof data.username === 'string' ? data.username.toLowerCase() : '';
@@ -103,7 +130,7 @@ return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try agai
 
     // بدون پسورد ست‌شده نمی‌شه لاگین کرد (رفتار قبلی حفظ شده)
     if (!savedPass || username !== accEmail || !constantTimeEqual(password, savedPass)) {
-        recordFailedLogin(clientIP);
+        await recordFailedLogin(clientIP, env);
         return respond(false, HttpStatus.UNAUTHORIZED, 'Wrong Credentials.');
     }
 
@@ -114,7 +141,7 @@ return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try agai
         const code = typeof data.totp === 'string' ? data.totp : '';
 
         if (!totpSecret || !code) {
-            recordFailedLogin(clientIP);
+            await recordFailedLogin(clientIP, env);
             return respond(false, HttpStatus.UNAUTHORIZED, '2FA verification code required.');
         }
 
@@ -125,7 +152,7 @@ return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try agai
         const lastUsed = lastUsedRaw ? Number(lastUsedRaw) : 0;
 
         if (!ok || counter === null || counter <= lastUsed) {
-            recordFailedLogin(clientIP);
+            await recordFailedLogin(clientIP, env);
             return respond(false, HttpStatus.UNAUTHORIZED, 'Invalid 2FA code.');
         }
 
