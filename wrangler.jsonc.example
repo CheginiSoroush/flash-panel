@@ -2,17 +2,25 @@
     "name": "flash-panel",
     "main": "dist/worker.js",
     "account_id": "YOUR_ACCOUNT_ID",
-    "compatibility_date": "2025-06-01",
+    "compatibility_date": "2026-10-25",
     "compatibility_flags": ["nodejs_compat"],
     "workers_dev": false,
     "observability": { "enabled": true },
     "kv_namespaces": [
         { "binding": "kv", "id": "YOUR_KV_NAMESPACE_ID" }
     ],
-    // موتور اتوماسیون — پیشنهاد: ساعتی ('0 * * * *').
-    // هر ساعت: نمونه‌گیری مصرف + sweep انقضای کاربران اشتراک + هشدار مصرف ≥۸۰٪
+    // Workers Route روی zone — الگوی اثبات‌شده‌ی این اکانت (route + رکورد AAAA 100::).
+    // ⚠️ دقت: Custom Domain (custom_domain: true) روی این اکانت تست شد و سالم بودن
+    // آمد اما در edge رفتار ناپایدار داشت (پاسخ‌های 1101/522 متناوب بدون invocation)؛
+    // تا اصلاح سمت کلادفلر، route ساده الگوی پایدار است. wrangler با هر deploy
+    // اطمینان می‌دهد route وجود دارد (idempotent) — پرمیشن لازم: Workers Routes Write.
+    "routes": [
+        { "pattern": "s2.imsoroush.top/*", "zone_name": "imsoroush.top" }
+    ],
+    // موتور اتوماسیون — هر ۳۰ دقیقه (مطابق ورکر زنده):
+    // نمونه‌گیری مصرف + sweep انقضای کاربران اشتراک + هشدار مصرف ≥۸۰٪
     // + خلاصه‌ی روزانه (digest) در تلگرام — گارد KV جلوی notify تکراری را می‌گیرد.
     "triggers": {
-        "crons": ["0 * * * *"]
+        "crons": ["*/30 * * * *"]
     }
 }
