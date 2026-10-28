@@ -26,13 +26,28 @@ cd "$(dirname "$0")/.."
 
 export CF_DOMAIN_VERIFY="https://s2.imsoroush.top"
 
-echo "▸ [1/5] install + check + build"
+echo "▸ [1/6] install + check + build"
 npm ci --legacy-peer-deps
 npm run check
 npm run build
 
-echo "▸ [2/5] inject EMBEDED_SETTINGS (fail-closed)"
+echo "▸ [2/6] inject EMBEDED_SETTINGS (fail-closed)"
 node deploy/inject-embed.mjs
+
+echo "▸ [3/6] generate wrangler.jsonc (from example — gitignored، فقط برای این run)"
+# شناسه‌ی KV با API از روی title پیدا می‌شود — هیچ ID ای در سورس نیست
+KV_ID="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+    "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces?per_page=100" \
+  | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);if(!j.success)throw new Error('KV list failed: '+JSON.stringify(j.errors||[]));const n=(j.result||[]).find(n=>n.title==='flash-panel-kv');if(!n)throw new Error('KV namespace flash-panel-kv not found');process.stdout.write(n.id)})")"
+node - "$CLOUDFLARE_ACCOUNT_ID" "$KV_ID" <<'EOF'
+const fs = require('fs');
+let c = fs.readFileSync('wrangler.jsonc.example', 'utf8');
+c = c.replaceAll('"YOUR_ACCOUNT_ID"', JSON.stringify(process.argv[2]));
+c = c.replaceAll('"YOUR_KV_NAMESPACE_ID"', JSON.stringify(process.argv[3]));
+if (c.includes('YOUR_')) throw new Error('unresolved placeholder in generated wrangler.jsonc');
+fs.writeFileSync('wrangler.jsonc', c);
+console.log('  wrangler.jsonc generated (account_id + KV id resolved)');
+EOF
 
 deploy() {
     npx wrangler deploy dist/worker-deploy.js
@@ -50,10 +65,10 @@ verify() {
     return 1
 }
 
-echo "▸ [3/5] deploy via wrangler"
+echo "▸ [4/6] deploy via wrangler"
 deploy
 
-echo "▸ [4/5] verify live (securePath masked)"
+echo "▸ [5/6] verify live (securePath masked)"
 sleep 10
 if verify; then
     echo "✅ deploy سالم و زنده است."
@@ -61,7 +76,7 @@ if verify; then
 fi
 
 # ---------- rescue: امضای enforcement پلتفرم (صفر invocation + 1101) ----------
-echo "⚠️  [5/5] وریفای شکست خورد → rescue: delete + recreate (playbook بازیابی؛ KV دست‌نخورده می‌ماند)"
+echo "⚠️  [6/6] وریفای شکست خورد → rescue: delete + recreate (playbook بازیابی؛ KV دست‌نخورده می‌ماند)"
 curl -sS -X DELETE \
     "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/flash-panel" \
     -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | head -c 200; echo
