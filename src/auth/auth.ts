@@ -1,5 +1,5 @@
 import { HttpStatus, respond } from '@common';
-import { SignJWT, jwtVerify } from 'jose';
+import { signJwt, verifyJwt } from './jwt';
 import { getGlobals } from '@settings';
 import { verifyTotp } from './totp';
 
@@ -176,13 +176,9 @@ return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try agai
         secretKeyLoaded = true;
     }
 
-    const secret = new TextEncoder().encode(secretKey);
+    // v0.8.16 — JWT مینیمال HS256 با WebCrypto (jose حذف شد)
     const { accID } = getGlobals();
-    const jwtToken = await new SignJWT({ id: accID })
-        .setProtectedHeader({ alg: 'HS256' })
-        .setIssuedAt()
-        .setExpirationTime('24h')
-        .sign(secret);
+    const jwtToken = await signJwt({ id: accID }, secretKey, 24 * 60 * 60);
 
     // لاگین موفق — شمارنده IP پاک بشه
     loginAttempts.delete(clientIP);
@@ -229,15 +225,14 @@ export async function authenticate(request: Request, env: Env): Promise<boolean>
             return false;
         }
 
-        const secret = new TextEncoder().encode(secretKey);
         const cookie = request.headers.get('Cookie')?.match(/(^|;\s*)jwtToken=([^;]*)/);
         const token = cookie ? cookie[2] : null;
         if (!token) {
             return false;
         }
 
-        await jwtVerify(token, secret);
-        return true;
+        // v0.8.16 — وریفای HS256 بومی (معادل jwtVerify — منقضی/دستکاری‌شده → false)
+        return (await verifyJwt(token, secretKey)) !== null;
     } catch (error) {
         return false;
     }

@@ -11,15 +11,16 @@ import { fallback, hardenResponse, robotsResponse } from '@handlers/utils';
 import { handleWebsocket } from '@handlers/websocket';
 import { recordEdgeSample } from '@settings/edge-telemetry';
 import { runScheduledAutomation } from '@api/automation';
-import { init, getGlobals, loadApiToken } from '@settings';
+import { init, getGlobals } from '@settings';
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext) {
         try {
             init(request, env);
-            // v0.8.12 — توکن CF از KV (کلید cfApiToken) قبل از هر فیچر CF-API؛
-            // کش ۵ ثانیه‌ای دارد و failure-safe است (هرگز مسیر درخواست را نمی‌شکند)
-            await loadApiToken(env);
+            // v0.8.16 — توکن CF دیگر در fetch eager لود نمی‌شود (صفر KV-read روی
+            // WS-handshake / decoy / sub / login). مسیرهایی که واقعاً به CF-API
+            // نیاز دارند (panel API / telegram / usage / cron) خودشون loadApiToken
+            // را lazy صدا می‌زنند — مصرف KV فقط جایی که لازم است.
 
             // Upgrade باید case-insensitive باشه (RFC 6455)
             if ((request.headers.get('Upgrade') || '').toLowerCase() === 'websocket') {
@@ -92,7 +93,8 @@ export default {
      * Cron trigger — موتور اتوماسیون (نمونه‌گیری مصرف + Auto-Tune ProxyIP +
      * sweep انقضا + هشدار + digest).
      *
-     * زمان‌بندی هر ۳۰ دقیقه در metadata دیپلوی ست می‌شود (rescue-panel-update)؛
+     * زمان‌بندی ساعتی (0 * * * *) از v0.8.16 در metadata دیپلوی ست می‌شود
+     * (rescue-panel-update)؛
      * همه‌ی مراحل best-effort اند و گارد روزانه در KV جلوی notify تکراری را می‌گیرد؛
      * Auto-Tune گارد ۶ ساعته دارد و sweep/digest گارد روزانه.
      */

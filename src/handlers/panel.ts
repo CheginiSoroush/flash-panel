@@ -5,6 +5,7 @@ import { fetchWarpAccounts } from '@api/warp';
 import { deployWorkers, deleteWorker } from '@api/workers';
 import { getUpdateCheckEndpoint } from '@api/update-check';
 import { getEdgeTelemetryEndpoint } from '@settings/edge-telemetry';
+import { loadApiToken } from '@settings';
 import { resetPassword, logout, authenticate, invalidateTotpCache } from '@auth';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotp } from '@auth/totp';
 import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
@@ -52,6 +53,12 @@ export async function handlePanel(request: Request, env: Env): Promise<Response>
     const { pathname } = getGlobals();
     const parts = pathname.split('/');
     const path = parts.slice(2).join('/');
+
+    // v0.8.16 — توکن CF فقط برای مسیرهای API پنل lazy لود می‌شود (نه رندر HTML)؛
+    // خودِ usage و cron هم جداگانه لود می‌کنند
+    if (path !== 'panel') {
+        await loadApiToken(env);
+    }
 
     switch (path) {
         case 'panel':
