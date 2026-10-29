@@ -24,7 +24,7 @@ cd "$(dirname "$0")/.."
 : "${CLOUDFLARE_ACCOUNT_ID:?❌ secret CLOUDFLARE_ACCOUNT_ID تنظیم نشده}"
 : "${PANEL_EMBED_JSON:?❌ secret PANEL_EMBED_JSON تنظیم نشده — دیپلوی بدون هویت پنل ممنوع}"
 
-export CF_DOMAIN_VERIFY="https://s2.imsoroush.top"
+export CF_DOMAIN_VERIFY="https://v1.imsoroush.top"
 
 echo "▸ [1/6] install + check + build"
 npm ci --legacy-peer-deps

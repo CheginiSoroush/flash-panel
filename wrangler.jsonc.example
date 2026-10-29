@@ -15,7 +15,7 @@
     // تا اصلاح سمت کلادفلر، route ساده الگوی پایدار است. wrangler با هر deploy
     // اطمینان می‌دهد route وجود دارد (idempotent) — پرمیشن لازم: Workers Routes Write.
     "routes": [
-        { "pattern": "s2.imsoroush.top/*", "zone_name": "imsoroush.top" }
+        { "pattern": "v1.imsoroush.top/*", "zone_name": "imsoroush.top" }
     ],
     // موتور اتوماسیون — هر ۳۰ دقیقه (مطابق ورکر زنده):
     // نمونه‌گیری مصرف + sweep انقضای کاربران اشتراک + هشدار مصرف ≥۸۰٪
