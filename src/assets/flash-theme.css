@@ -25,7 +25,7 @@
 /* ---------- Base ---------- */
 body {
     background: var(--color-bg-main);
-    font-family: 'Vazirmatn', 'Ubuntu', system-ui, sans-serif;
+    font-family: 'Vazirmatn', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
 }
 

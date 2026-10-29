@@ -1,6 +1,6 @@
 {
     "name": "flash-panel",
-    "version": "0.8.15",
+    "version": "0.8.16",
     "author": "CheginiSoroush <lmsoroush@proton.me>",
     "homepage": "https://github.com/CheginiSoroush/flash-panel",
     "license": "GPL-3.0",
@@ -25,7 +25,6 @@
     },
     "dependencies": {
         "jose": "^6.2.3",
-        "jszip": "^3.10.1",
         "qrcode-generator": "^2.0.4"
     }
 }

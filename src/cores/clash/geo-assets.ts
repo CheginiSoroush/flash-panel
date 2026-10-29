@@ -34,39 +34,39 @@ export function getGeoAssets(): GeoAsset[] {
             type: 'block',
             format: 'text',
             geosite: 'malware',
-            geositeURL: 'https://raw.githubusercontent.com/Chocolate4U/Iran-clash-rules/release/malware.txt',
+            geositeURL: 'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-clash-rules@release/malware.txt',
             geoip: 'malware-cidr',
-            geoipURL: 'https://raw.githubusercontent.com/Chocolate4U/Iran-clash-rules/release/malware-ip.txt',
+            geoipURL: 'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-clash-rules@release/malware-ip.txt',
         },
         {
             rule: blockPhishing,
             type: 'block',
             format: 'text',
             geosite: 'phishing',
-            geositeURL: 'https://raw.githubusercontent.com/Chocolate4U/Iran-clash-rules/release/phishing.txt',
+            geositeURL: 'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-clash-rules@release/phishing.txt',
             geoip: 'phishing-cidr',
-            geoipURL: 'https://raw.githubusercontent.com/Chocolate4U/Iran-clash-rules/release/phishing-ip.txt',
+            geoipURL: 'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-clash-rules@release/phishing-ip.txt',
         },
         {
             rule: blockCryptominers,
             type: 'block',
             format: 'text',
             geosite: 'cryptominers',
-            geositeURL: 'https://raw.githubusercontent.com/Chocolate4U/Iran-clash-rules/release/cryptominers.txt'
+            geositeURL: 'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-clash-rules@release/cryptominers.txt'
         },
         {
             rule: blockAds,
             type: 'block',
             format: 'text',
             geosite: 'category-ads-all',
-            geositeURL: 'https://raw.githubusercontent.com/Chocolate4U/Iran-clash-rules/release/category-ads-all.txt'
+            geositeURL: 'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-clash-rules@release/category-ads-all.txt'
         },
         {
             rule: blockPorn,
             type: 'block',
             format: 'text',
             geosite: 'nsfw',
-            geositeURL: 'https://raw.githubusercontent.com/Chocolate4U/Iran-clash-rules/release/nsfw.txt',
+            geositeURL: 'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-clash-rules@release/nsfw.txt',
         },
         {
             rule: bypassIran,
@@ -75,8 +75,8 @@ export function getGeoAssets(): GeoAsset[] {
             format: 'text',
             geosite: 'ir',
             geoip: 'ir-cidr',
-            geositeURL: 'https://raw.githubusercontent.com/Chocolate4U/Iran-clash-rules/release/ir.txt',
-            geoipURL: 'https://raw.githubusercontent.com/Chocolate4U/Iran-clash-rules/release/ircidr.txt'
+            geositeURL: 'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-clash-rules@release/ir.txt',
+            geoipURL: 'https://cdn.jsdelivr.net/gh/Chocolate4U/Iran-clash-rules@release/ircidr.txt'
         },
         {
             rule: bypassChina,

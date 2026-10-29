@@ -17,7 +17,7 @@ const [
 
 getUsage();
 initPanel();
-fetchIPInfo();
+initIPInfo();
 initTotp();
 loadSubUsers();
 
@@ -295,17 +295,38 @@ async function getIpDetails(ip) {
     }
 }
 
+/** کش سشن IP-info (بهینه‌سازی v0.8.16): در هر لود پنل، ۲ درخواست خارجی
+ * مرورگر (geojs + icanhazip) + ۲ درخواست ./panel/my-ip انجام می‌شد؛ حالا
+ * نتیجه ۱۰ دقیقه در sessionStorage می‌ماند و رفرش دستی همیشه شبکه می‌رود. */
+const IP_INFO_TTL = 10 * 60 * 1000;
+
+function renderIPInfo(cache, ip = '-', country = '-', countryCode = '-', city = '-', isp = '-', cfIP) {
+    const flag = countryCode !== '-' ? String.fromCodePoint(...[...countryCode].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
+    const updateContent = (id, content) => document.getElementById(id).textContent = content;
+    updateContent(cfIP ? 'cf-ip' : 'ip', ip);
+    updateContent(cfIP ? 'cf-country' : 'country', `${flag} ${country}`);
+    updateContent(cfIP ? 'cf-city' : 'city', city);
+    updateContent(cfIP ? 'cf-isp' : 'isp', isp);
+    if (cache) cache.push([ip, country, countryCode, city, isp, cfIP]);
+}
+
+function initIPInfo() {
+    try {
+        const cached = JSON.parse(sessionStorage.getItem('ip-info') || 'null');
+        if (cached && Array.isArray(cached.renders) && Date.now() - cached.at < IP_INFO_TTL) {
+            cached.renders.forEach(r => renderIPInfo(null, ...r));
+            return;
+        }
+    } catch { /* کش خراب — شبکه می‌رویم */ }
+    fetchIPInfo();
+}
+
 async function fetchIPInfo() {
     const icons = startWaiting(null, 'refresh-geo-location', '');
+    const cache = [];
 
-    const updateUI = (ip = '-', country = '-', countryCode = '-', city = '-', isp = '-', cfIP) => {
-        const flag = countryCode !== '-' ? String.fromCodePoint(...[...countryCode].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
-        const updateContent = (id, content) => document.getElementById(id).textContent = content;
-        updateContent(cfIP ? 'cf-ip' : 'ip', ip);
-        updateContent(cfIP ? 'cf-country' : 'country', `${flag} ${country}`);
-        updateContent(cfIP ? 'cf-city' : 'city', city);
-        updateContent(cfIP ? 'cf-isp' : 'isp', isp);
-    };
+    const updateUI = (ip, country, countryCode, city, isp, cfIP) =>
+        renderIPInfo(cache, ip, country, countryCode, city, isp, cfIP);
 
     const nocache = Date.now();
     const othersPromise = fetch(`https://ipv4.geojs.io/v1/ip.json?nocache=${nocache}`, { cache: 'no-store' })
@@ -330,6 +351,10 @@ async function fetchIPInfo() {
     });
 
     stopWaiting(icons);
+
+    if (cache.length) {
+        try { sessionStorage.setItem('ip-info', JSON.stringify({ at: Date.now(), renders: cache })); } catch { /* ignore */ }
+    }
 }
 
 function generateSubUrl(type, core, tag) {

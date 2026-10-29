@@ -1,6 +1,6 @@
 import { HttpStatus, respond, safeError } from '@common';
 import { getSettings, getWarpAccounts } from '@settings';
-import JSZip from 'jszip';
+import { MiniZip } from './mini-zip';
 
 export async function getWireguardConfigs(isPro: boolean): Promise<Response> {
     try {
@@ -13,7 +13,7 @@ export async function getWireguardConfigs(isPro: boolean): Promise<Response> {
             amneziaNoiseSizeMax
         } = getSettings();
 
-        const zip = new JSZip();
+        const zip = new MiniZip();
 
         warpEndpoints?.forEach((endpoint, index) => {
             const conf = [
@@ -41,14 +41,14 @@ export async function getWireguardConfigs(isPro: boolean): Promise<Response> {
                 'PersistentKeepalive = 25'
             ].join('\n');
 
-            zip.file(`${_project_}-Warp-${index + 1}.conf`, conf);
+            zip.add(`${_project_}-Warp-${index + 1}.conf`, conf);
         });
 
-        const zipBlob = await zip.generateAsync({ type: 'blob' });
-        const arrayBuffer = await zipBlob.arrayBuffer();
+        // ZIP فقط-STORE با MiniZip — بدون jszip (~۹۵KB سبک‌تر، بهینه‌سازی v0.8.16)
+        const zipBytes = zip.build();
 
         const fileName = isPro ? 'pro-amnezia' : 'wireguard';
-        return new Response(arrayBuffer, {
+        return new Response(zipBytes, {
             headers: {
                 'Content-Type': 'application/zip',
                 'Content-Disposition': `attachment; filename=${_project_SM_}-warp-${fileName}-conf.zip`,
