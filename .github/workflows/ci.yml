@@ -33,12 +33,13 @@ jobs:
           node -e "
             const fs = require('fs');
             const info = JSON.parse(fs.readFileSync('dist/build-info.json', 'utf8'));
-            const gzip = Number(info.gzipKb);
-            const limit = 300; // v0.8.16: فونت‌ها عمداً inline شدند (پنل self-contained — صفر درخواست فونت خارجی در شبکه‌های فیلترشده) → سقف 150→300KB؛ هنوز فقط ~۱۰٪ سقف Free کلادفلر (3MB)
+            const gzip = Number(info.codeGzipKb ?? info.gzipKb); // فقط کد ورکر — embed فونت‌های self-contained عمدی است (v0.8.16)
+            const limit = 150; // بودجه‌ی کد خالص ورکر؛ حجم کل (با فونت‌های inline) فقط در summary گزارش می‌شود
             const pct = ((gzip / (info.limits?.freeKb ?? 3072)) * 100).toFixed(1);
             const line = '| metric | value |\n|---|---|\n' +
               '| version | ' + info.version + ' |\n' +
               '| gzip | ' + gzip + ' KB |\n' +
+              '| total gzip (incl. self-contained fonts) | ' + (info.gzipKb ?? '?') + ' KB |\n' +
               '| raw | ' + info.rawKb + ' KB |\n' +
               '| free-plan usage | ' + pct + '% |\n' +
               '| gate (gzip ≤ ' + limit + ' KB) | ' + (gzip <= limit ? 'PASS ✅' : 'FAIL ❌') + ' |';

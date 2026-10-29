@@ -134,6 +134,9 @@ async function buildWorker() {
     const buildInfo = {
         version: pkg.version,
         gzipKb: Number(gzipSync(worker, { level: 9 }).length / 1024).toFixed(1),
+        // فقط کد ورکر (بدون embed فونت/HTML) — گارد CI روی همین می‌گذرد؛
+        // فونت‌های self-contained عمداً در embeds هستند (v0.8.16)
+        codeGzipKb: Number(gzipSync(Buffer.from(script, 'utf8'), { level: 9 }).length / 1024).toFixed(1),
         rawKb: Number(Buffer.byteLength(worker, 'utf8') / 1024).toFixed(1),
         limitFreeKb: SIZE_LIMIT_FREE / 1024,
         limitPaidKb: SIZE_LIMIT_PAID / 1024,
