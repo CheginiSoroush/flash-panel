@@ -34,7 +34,7 @@ jobs:
             const fs = require('fs');
             const info = JSON.parse(fs.readFileSync('dist/build-info.json', 'utf8'));
             const gzip = Number(info.gzipKb);
-            const limit = 150; // هدف نقشه راه — سقف Free کلادفلر 3MB است
+            const limit = 300; // v0.8.16: فونت‌ها عمداً inline شدند (پنل self-contained — صفر درخواست فونت خارجی در شبکه‌های فیلترشده) → سقف 150→300KB؛ هنوز فقط ~۱۰٪ سقف Free کلادفلر (3MB)
             const pct = ((gzip / (info.limits?.freeKb ?? 3072)) * 100).toFixed(1);
             const line = '| metric | value |\n|---|---|\n' +
               '| version | ' + info.version + ' |\n' +
