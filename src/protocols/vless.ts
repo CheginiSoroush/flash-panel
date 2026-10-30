@@ -11,6 +11,7 @@ import { attachWsGuardian, WsGuardianConfig } from './ws-guardian';
 import { beginWsMetrics, endWsMetrics } from './ws-metrics';
 import { getUUIDBytes, parseVlHeader } from './parsers';
 import { recordEdgeSample } from '@settings/edge-telemetry';
+import { resolveDnsWire } from '@handlers/doh';
 
 // در حالت دیباگ true کنید تا لاگ‌ها فعال بشن
 const LOG_ENABLED = false;
@@ -163,15 +164,15 @@ async function handleUDPOutBound(
         .pipeTo(
             new WritableStream<Uint8Array<ArrayBuffer>>({
                 async write(chunk) {
-                    const resp = await fetch('https://cloudflare-dns.com/dns-query', {
-                        method: 'POST',
-                        headers: {
-                            'content-type': 'application/dns-message',
-                        },
-                        body: chunk,
-                    });
+                    // v0.8.20: DNS تونل از لایه‌ی کش DoH می‌گذرد — کوئری تکراری
+                    // بدون رفت‌وبرگشت بالادستی پاس می‌گیرد (کش TTL-آگاه +
+                    // single-flight + stale-on-error) و dohUrl ادمین رعایت
+                    // می‌شود (قبلاً fetch خام به URL هاردکد بود). null =
+                    // بالادست مرد؛ بدون پاسخ برمی‌گردیم تا کانال DNS زنده بماند
+                    // و کلاینت retry کند (قبلاً یک fetch بد کل کانال را می‌بست)
+                    const dnsQueryResult = await resolveDnsWire(chunk);
+                    if (!dnsQueryResult) return;
 
-                    const dnsQueryResult = new Uint8Array(await resp.arrayBuffer());
                     const udpSize = dnsQueryResult.length;
 
                     const response = new Uint8Array(

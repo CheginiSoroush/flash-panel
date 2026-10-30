@@ -193,11 +193,7 @@ function putEntry(key: string, result: DohUpstreamResult, now: number) {
 }
 
 function respond(entry: CacheEntry, requestId: number | null, status: 'HIT' | 'MISS' | 'STALE'): Response {
-    const body = entry.body.slice();
-    if (body.length >= 2 && requestId !== null) {
-        body[0] = (requestId >> 8) & 0xff;
-        body[1] = requestId & 0xff;
-    }
+    const body = withId(entry.body, requestId);
     const remaining = Math.max(0, Math.ceil((entry.expiresAt - Date.now()) / 1000));
     return new Response(body, {
         headers: {
@@ -206,6 +202,25 @@ function respond(entry: CacheEntry, requestId: number | null, status: 'HIT' | 'M
             'X-DNS-Cache': status
         }
     });
+}
+
+/** کپی پاسخ با ID کوئری درخواست‌دهنده (RFC 1035: ID پاسخ = ID کوئری) */
+function withId(body: Uint8Array, requestId: number | null): Uint8Array<ArrayBuffer> {
+    const out = new Uint8Array(body);
+    if (out.length >= 2 && requestId !== null) {
+        out[0] = (requestId >> 8) & 0xff;
+        out[1] = requestId & 0xff;
+    }
+    return out;
+}
+
+/** Base بالادست DoH — dohUrl خراب/تنظیم‌نشده هرگز این مسیر را نمی‌شکند */
+function upstreamBase(): URL {
+    try {
+        return new URL(getGlobals().dohUrl || 'https://cloudflare-dns.com/dns-query');
+    } catch {
+        return new URL('https://cloudflare-dns.com/dns-query');
+    }
 }
 
 async function fetchUpstream(
@@ -246,6 +261,61 @@ async function fetchUpstream(
 }
 
 // ---------- هندلر ----------
+
+/**
+ * مسیر سطح-سیم برای DNS تونل (پکت‌های UDP 53 داخل تونل VLESS — v0.8.20).
+ * دقیقاً همان زیرساخت هندلر HTTP را استفاده می‌کند: کش TTL-آگاه +
+ * single-flight + stale-on-error + coalescing بر اساس (qname|qtype).
+ * تا v0.8.19 مسیر تونل fetch خام به URL هاردکد بود — بدون کش، بدون
+ * single-flight و نادیده‌گرفتن dohUrl ادمین.
+ *
+ * ورودی: بایت‌های کوئری DNS. خروجی: بایت‌های پاسخ با ID بازنویسی‌شده،
+ * یا null (کوئری خراب / بالادست مرد و stale هم نبود) — هرگز throw نمی‌کند
+ * تا یک کوئری بد هرگز کانال DNS تونل را نبندد.
+ */
+export async function resolveDnsWire(wire: Uint8Array): Promise<Uint8Array | null> {
+    try {
+        if (!wire || wire.length < 12) return null;
+
+        const targetBase = upstreamBase();
+        const now = Date.now();
+        const requestId = parseDnsHeader(wire)?.id ?? null;
+
+        const qKey = questionKey(wire);
+        if (qKey) {
+            const key = `q:${qKey}`;
+
+            const hit = getEntry(key, now);
+            if (hit) return withId(hit.body, requestId);
+
+            let pending = inflight.get(key);
+            if (!pending) {
+                pending = fetchUpstream(targetBase, new URL(targetBase.toString()), 'POST', wire)
+                    .finally(() => inflight.delete(key));
+                inflight.set(key, pending);
+            }
+
+            try {
+                const fresh = await pending;
+                putEntry(key, fresh, now);
+                return withId(fresh.body, requestId);
+            } catch {
+                const stale = getEntry(key, now, true);
+                return stale ? withId(stale.body, requestId) : null;
+            }
+        }
+
+        // کلیدسازی نشد — عبور مستقیم بدون کش (معادل BYPASS هندلر HTTP)
+        try {
+            const fresh = await fetchUpstream(targetBase, new URL(targetBase.toString()), 'POST', wire);
+            return withId(fresh.body, requestId);
+        } catch {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+}
 
 export async function handleDoH(request: Request): Promise<Response> {
     const { dohUrl } = getGlobals();

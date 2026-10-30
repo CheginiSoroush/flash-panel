@@ -110,6 +110,7 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 let handleDoH: typeof import('../src/handlers/doh')['handleDoH'];
 let minAnswerTtl: typeof import('../src/handlers/doh')['minAnswerTtl'];
 let clearDohCache: typeof import('../src/handlers/doh')['clearDohCache'];
+let resolveDnsWire: typeof import('../src/handlers/doh')['resolveDnsWire'];
 let init: typeof import('../src/settings/settings')['init'];
 
 const fetchMock = vi.fn();
@@ -127,6 +128,7 @@ beforeAll(async () => {
     handleDoH = doh.handleDoH;
     minAnswerTtl = doh.minAnswerTtl;
     clearDohCache = doh.clearDohCache;
+    resolveDnsWire = doh.resolveDnsWire;
 
     init(
         new Request('https://example.com/sp/dns-query'),
@@ -423,5 +425,56 @@ describe('handleDoH — LRU', () => {
         const hit = await handleDoH(dohRequest(toBase64Url(q)));
         expect(['HIT', 'MISS']).toContain(hit.headers.get('X-DNS-Cache'));
         expect(fetchMock.mock.calls.length).toBe(301);
+    });
+});
+
+// ---------- مسیر سطح-سیم DNS تونل (v0.8.20) ----------
+
+describe('resolveDnsWire — DNS تونل UDP 53', () => {
+    const query = (id: number, name: string, qtype = 1) => buildDnsQuery(id, name, qtype);
+
+    it('کوئری تکراری از کش پاس می‌گیرد — یک fetch، ID هر کوئری بازنویسی می‌شود', async () => {
+        const answer = buildDnsResponse(0, 'cache.test', 1, [{ ttl: 120, rdata: [9, 9, 9, 9] }]);
+        fetchMock.mockImplementation(async () => new Response(answer as unknown as BodyInit, {
+            headers: { 'Content-Type': 'application/dns-message' }
+        }));
+
+        const r1 = await resolveDnsWire(query(111, 'cache.test'));
+        const r2 = await resolveDnsWire(query(222, 'cache.test'));
+
+        expect(fetchMock.mock.calls.length).toBe(1);          // فقط یک رفت‌وبرگشت بالادستی
+        expect(r1 && r1[0] === 111 >> 8 && r1[1] === (111 & 0xff)).toBe(true); // ID کوئری ۱
+        expect(r2 && r2[0] === 222 >> 8 && r2[1] === (222 & 0xff)).toBe(true); // ID کوئری ۲
+        // پاسخ هیت همان رکورد است (A=9.9.9.9 در انتهای پیام)
+        expect(Array.from(r2!.slice(-4))).toEqual([9, 9, 9, 9]);
+        // URL بالادست = dohUrl ادمین (نه آدرس هاردکد قدیمی)
+        expect(String(fetchMock.mock.calls[0][0])).toBe('https://dns.example-doh.test/dns-query');
+    });
+
+    it('کوئری خراب (<12 بایت) → null بدون هیچ fetch', async () => {
+        const r = await resolveDnsWire(new Uint8Array([1, 2, 3]));
+        expect(r).toBeNull();
+        expect(fetchMock.mock.calls.length).toBe(0);
+    });
+
+    it('بالادست مرد و کش خالی → null (بدون throw — کانال DNS تونل نمی‌میرد)', async () => {
+        fetchMock.mockRejectedValue(new Error('upstream dead'));
+        const r = await resolveDnsWire(query(7, 'dead.test'));
+        expect(r).toBeNull();
+    });
+
+    it('بالادست مرد ولی نسخه‌ی کهنه هست → stale برگردانده می‌شود', async () => {
+        const answer = buildDnsResponse(0, 'stale.test', 1, [{ ttl: 30, rdata: [1, 1, 1, 1] }]);
+        fetchMock.mockImplementationOnce(async () => new Response(answer as unknown as BodyInit));
+        const first = await resolveDnsWire(query(5, 'stale.test'));
+        expect(first).not.toBeNull();
+
+        // منقضی کردن کش (TTL=30s) + شکست بالادست
+        vi.setSystemTime(new Date('2026-01-01T00:02:00Z'));
+        fetchMock.mockRejectedValue(new Error('upstream dead'));
+        const r = await resolveDnsWire(query(6, 'stale.test'));
+        expect(r).not.toBeNull();                              // نسخه‌ی کهنه سرو شد
+        expect(r && r[0] === 6 >> 8 && r[1] === (6 & 0xff)).toBe(true);
+        expect(Array.from(r!.slice(-4))).toEqual([1, 1, 1, 1]);
     });
 });
