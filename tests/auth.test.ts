@@ -257,3 +257,98 @@ describe('auth integration — login + TOTP + sessions', () => {
         expect(withNew.status).toBe(200);
     });
 });
+
+// ---------- v0.8.27 — resetPassword سشن‌های موجود را ابطال می‌کند ----------
+// قبلاً secretKey روی تغییر پسورد ثابت می‌ماند → JWT دزدیده‌شده تا ۲۴ ساعت
+// (کل عمر توکن) معتبر می‌ماند. حالا reset واقعی کلید را می‌چرخاند.
+
+describe('auth v0.8.27 — password reset revokes sessions', () => {
+    let auth: typeof import('../src/auth/auth');
+
+    beforeAll(async () => {
+        auth = (await import('../src/auth/auth')) as any;
+    });
+
+    const reqWith = (token: string) =>
+        new Request('https://example.com/sp/panel', { headers: { Cookie: `jwtToken=${token}` } });
+
+    const resetReq = (token: string, pwd: string) =>
+        new Request('https://example.com/sp/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Cookie: `jwtToken=${token}` },
+            body: JSON.stringify({ password: pwd })
+        });
+
+    it('سشن قدیمی بلافاصله بعد از reset می‌میرد (همان isolate)', async () => {
+        auth._resetAuthStateForTest();
+        const { kv } = createKvMock({ pwd: 'correct-pass' });
+        const env = { kv } as Env;
+        auth.invalidateTotpCache(false);
+
+        const login = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'correct-pass'
+        }, nextIp()), env);
+        expect(login.status).toBe(200);
+        const oldToken = getCookieToken(login);
+        expect(await auth.authenticate(reqWith(oldToken), env)).toBe(true);
+
+        const changed = await auth.resetPassword(resetReq(oldToken, 'brand-new-pass'), env);
+        expect(changed.status).toBe(200);
+
+        // هسته‌ی فیکس — روی کد قبل (بدون چرخش کلید) این قرمز است
+        expect(await auth.authenticate(reqWith(oldToken), env)).toBe(false);
+
+        const relogin = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'brand-new-pass'
+        }, nextIp()), env);
+        expect(relogin.status).toBe(200);
+        expect(await auth.authenticate(reqWith(getCookieToken(relogin)), env)).toBe(true);
+    });
+
+    it('ابطال در isolate تازه هم برقرار است (کش صفر → کلید چرخیده از KV)', async () => {
+        auth._resetAuthStateForTest();
+        const { kv } = createKvMock({ pwd: 'correct-pass' });
+        const env = { kv } as Env;
+        auth.invalidateTotpCache(false);
+
+        const login = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'correct-pass'
+        }, nextIp()), env);
+        const oldToken = getCookieToken(login);
+        expect(await auth.authenticate(reqWith(oldToken), env)).toBe(true);
+
+        // reset در «isolate دیگر» — کش صفر، خواندن از KV
+        auth._resetAuthStateForTest();
+        const changed = await auth.resetPassword(resetReq(oldToken, 'brand-new-pass'), env);
+        expect(changed.status).toBe(200);
+
+        // isolate سوم — کش صفر، فقط KV
+        auth._resetAuthStateForTest();
+        expect(await auth.authenticate(reqWith(oldToken), env)).toBe(false);
+
+        const relogin = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'brand-new-pass'
+        }, nextIp()), env);
+        expect(await auth.authenticate(reqWith(getCookieToken(relogin)), env)).toBe(true);
+    });
+
+    it('setup اولیه (بدون پسورد قبلی) نمی‌چرخاند — lazy-create سالم می‌ماند', async () => {
+        auth._resetAuthStateForTest();
+        const { kv } = createKvMock(); // بدون pwd
+        const env = { kv } as Env;
+        auth.invalidateTotpCache(false);
+
+        const changed = await auth.resetPassword(new Request('https://example.com/sp/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'admin@example.com', password: 'first-pass' })
+        }), env);
+        expect(changed.status).toBe(200);
+
+        const login = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'first-pass'
+        }, nextIp()), env);
+        expect(login.status).toBe(200);
+        expect(await auth.authenticate(reqWith(getCookieToken(login)), env)).toBe(true);
+    });
+});

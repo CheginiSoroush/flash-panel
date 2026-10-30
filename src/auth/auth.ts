@@ -5,16 +5,32 @@ import { verifyTotp } from './totp';
 
 // ---------- کش‌های سطح isolate ----------
 
-// secretKey عملاً immutable هست (یک‌بار ساخته می‌شه) — فقط یک خواندن KV در عمر isolate
+// v0.8.27 — کش secretKey با TTL کوتاه (نه «یک‌بار در عمر isolate»): چرخش کلید در
+// resetPassword باید در isolateهای دیگر هم ظرف ~۳۰ ثانیه دیده شود تا ابطال سشن
+// سراسری معنا پیدا کند. شکست خواندن KV = کشِ کهنه (stale-on-error) — بهتر از
+// logout کردن ناخواسته‌ی همه در حین قطعی KV. هزینه‌ی مسیر داغ: یک خواندن KV در
+// هر ۳۰ ثانیه برای هر isolate (قبلاً یک‌بار در عمر isolate).
 let cachedSecretKey: string | null = null;
-let secretKeyLoaded = false;
+let secretKeyLoadedAt = 0;
+const SECRET_KEY_CACHE_TTL = 30_000;
 
 async function getSecretKey(env: Env): Promise<string | null> {
-    if (!secretKeyLoaded) {
+    if (Date.now() - secretKeyLoadedAt < SECRET_KEY_CACHE_TTL) {
+        return cachedSecretKey;
+    }
+    try {
         cachedSecretKey = await env.kv.get('secretKey');
-        secretKeyLoaded = true;
+        secretKeyLoadedAt = Date.now();
+    } catch {
+        // KV قطع است — اگر کشی داریم همان را نگه دار (تیک بعدی دوباره تلاش می‌شود)
+        if (cachedSecretKey !== null) secretKeyLoadedAt = Date.now();
     }
     return cachedSecretKey;
+}
+
+function setSecretKeyCache(key: string | null): void {
+    cachedSecretKey = key;
+    secretKeyLoadedAt = key !== null ? Date.now() : 0;
 }
 
 // pwd ممکنه تغییر کنه (resetPassword) — TTL کوتاه + invalidation محلی فوری
@@ -130,7 +146,8 @@ export async function generateJWTToken(request: Request, env: Env): Promise<Resp
     // محدودسازی brute-force — ۵ تلاش ناموفق در دقیقه برای هر IP
     const clientIP = request.headers.get('CF-Connecting-IP') || 'unknown';
     if (await isRateLimited(clientIP, env)) {
-return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try again later.');    }
+        return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try again later.');
+    }
 
     const username = typeof data.username === 'string' ? data.username.toLowerCase() : '';
     const password = typeof data.password === 'string' ? data.password : '';
@@ -172,8 +189,7 @@ return respond(false, 429 as unknown as HttpStatus, 'Too many attempts. Try agai
     if (!secretKey) {
         secretKey = generateSecretKey();
         await env.kv.put('secretKey', secretKey);
-        cachedSecretKey = secretKey;
-        secretKeyLoaded = true;
+        setSecretKeyCache(secretKey);
     }
 
     // v0.8.16 — JWT مینیمال HS256 با WebCrypto (jose حذف شد)
@@ -281,8 +297,28 @@ export async function resetPassword(request: Request, env: Env): Promise<Respons
     cachedPwd = newPassword;
     pwdLoadedAt = Date.now();
 
+    // v0.8.27 — چرخش secretKey: تمام JWTهای امضاشده با کلید قبلی بلافاصله
+    // بی‌اعتبار می‌شوند؛ سشن دزدیده‌شده از تغییر پسورد جان سالم نمی‌برد
+    // (قبلاً تا ۲۴ ساعت معتبر می‌ماند). فقط در مسیر «تغییر واقعی» — setup
+    // اولیه سشنی برای ابطال ندارد. پاسخ همین endpoint کوکی را هم پاک می‌کند.
+    if (oldPwd) {
+        const rotatedKey = generateSecretKey();
+        await env.kv.put('secretKey', rotatedKey);
+        setSecretKeyCache(rotatedKey);
+    }
+
     return respond(true, HttpStatus.OK, 'Successfully logged in!', null, {
         'Set-Cookie': 'jwtToken=; Path=/; Secure; SameSite=Strict; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
         'Content-Type': 'text/plain',
     });
+}
+// هویت‌سنجی سطح isolate برای تست‌ها — همه‌ی کش‌های ماژول صفر می‌شوند
+export function _resetAuthStateForTest(): void {
+    cachedSecretKey = null;
+    secretKeyLoadedAt = 0;
+    cachedPwd = null;
+    pwdLoadedAt = 0;
+    cachedTotpEnabled = false;
+    totpLoadedAt = 0;
+    loginAttempts.clear();
 }
