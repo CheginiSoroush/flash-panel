@@ -79,7 +79,8 @@ async function applyKvOverrides(overrides: Record<string, unknown>) {
 
 beforeAll(async () => {
     const mock = createKvMock({
-        warpAccounts: JSON.stringify([WARP_ACCOUNT])
+        // v0.8.23: دو اکانت سالم — گارد ساختاری مرز لود تک‌اکانت را به fetchWarpAccounts (شبکه) می‌فرستد
+        warpAccounts: JSON.stringify([WARP_ACCOUNT, { ...WARP_ACCOUNT, privateKey: 'second-private-key', reserved: 'BBBB' }])
     });
     store = mock.store;
 

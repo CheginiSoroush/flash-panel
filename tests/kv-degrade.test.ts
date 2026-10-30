@@ -57,6 +57,14 @@ function createQuotaDeadKv(seed: Record<string, any>) {
     return { kv, store, putCounter: () => putAttempts };
 }
 
+
+// v0.8.23: گارد ساختاری warpAccounts در مرز لود — هر seed باید دو اکانت سالم باشد
+// تا fetchWarpAccounts (که شبکه می‌زند) در تست‌های degrade فایر نشود
+const validWarpAccounts = [
+    { privateKey: 'k1', publicKey: 'K1', warpIPv6: '2606:4700::1/128', reserved: 'AAAA' },
+    { privateKey: 'k2', publicKey: 'K2', warpIPv6: '2606:4700::2/128', reserved: 'BBBB' }
+];
+
 describe('KV quota-exhausted degrade (v0.8.9) — the service must never die', () => {
     let settings: typeof import('../src/settings/settings');
     let kvmod: typeof import('../src/settings/kv');
@@ -81,7 +89,12 @@ describe('KV quota-exhausted degrade (v0.8.9) — the service must never die', (
     it('REGRESSION: stale panelVersion + exhausted KV quota → getDataset still returns merged settings (was: throw → error page)', async () => {
         const { kv } = createQuotaDeadKv({
             proxySettings: { panelVersion: '0.8.5', remoteDNS: '1.1.1.1', ports: [443, 8443] },
-            warpAccounts: [{ id: 'w1' }],
+            // v0.8.23: گارد ساختاری در مرز لود — seed باید دو اکانت سالم باشد
+            // (تک‌اکانت/ناقص حالا به بازسازی fetchWarpAccounts می‌رود = شبکه در تست)
+            warpAccounts: [
+                { privateKey: 'k1', publicKey: 'K1', warpIPv6: '2606:4700::1/128', reserved: 'AAAA' },
+                { privateKey: 'k2', publicKey: 'K2', warpIPv6: '2606:4700::2/128', reserved: 'BBBB' }
+            ],
             telegramBot: { telegramBotToken: 'tok', telegramUserId: '123' }
         });
 
@@ -90,7 +103,7 @@ describe('KV quota-exhausted degrade (v0.8.9) — the service must never die', (
         expect(data.settings.remoteDNS).toBe('1.1.1.1'); // مقدار ذخیره‌شده حفظ شده
         expect(data.settings.ports).toEqual([443, 8443]);
         expect(data.telegramBot.telegramBotToken).toBe('tok');
-        expect(data.warpAccounts).toHaveLength(1);
+        expect(data.warpAccounts).toHaveLength(2);
     });
 
     it('migration throttle: within 15 minutes the failed put is NOT retried on every request', async () => {
@@ -98,7 +111,7 @@ describe('KV quota-exhausted degrade (v0.8.9) — the service must never die', (
         // و mergeDataset به put برسد → همان‌جا 429 می‌گیرد
         const { kv, putCounter } = createQuotaDeadKv({
             proxySettings: { panelVersion: '0.8.5', customDomain: '', remoteDNS: '1.1.1.1', upstreamProxy: '', chainProxy: '' },
-            warpAccounts: [{ id: 'w1' }],
+            warpAccounts: validWarpAccounts,
             telegramBot: { telegramBotToken: '', telegramUserId: '' }
         });
 
@@ -116,7 +129,7 @@ describe('KV quota-exhausted degrade (v0.8.9) — the service must never die', (
 
     it('bootstrap with empty KV + dead quota → defaults in memory, no throw', async () => {
         const { kv } = createQuotaDeadKv({
-            warpAccounts: [{ id: 'w1' }],
+            warpAccounts: validWarpAccounts,
             telegramBot: { telegramBotToken: '', telegramUserId: '' }
         });
 
@@ -128,7 +141,7 @@ describe('KV quota-exhausted degrade (v0.8.9) — the service must never die', (
     it('missing telegramBot + dead quota → default bot object in memory, no throw', async () => {
         const { kv } = createQuotaDeadKv({
             proxySettings: { panelVersion: '0.8.5' },
-            warpAccounts: [{ id: 'w1' }]
+            warpAccounts: validWarpAccounts
         });
 
         const data = await kvmod.getDataset({ kv } as any);

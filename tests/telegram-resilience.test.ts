@@ -175,7 +175,10 @@ async function bootBot(opts: { deadKv?: boolean; cfFail?: boolean; usage?: { tot
 
     const seed = {
         proxySettings: { ...settings.getKvSettings(), panelVersion: (globalThis as any).VERSION },
-        warpAccounts: [],
+        warpAccounts: [
+            { privateKey: 'k1', publicKey: 'K1', warpIPv6: '2606:4700::1/128', reserved: 'AAAA' },
+            { privateKey: 'k2', publicKey: 'K2', warpIPv6: '2606:4700::2/128', reserved: 'BBBB' }
+        ],
         telegramBot: { telegramBotToken: BOT_TOKEN, telegramUserId: String(ADMIN_ID) },
         subUsers: SUB_USERS
     };

@@ -72,6 +72,28 @@ export async function getDataset(env: Env): Promise<Dataset> {
     return cloneDataset(await inflight);
 }
 
+/**
+ * اعتبارسنجی ساختاری warpAccounts خوانده‌شده از KV.
+ *
+ * مصرف‌کنندگان (configs در cores/clash + xray + sing-box و wireguard.ts) هر دو اکانت
+ * [0] و [1] را بدون گارد destructure می‌کنند — هر داده‌ی ناقص از KV (آرایه‌ی خالی،
+ * تک‌اکانت، رکورد بی‌کلید، مقدار غیرآرایه) یعنی ۵۰۰ شدن همه‌ی ساب‌های warp/wow و
+ * ZIP وایرگارد. شرط قدیمی «!warpAccounts» فقط null را می‌گرفت. این گارد در مرزِ لود،
+ * همه‌ی آن حالت‌ها را به بازسازی خودکار (fetchWarpAccounts) می‌فرستد؛ آن تابع روی
+ * شکست، اکانت‌های embedded را برمی‌گرداند → سرویس هرگز با اکانت ناقص بالا نمی‌ماند.
+ */
+function isWellFormedWarpAccounts(value: unknown): value is WarpAccount[] {
+    return Array.isArray(value)
+        && value.length >= 2
+        && value.every(acc =>
+            !!acc
+            && typeof acc.privateKey === 'string' && acc.privateKey.length > 0
+            && typeof acc.publicKey === 'string' && acc.publicKey.length > 0
+            && typeof acc.warpIPv6 === 'string' && acc.warpIPv6.length > 0
+            && typeof acc.reserved === 'string'
+        );
+}
+
 async function loadDataset(env: Env): Promise<Dataset> {
     let settings: KvSettings | null, warpAccounts: WarpAccount[] | null;
     const kvSettings = getKvSettings();
@@ -98,7 +120,9 @@ async function loadDataset(env: Env): Promise<Dataset> {
             }
         }
 
-        if (!warpAccounts) {
+        if (!isWellFormedWarpAccounts(warpAccounts)) {
+            // self-heal — null / [] / تک‌اکانت / رکورد ناقص → بازسازی (fetchWarpAccounts
+            // روی موفقیت در KV می‌نویسد و روی شکست اکانت‌های embedded را برمی‌گرداند)
             warpAccounts = await fetchWarpAccounts(env);
         }
 

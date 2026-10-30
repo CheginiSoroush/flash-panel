@@ -428,7 +428,11 @@ async function bootBot(opts: { kvSeed?: Record<string, unknown>; deadKv?: boolea
 
     const seed = {
         proxySettings: { localDNS: '8.8.8.8', panelVersion: '0.8.12' },
-        warpAccounts: [],
+        // v0.8.23: seed سالم — گارد ساختاری مرز لود آرایه‌ی خالی را به fetchWarpAccounts (شبکه) می‌فرستد
+        warpAccounts: [
+            { privateKey: 'k1', publicKey: 'K1', warpIPv6: '2606:4700::1/128', reserved: 'AAAA' },
+            { privateKey: 'k2', publicKey: 'K2', warpIPv6: '2606:4700::2/128', reserved: 'BBBB' }
+        ],
         telegramBot: { telegramBotToken: BOT_TOKEN, telegramUserId: String(ADMIN_ID) },
         ...opts.kvSeed
     };

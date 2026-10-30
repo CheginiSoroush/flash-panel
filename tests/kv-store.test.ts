@@ -274,7 +274,11 @@ describe('store: هم‌خوانی با لایه‌ی dataset', () => {
     it('بعد از commit موفق، getDataset بدون invalidate دستی مقدار جدید را می‌بیند', async () => {
         const { kv } = createKvMock({
             proxySettings: fullBlob(),
-            warpAccounts: [{ id: 'w1' }],
+            // v0.8.23: seed سالم — گارد ساختاری مرز لود تک‌اکانت را به fetchWarpAccounts (شبکه) می‌فرستد
+warpAccounts: [
+            { privateKey: 'k1', publicKey: 'K1', warpIPv6: '2606:4700::1/128', reserved: 'AAAA' },
+            { privateKey: 'k2', publicKey: 'K2', warpIPv6: '2606:4700::2/128', reserved: 'BBBB' }
+        ],
             telegramBot: { telegramBotToken: '', telegramUserId: '' }
         });
         const env = { kv } as any;
@@ -293,7 +297,11 @@ describe('store: هم‌خوانی با لایه‌ی dataset', () => {
     it('شکست commit → دیتاست دست‌نخورده سرویس می‌دهد (قرارداد degrade)', async () => {
         const { kv, store: kvStore, failAllPutsWithQuota } = createKvMock({
             proxySettings: fullBlob(),
-            warpAccounts: [{ id: 'w1' }],
+            // v0.8.23: seed سالم — گارد ساختاری مرز لود تک‌اکانت را به fetchWarpAccounts (شبکه) می‌فرستد
+warpAccounts: [
+            { privateKey: 'k1', publicKey: 'K1', warpIPv6: '2606:4700::1/128', reserved: 'AAAA' },
+            { privateKey: 'k2', publicKey: 'K2', warpIPv6: '2606:4700::2/128', reserved: 'BBBB' }
+        ],
             telegramBot: { telegramBotToken: '', telegramUserId: '' }
         });
         failAllPutsWithQuota();
