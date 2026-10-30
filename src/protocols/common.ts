@@ -22,6 +22,15 @@ const PROXY_COOLDOWN_BASE_MS = 30_000;
 const PROXY_COOLDOWN_MAX_MS = 10 * 60_000;
 const PROXY_HEALTH_MAX_ENTRIES = 100;
 
+// ---------- وچ‌داگ first-byte (v0.8.18) ----------
+// بعضی مقصدها اتصال را «سیاه‌چاله» می‌کنند: TCP باز می‌مانَد، هیچ داده‌ای برنمی‌گردد
+// و هیچ‌وقت هم close نمی‌شود (نمونه‌ی آشکار: اتصال مستقیم به IPهای خود Cloudflare
+// وقتی واسط ProxyIP باید استفاده شود). retry قبلی فقط به رویداد close تکیه داشت
+// → هیچ‌وقت فعال نمی‌شد → کاربر «وصل ولی بدون ترافیک» می‌ماند. حالا اگر در این
+// بازه هیچ بایتی از مقصد نیامد، سوکت گرِیس‌فول بسته می‌شود تا مسیر retry
+// (واسط ProxyIP / تلاش دوم) بلافاصله فعال شود.
+const FIRST_BYTE_TIMEOUT_MS = 6_000;
+
 function rememberProxy(key: string, stat: ProxyStat | undefined): void {
     if (proxyHealth.size >= PROXY_HEALTH_MAX_ENTRIES && !proxyHealth.has(key)) {
         const oldest = proxyHealth.keys().next().value;
@@ -296,7 +305,7 @@ export async function handleTCPOutBound(
     }
 }
 
-async function remoteSocketToWS(
+export async function remoteSocketToWS(
     remoteSocket: Socket,
     webSocket: WebSocket,
     VLResponseHeader: Uint8Array | null,
@@ -307,8 +316,25 @@ async function remoteSocketToWS(
     let vlHeader = VLResponseHeader;
     let hasIncomingData = false;
 
+    // وچ‌داگ first-byte — فقط داون‌لینک مهم است؛ اولین داده → خاموشی
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
+    const disarmWatchdog = () => {
+        if (watchdog) {
+            clearTimeout(watchdog);
+            watchdog = null;
+        }
+    };
+    watchdog = setTimeout(() => {
+        watchdog = null;
+        if (!hasIncomingData) {
+            log(`first-byte timeout (${FIRST_BYTE_TIMEOUT_MS}ms) — closing dead upstream to trigger retry`);
+            safeCloseTcpSocket(remoteSocket);
+        }
+    }, FIRST_BYTE_TIMEOUT_MS);
+
     const writableStream = new WritableStream({
         async write(chunk: Chunk, controller) {
+            if (!hasIncomingData) disarmWatchdog();
             hasIncomingData = true;
             touchWsWrite(webSocket); // نگهبان: فعالیت سمت سرور
             countWsDown(webSocket, chunk instanceof Uint8Array ? chunk.byteLength : (chunk as ArrayBuffer).byteLength ?? 0);
@@ -343,8 +369,13 @@ async function remoteSocketToWS(
     } catch (error) {
         console.error('VLRemoteSocketToWS has exception.', error);
         safeCloseTcpSocket(remoteSocket);
-        safeCloseWebSocket(webSocket);
+        // باگ قبلی: بستن WS حتی وقتی retry در راه بود، مسیر جایگزین را قبل از
+        // شروع می‌کشت — حالا WS فقط وقتی بسته می‌شود که راهی برای retry نمانده
+        if (!(hasIncomingData === false && retry)) {
+            safeCloseWebSocket(webSocket);
+        }
     }
+    disarmWatchdog();
 
     // گزارش نتیجه برای رجیستری سلامت ProxyIP (فقط مسیر retry استفاده می‌کند)
     onResult?.(hasIncomingData);
