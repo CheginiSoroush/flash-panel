@@ -262,3 +262,94 @@ describe('tuneCleanIPs (v0.8.2 — verified-live candidates)', () => {
         expect(getPutCount()).toBe(1);
     });
 });
+
+// ---------- v0.8.26: واکشی DoH بیرون از صف نوشتن ----------
+// قرارداد v0.8.25 (dns-heal): صف نوشتن هرگز نباید روی شبکه‌ی DNS بایستد.
+// تا v0.8.25 کاندیدای زنده داخل mutator واکشی می‌شد = کل صف تا ~۴ ثانیه
+// (timeout DoH) روی شبکه می‌ایستاد و پنجره‌ی تعارض rev بزرگ می‌شد.
+
+describe('tuneCleanIPs (v0.8.26 — DoH outside the write queue)', () => {
+    it('با صفِ اشغال، واکشی DoH قبل از آزادشدن صف شروع می‌شود (نه داخل صف)', async () => {
+        const store = await import('../src/settings/store');
+        store._resetStoreStateForTest();
+        const { kv, store: kvStore } = createKvMock();
+        await kv.put('proxySettings', JSON.stringify({
+            panelVersion: '0.8.2',
+            cleanIPs: ['142.250.108.165', '8.8.8.8']  // هر دو خارج رنج → ترمیم لازم
+        }));
+
+        const events: string[] = [];
+        let releaseQueue!: () => void;
+        const gate = new Promise<void>(r => { releaseQueue = r; });
+
+        vi.stubGlobal('fetch', vi.fn(async () => {
+            events.push('doh');
+            await new Promise(r => setTimeout(r, 10));
+            return { ok: true, json: async () => ({ Answer: [{ type: 1, data: '104.18.99.7' }] }) };
+        }));
+
+        // تراکنش ۱ صف را نگه می‌دارد
+        const hold = store.mutateSettings({ kv } as any, async (cur) => {
+            events.push('q1-start');
+            await gate;
+            events.push('q1-end');
+            return { ...cur!, bypassIran: true };
+        }, { reason: 'test:hold' });
+
+        // پیش‌خوانی tune بیرون صف است → DoH باید همین حالا شروع شود
+        const tunePromise = cleanTuner.tuneCleanIPs({ kv } as Env);
+
+        await new Promise(r => setTimeout(r, 30));
+        expect(events).toContain('doh');         // DoH منتظر صف نمانده — هسته‌ی فیکس
+        expect(events).not.toContain('q1-end');  // صف هنوز اشغال است
+
+        releaseQueue();
+        const [tune] = await Promise.all([tunePromise, hold]);
+
+        // تراکنش tune روی blob تازه (با bypassIran تراکنش ۱) می‌نویسد — هیچ‌کدام clobber نمی‌شوند
+        expect(tune.changed).toBe(true);
+        expect(tune.applied).toHaveLength(2);              // حفظ اندازه ۱:۱
+        expect(tune.applied).toContain('104.18.99.7');     // کاندیدای DoH
+        const saved = JSON.parse(kvStore.get('proxySettings')!);
+        expect(saved.bypassIran).toBe(true);
+        expect(saved.cleanIPs).toEqual(tune.applied);
+    });
+
+    it('پیش‌خوانیِ سالم → صفر شبکه؛ ولی blob تازه‌ی خراب همچنان با fallback تأییدشده ترمیم می‌شود', async () => {
+        // خواندن اول (peek): لیست سالم → repairNeeded=false → هیچ fetchی
+        // خواندن دوم (داخل تراکنش): لیست خراب → مسیر محافظه‌کار
+        let kvRead = 0;
+        const kv = {
+            async get(_key: string, opts?: { type?: string }) {
+                kvRead++;
+                const raw = kvRead === 1
+                    ? JSON.stringify({ panelVersion: '0.8.2', cleanIPs: ['104.16.160.3'] })
+                    : JSON.stringify({ panelVersion: '0.8.2', cleanIPs: ['142.250.108.165', '8.8.8.8'] });
+                return opts?.type === 'json' ? JSON.parse(raw) : raw;
+            },
+            async put() { /* تراکنش نباید بنویسد — پایین اثبات می‌شود */ },
+            async delete() {}
+        } as unknown as KVNamespace;
+
+        const fetchSpy = vi.fn(async () => ({ ok: true, json: async () => ({ Answer: [] }) }));
+        vi.stubGlobal('fetch', fetchSpy);
+
+        const res = await cleanTuner.tuneCleanIPs({ kv } as Env);
+
+        expect(fetchSpy).not.toHaveBeenCalled();   // پیش‌خوانی سالم = هیچ شبکه‌ای
+        expect(kvRead).toBe(2);                    // peek + خواندن تراکنش
+        // ترمیم محافظه‌کار با fallback تأییدشده — هیچ IP حدسی
+        expect(res.changed).toBe(true);
+        expect(res.applied).toHaveLength(2);
+        for (const entry of res.applied) {
+            expect(isCloudflareEdgeIPv4(entry), entry).toBe(true);
+            expect(CLEAN_VERIFIED_FALLBACK_APPLIED(entry)).toBe(true);
+        }
+    });
+});
+
+/** عضویت در لیست fallback تأییدشده (برای تست بدون ایمپورت مستقیم) */
+function CLEAN_VERIFIED_FALLBACK_APPLIED(entry: string): boolean {
+    return ['104.17.147.22', '104.17.148.22', '162.159.140.220', '172.66.0.218', '104.16.160.3',
+        '104.16.123.96', '172.64.32.11', '172.67.68.4', '190.93.246.1'].includes(entry);
+}

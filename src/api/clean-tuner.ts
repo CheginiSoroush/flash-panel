@@ -56,6 +56,8 @@ const CLEAN_DNS_SEED_HOSTS: string[] = [
 /**
  * fallback ثابت — فقط IPهایی که در دیاگ زنده‌ی 2026-10-18 (TLS با SNI پنل)
  * واقعاً گواهی دادند. هیچ IP «حدسی» در این لیست جایی ندارد.
+ * v0.8.26 — واکشی کاندیدای زنده از داخل صف نوشتن به پیش از صف منتقل شد
+ * (همان قرارداد v0.8.25: صف نوشتن هرگز روی شبکه‌ی DNS بایستد).
  */
 const CLEAN_VERIFIED_FALLBACK: string[] = [
     '104.17.147.22',    // www.speedtest.net
@@ -99,6 +101,54 @@ async function fetchLiveEdgeIPs(mainDomain?: string): Promise<string[]> {
 
 export async function tuneCleanIPs(env: Env, now: number = Date.now()): Promise<CleanTuneResult> {
     try {
+        // ---------- پیش‌خوانی (خارج از صف نوشتن — v0.8.26) ----------
+        // واکشی کاندیدای زنده شبکه است (DoH موازی با timeout ۴ ثانیه‌ای). تا
+        // دیروز داخل mutator صدا زده می‌شد یعنی کل صف نوشتنِ settings تا ~۴
+        // ثانیه روی DNS می‌ایستاد — دقیقاً همان کلاسی که v0.8.25 برای
+        // dns-heal حذف شد (صف هرگز نباید روی شبکه بایستد؛ هر ثانیه‌ی توقف
+        // پنجره‌ی تعارض rev با نویسنده‌های isolateهای دیگر را هم بزرگ می‌کند).
+        // حالا: پیش‌خوانی با همان پریمیتیو خامِ mutateSettings → تصمیمِ
+        // «ترمیم لازم است؟» → واکشی DoH بیرون از صف → تراکنشِ کاملاً خالص.
+        let mainDomain: string | undefined;
+        let repairNeeded = false;
+        try {
+            const peek = await env.kv.get('proxySettings', { type: 'json' }) as KvSettings | null;
+            if (peek && typeof peek === 'object') {
+                const peekMainDomain = (peek as { mainDomain?: unknown }).mainDomain;
+                if (typeof peekMainDomain === 'string' && peekMainDomain.trim() !== '') {
+                    mainDomain = peekMainDomain;
+                }
+                const protectedEntries = new Set<string>([
+                    ...(Array.isArray(peek.customCdnAddrs) ? peek.customCdnAddrs : []),
+                    ...(peek.customDomain ? [peek.customDomain] : [])
+                ]);
+                let invalidCount = 0;
+                let addrCount = 0;
+                for (const entry of (Array.isArray(peek.cleanIPs) ? peek.cleanIPs : [])) {
+                    if (typeof entry !== 'string' || entry.trim() === '') continue;
+                    addrCount++;
+                    if (protectedEntries.has(entry)) continue;
+                    if (!isValidCleanEntry(entry)) invalidCount++;
+                }
+                repairNeeded = addrCount > 0 && invalidCount > 0;
+            }
+        } catch {
+            // پیش‌خوانی best-effort — خطا یعنی بدون واکشی اولیه؛ تراکنش با
+            // blobی تازه به مسیر محافظه‌کار «کاندیدا صفر» می‌رود (بدون write)
+        }
+
+        // ---------- شبکه بیرون از صف ----------
+        // فقط وقتی پیش‌خوانی ترمیم را لازم دید DoH صدا زده می‌شود — لیست
+        // سالم هرگز هیچ fetchی نمی‌خورد (تست idempotent این را قفل می‌کند).
+        let prefetched: string[] = [];
+        if (repairNeeded) {
+            try {
+                prefetched = await fetchLiveEdgeIPs(mainDomain);
+            } catch {
+                prefetched = [];
+            }
+        }
+
         // نتایج داخل mutator جمع می‌شود تا دقیقاً همان قرارداد قبلی result برگردد
         let info: CleanTuneResult | null = null;
 
@@ -136,18 +186,13 @@ export async function tuneCleanIPs(env: Env, now: number = Date.now()): Promise<
                 return null;
             }
 
-            // کاندیداهای زنده: DoH (تازه) + fallback تأییدشده — بدون حدس
-            // (فقط وقتی ترمیم لازم است شبکه می‌زند — مسیر سریع همان KC طی می‌کند)
+            // کاندیداهای زنده پیش از صف واکشی شده‌اند — اینجا فقط فیلتر و
+            // پرکردن با fallback تأییدشده؛ هیچ شبکه‌ای در صف رخ نمی‌دهد.
+            // (پیش‌خوانی کهنه باشد و blob تازه ترمیم بخواهد → کاندیدا صفر →
+            // مسیر محافظه‌کار زیر؛ تیک بعدی یا spikeِ edge-tuner ترمیم می‌کند)
             const dayBucket = Math.floor(now / 86_400_000);
             const taken = new Set([...keptProtected, ...valid]);
-            let pool: string[] = [];
-            try {
-                const blobMainDomain = (blob as { mainDomain?: unknown }).mainDomain;
-                pool = await fetchLiveEdgeIPs(typeof blobMainDomain === 'string' ? blobMainDomain : undefined);
-            } catch {
-                pool = [];
-            }
-            pool = pool.filter(ip => !taken.has(ip));
+            let pool: string[] = prefetched.filter(ip => !taken.has(ip));
             for (const ip of CLEAN_VERIFIED_FALLBACK) {
                 if (pool.length >= invalid.length) break;
                 if (!taken.has(ip) && !pool.includes(ip)) pool.push(ip);
@@ -155,7 +200,14 @@ export async function tuneCleanIPs(env: Env, now: number = Date.now()): Promise<
 
             if (!pool.length) {
                 // هیچ کاندیدای تأییدشده‌ای نیست — لیست فعلی دست‌نخورده (بهتر از حدس)
-                info = { poolSize: current.length, healthyCount: valid.length, applied: current, best: valid[0] ?? null, changed: false, skipped: 'no verified live candidates (DoH down?)' };
+                info = {
+                    poolSize: current.length,
+                    healthyCount: valid.length,
+                    applied: current,
+                    best: valid[0] ?? null,
+                    changed: false,
+                    skipped: repairNeeded ? 'no verified live candidates (DoH down?)' : 'no verified live candidates (stale pre-read)'
+                };
                 return null;
             }
 
