@@ -158,7 +158,8 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
     );
 
     const fileName = isFragment ? 'fragment' : 'normal';
-    return new Response(JSON.stringify(config, null, 4), {
+    // فشرده — JSON.stringify بدون تورفتگی (~۳۰٪ بدنه‌ی کوچک‌تر؛ کلاینت‌های sing-box/mihomo JSON فشرده را کامل قبول می‌کنند)
+    return new Response(JSON.stringify(config), {
         status: 200,
         headers: {
             'Content-Type': 'application/json',
@@ -200,7 +201,8 @@ export async function getSbWarpConfig(): Promise<Response> {
         false
     );
 
-    return new Response(JSON.stringify(config, null, 4), {
+    // فشرده — JSON.stringify بدون تورفتگی (~۳۰٪ بدنه‌ی کوچک‌تر؛ کلاینت‌های sing-box/mihomo JSON فشرده را کامل قبول می‌کنند)
+    return new Response(JSON.stringify(config), {
         status: 200,
         headers: {
             'Content-Type': 'application/json',
