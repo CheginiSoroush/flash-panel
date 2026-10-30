@@ -35,10 +35,17 @@ echo "▸ [2/6] inject EMBEDED_SETTINGS (fail-closed)"
 node deploy/inject-embed.mjs
 
 echo "▸ [3/6] generate wrangler.jsonc (from example — gitignored، فقط برای این run)"
-# شناسه‌ی KV با API از روی title پیدا می‌شود — هیچ ID ای در سورس نیست
-KV_ID="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-    "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces?per_page=100" \
-  | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);if(!j.success)throw new Error('KV list failed: '+JSON.stringify(j.errors||[]));const n=(j.result||[]).find(n=>n.title==='flash-panel-kv');if(!n)throw new Error('KV namespace flash-panel-kv not found');process.stdout.write(n.id)})")"
+# شناسه‌ی KV: اول secret اختیاری CLOUDFLARE_KV_ID (وقتی API محدود است)،
+# وگرنه با API از روی title پیدا می‌شود — هیچ ID ای در سورس نیست
+if [ -n "${CLOUDFLARE_KV_ID:-}" ]; then
+    KV_ID="$CLOUDFLARE_KV_ID"
+    echo "  KV id ← CLOUDFLARE_KV_ID secret (API lookup skipped)"
+else
+    KV_ID="$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+        "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces?per_page=100" \
+      | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);if(!j.success)throw new Error('KV list failed: '+JSON.stringify(j.errors||[]));const n=(j.result||[]).find(n=>n.title==='flash-panel-kv');if(!n)throw new Error('KV namespace flash-panel-kv not found');process.stdout.write(n.id)})")"
+    echo "  KV id ← API lookup"
+fi
 node - "$CLOUDFLARE_ACCOUNT_ID" "$KV_ID" <<'EOF'
 const fs = require('fs');
 let c = fs.readFileSync('wrangler.jsonc.example', 'utf8');
