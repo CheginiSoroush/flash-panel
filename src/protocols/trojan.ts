@@ -84,6 +84,14 @@ export async function TrOverWSHandler(request: Request, env: Env, ctx: Execution
                 return writer.write(chunk);
             }
 
+            // v0.8.28 — اگر خروجی TCP شروع شده ولی نویسنده هنوز آماده نیست
+            // (پنجره‌ی DNS مسیر forced-proxy در حالت prefix، یا پنجره‌ی retry)،
+            // chunk بافر می‌شود — پارسِ آن به‌عنوان هدر یعنی مرگ تونل + WS زامبی
+            if (remoteSocketWrapper.buffered) {
+                remoteSocketWrapper.buffered.push(chunk);
+                return;
+            }
+
             const {
                 hasError,
                 message,

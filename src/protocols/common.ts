@@ -135,6 +135,13 @@ export type Chunk = ArrayBuffer | Uint8Array;
 export interface RemoteSocketWrapper {
     value: Socket | null;
     writer?: WritableStreamDefaultWriter<Chunk> | null;
+    /**
+     * v0.8.28 — chunkهای رسیده در پنجره‌ی «نویسنده هنوز آماده نیست».
+     * در صدر handleTCPOutBound مسلح می‌شود و connectAndWrite به محض ست‌شدن
+     * نویسنده، به ترتیب ورود و در یک بلوک sync تخلیه‌اش می‌کند. بدون این،
+     * chunkهای پنجره یا گم می‌شدند یا (بدتر) به‌جای هدر پروتکل پارس می‌شدند.
+     */
+    buffered?: Chunk[];
 }
 
 export async function handleTCPOutBound(
@@ -146,6 +153,10 @@ export async function handleTCPOutBound(
     VLResponseHeader: Uint8Array | null,
     log: Logger
 ) {
+    // v0.8.28 — مسلح‌سازی بافر پنجره؛ از همین لحظه (sync، قبل از هر await)
+    // هر chunk رسیده تا آماده‌شدن نویسنده به‌جای پارس/گم‌شدن بافر می‌شود
+    remoteSocket.buffered ??= [];
+
     async function connectAndWrite(address: string, port: number): Promise<Socket> {
         const tcpSocket = connect({
             hostname: address,
@@ -164,10 +175,28 @@ export async function handleTCPOutBound(
             remoteSocket.writer = writer;
         }
 
+        // v0.8.28 — صدور همگام نوشته‌ها به ترتیب ورود: اول داده‌ی ابتدایی
+        // (دُم هدر)، بعد هر chunk که در پنجره‌ی «نویسنده آماده نیست» بافر شده
+        // (مسیر forced-proxy در حالت prefix قبل از اینجا روی DNS می‌ایستد؛
+        // پنجره‌ی مشابه هم در retry و تلاش دومِ واسط هست). همه در «یک» بلوک
+        // sync صادر می‌شوند تا writeهای تازه‌ی pipeTo نتوانند بین‌شان سبقت
+        // بکشند — FIFO خود writer ترتیب نهایی را تضمین می‌کند.
+        const writes: Promise<void>[] = [];
+        if (rawClientData) {
+            writes.push(writer.write(rawClientData));
+        }
+        const buffered = remoteSocket.buffered;
+        if (buffered?.length) {
+            for (const chunk of buffered) {
+                writes.push(writer.write(chunk));
+            }
+            buffered.length = 0;
+        }
+
         log(`connected to ${address}:${port}`);
 
-        if (rawClientData) {
-            await writer.write(rawClientData);
+        if (writes.length) {
+            await Promise.all(writes);
         }
 
         if (!keepWriter) {
@@ -237,6 +266,10 @@ export async function handleTCPOutBound(
     }
 
     async function retry() {
+        // v0.8.28 — نویسنده‌ی سوکت مردود باطل می‌شود تا chunkهای رسیده در
+        // پنجره‌ی انتظار این تلاش (مثلاً DNS حالت prefix) به‌جای ورود به سوکت
+        // مرده، بافر و به تلاش بعدی بازپخش شوند — همان قرارداد rawClientData
+        if ('writer' in remoteSocket) remoteSocket.writer = null;
         // کل منطق retry داخل try — دیگه unhandled rejection نداریم
         try {
             const target = await resolveProxyTarget(addressRemote, portRemote);
@@ -254,6 +287,8 @@ export async function handleTCPOutBound(
                     void (async () => {
                         try {
                             const exclude = new Set<string>(target.proxyIP ? [target.proxyIP] : []);
+                            // v0.8.28 — همان پنجره برای تلاش دوم (بافر به‌جای سوکت مرده)
+                            if ('writer' in remoteSocket) remoteSocket.writer = null;
                             const alt = await resolveProxyTarget(addressRemote, portRemote, exclude);
                             if (!alt || (alt.host === target.host && alt.port === target.port)) {
                                 // کاندیدای متمایز نبود (استخر تک‌نفره در عمل) — پایان تمیز
