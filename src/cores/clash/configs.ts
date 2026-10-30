@@ -158,7 +158,9 @@ export async function getClNormalConfig(): Promise<Response> {
         false
     );
 
-    return new Response(JSON.stringify(config, null, 4), {
+    // بدنه‌ی فشرده — کلاینت‌ها (mihomo/Clash Verge/FlClash) فرمت تورفتگی را لازم ندارند؛
+    // ~۳۰٪ بدنه و حافظه‌ی subBodyCache کمتر + stringify سریع‌تر در هر تولید
+    return new Response(JSON.stringify(config), {
         status: 200,
         headers: {
             'Content-Type': 'application/json',
@@ -202,7 +204,8 @@ export async function getClWarpConfig(isPro: boolean): Promise<Response> {
     );
 
     const fileName = isPro ? 'warp-Pro' : 'warp';
-    return new Response(JSON.stringify(config, null, 4), {
+    // بدنه‌ی فشرده — هم‌راستا با getClNormalConfig
+    return new Response(JSON.stringify(config), {
         status: 200,
         headers: {
             'Content-Type': 'application/json',
