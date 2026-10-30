@@ -219,3 +219,114 @@ describe('failover chain — WS close ownership (v0.8.19)', () => {
         hoisted.effList = ['p1.example:443', 'p2.example:443']; // بازگردانی برای تست‌های دیگر
     });
 });
+
+// ---------- سلامتِ ProxyIP کلاینت-آگاه + retry بی‌فایده (v0.8.29) ----------
+// رگرسیون: کلاینتِ رفته (flap موبایل/تب بسته) قبل از رسیدن اولین بایتِ دانلود،
+// قبلاً دو آسیب می‌زد: (۱) واسطِ سالم markProxyFail می‌خورد (cooldown نمایی تا
+// ۱۰ دقیقه) و انتخاب وزنی خراب می‌شد؛ (۲) زنجیره‌ی retry برای نشستِ مرده باز
+// connect می‌زد و واسط‌های بعدی را هم جریمه می‌کرد. این تست‌ها تضمین می‌کنند:
+//   ۱) کلاینتِ مرده = هیچ اثری روی رجیستری سلامت + هیچ connect بیهوده
+//   ۲) مرگ وسطِ زنجیره = تلاشِ در حال پرواز جریمه نمی‌خورد، زنجیره همان‌جا تمام
+
+describe('proxy health is client-aware (v0.8.29)', () => {
+    // سوکت سیاه‌چاله: TCP باز، نه داده نه close — وچ‌داگ باید ببنددش
+    function silentSocket() {
+        let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+        const readable = new ReadableStream<Uint8Array>({
+            start(controller) { controllerRef = controller; },
+            pull() { /* هنگ عمدی — سیاه‌چاله */ },
+        });
+        return {
+            readable,
+            writable: new WritableStream(),
+            close: vi.fn(() => {
+                try { controllerRef?.close(); } catch { /* noop */ }
+            }),
+            closed: Promise.resolve(),
+        } as unknown as Socket & { close: ReturnType<typeof vi.fn> };
+    }
+
+    // WS با مرگِ شبیه‌سازی‌شده‌ی کلاینت (بدون close سمت سرور — مثل flap واقعی)
+    function clientWs() {
+        const sent: (Uint8Array | ArrayBuffer)[] = [];
+        let state = 1; // OPEN
+        return {
+            sent,
+            get readyState() { return state; },
+            send: vi.fn((d: Uint8Array | ArrayBuffer) => { sent.push(d); }),
+            close: vi.fn(() => { state = 2; }),
+            kill: () => { state = 3; }, // CLOSED — کلاینت رفت
+        } as unknown as WebSocket & {
+            sent: (Uint8Array | ArrayBuffer)[];
+            send: ReturnType<typeof vi.fn>;
+            close: ReturnType<typeof vi.fn>;
+            kill: () => void;
+        };
+    }
+
+    let rnd: ReturnType<typeof vi.spyOn>;
+    let runId = 0;
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        runId += 1;
+        // نام‌های یکتا برای هر اجرا — رجیستری سلامت در سطح ماژول است و تست‌های
+        // بالادستِ همین فایل (زنجیره‌ی failover) واسط‌های خودشان را markProxyFail
+        // می‌کنند؛ ادعای این describe باید مستقل از آن وضعیت بماند.
+        hoisted.effList = [`pa${runId}.example:443`, `pb${runId}.example:443`];
+        // رو Roulette وزنی قطعی‌بودن بدهیم — اولین کاندیدای سالم انتخاب شود
+        rnd = vi.spyOn(Math, 'random').mockReturnValue(0);
+    });
+    afterEach(() => {
+        rnd.mockRestore();
+        vi.useRealTimers();
+        hoisted.effList = ['p1.example:443', 'p2.example:443'];
+    });
+
+    it('client gone from the start → chain stops after direct, proxies untouched', async () => {
+        const { connect } = await import('cloudflare:sockets');
+        const { handleTCPOutBound, pickProxyIP } = await import('../src/protocols/common');
+        const conn = vi.mocked(connect);
+        conn.mockClear();
+        conn.mockImplementation(() => silentSocket());
+
+        const ws = clientWs();
+        ws.kill(); // کلاینت قبل از هر تلاشی رفته
+        void handleTCPOutBound({ value: null }, 'example.com', 80, new Uint8Array([1]), ws, null, () => {});
+
+        await vi.advanceTimersByTimeAsync(7_000); // فراتر از وچ‌داگ ۶ ثانیه‌ای
+
+        // فقط اتصال مستقیم — نه واسط اول، نه تلاش دوم برای نشستِ مرده
+        expect(conn).toHaveBeenCalledTimes(1);
+        // فرصت تسویه برای هر تلاشِ رهاشده‌ی کد قدیمی (وچ‌داگ واسط ~۱۲ثانیه) —
+        // بعدش هم هیچ واسطی نباید cooldown خورده باشد
+        await vi.advanceTimersByTimeAsync(6_000);
+        // هیچ واسطی cooldown نخورده → pa همچنان اولین انتخاب سالم است
+        // (کد قدیمی: pa جریمه → کاندیدای بعدی برمی‌گشت)
+        expect(pickProxyIP([`pa${runId}.example:443`, `pb${runId}.example:443`, 'untouched.example:443'])).toBe(`pa${runId}.example:443`);
+    });
+
+    it('client dies mid-chain → in-flight proxy not penalized, no further attempts', async () => {
+        const { connect } = await import('cloudflare:sockets');
+        const { handleTCPOutBound, pickProxyIP } = await import('../src/protocols/common');
+        const conn = vi.mocked(connect);
+        conn.mockClear();
+        conn.mockImplementation(() => silentSocket());
+
+        const ws = clientWs(); // اول زنده
+        void handleTCPOutBound({ value: null }, 'example.com', 80, new Uint8Array([1]), ws, null, () => {});
+
+        // وچ‌داگ مستقیم (۶ ثانیه) → settle → retry → connect واسط اول؛
+        // وچ‌داگِ واسط هنوز (~۱۲ثانیه) نایستاده — پنجره‌ی مرگ کلاینت
+        await vi.advanceTimersByTimeAsync(7_000);
+        expect(conn).toHaveBeenCalledTimes(2); // مستقیم + واسط اول — کلاینت هنوز زنده بود
+        ws.kill(); // کلاینت وسط زنجیره رفت
+
+        await vi.advanceTimersByTimeAsync(7_000); // وچ‌داگ تلاشِ در حال پرواز را می‌بندد
+
+        // تلاش سوم برای نشستِ مرده انجام نشد (کد قدیمی: ۳ بار connect)
+        expect(conn).toHaveBeenCalledTimes(2);
+        // واسطِ در حال پرواز جریمه نخورد (کد قدیمی: pa cooldown → کاندیدای بعدی)
+        expect(pickProxyIP([`pa${runId}.example:443`, `pb${runId}.example:443`, 'untouched.example:443'])).toBe(`pa${runId}.example:443`);
+    });
+});

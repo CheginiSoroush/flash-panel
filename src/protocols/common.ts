@@ -252,10 +252,16 @@ export async function handleTCPOutBound(
             // تلاش گره خورده بود → اولین واسطِ مرده، WS را قبل از رسیدن نوبتِ
             // failover می‌بست و تلاش دوم هرگز به کلاینت نمی‌رسید.
 
-            // سلامت ProxyIP: اگر در این تلاش داده‌ی واقعی برگشت → سالم؛
-            // اگر جریان بدون هیچ داده‌ای بسته شد → مرده و cooldown می‌خورد
-            remoteSocketToWS(tcpSocket, webSocket, VLResponseHeader, next, log, (hasData) => {
-                if (target.proxyIP) hasData ? markProxyOk(target.proxyIP) : markProxyFail(target.proxyIP);
+            // سلامت ProxyIP — کلاینت-آگاه (v0.8.29):
+            //   داده‌ی واقعی برگشت → واسط سالم است (اثبات‌شده، فارغ از سرنوشت کلاینت)
+            //   بدون داده + کلاینت هنوز زنده → واسط واقعاً پاسخ نداد → cooldown
+            //   بدون داده + کلاینت رفته → بی‌نتیجه — هیچ ثبتی نه. قبلاً flap موبایل /
+            //   بستنِ تب، واسطِ سالم را جریمه می‌کرد (cooldown نمایی تا ۱۰ دقیقه) و
+            //   یک کلاینتِ پریشان، بهترین کاندیداها را یکی‌یکی از چرخه می‌انداخت.
+            remoteSocketToWS(tcpSocket, webSocket, VLResponseHeader, next, log, (hasData, clientAlive) => {
+                if (!target.proxyIP) return;
+                if (hasData) markProxyOk(target.proxyIP);
+                else if (clientAlive) markProxyFail(target.proxyIP);
             });
         } catch (error) {
             if (target.proxyIP) markProxyFail(target.proxyIP);
@@ -347,7 +353,7 @@ export async function remoteSocketToWS(
     VLResponseHeader: Uint8Array | null,
     retry: (() => void) | null,
     log: Logger,
-    onResult?: (hasData: boolean) => void
+    onResult?: (hasData: boolean, clientAlive: boolean) => void
 ) {
     let vlHeader = VLResponseHeader;
     let hasIncomingData = false;
@@ -408,8 +414,10 @@ export async function remoteSocketToWS(
     }
     disarmWatchdog();
 
-    // گزارش نتیجه برای رجیستری سلامت ProxyIP (فقط مسیر retry استفاده می‌کند)
-    onResult?.(hasIncomingData);
+    // گزارش نتیجه برای رجیستری سلامت ProxyIP (فقط مسیر واسط استفاده می‌کند).
+    // v0.8.29 — آرگومان دوم: آیا کلاینت در لحظه‌ی settle زنده بوده؟
+    const clientAlive = webSocket.readyState === WS_READY_STATE_OPEN;
+    onResult?.(hasIncomingData, clientAlive);
 
     // مالکیت بستن WS — تصمیم واحد، بعد از settle شدن جریان (v0.8.19):
     //  • داده رد و بدل شد → تونل تمام است (EOF تمیز یا قطع) → بستن
@@ -421,7 +429,10 @@ export async function remoteSocketToWS(
         safeCloseWebSocket(webSocket);
     }
 
-    if (hasIncomingData === false && retry) {
+    // v0.8.29 — retry فقط برای نشست زنده: کلاینتِ رفته (flap موبایل/تب بسته)
+    // مخاطبی برای تلاش بعدی ندارد؛ زنجیره فقط connect بیهوده می‌زد، منابع هدر
+    // می‌رفت و واسط‌های بعدیِ همین نشستِ مرده هم به‌اشتباه cooldown می‌خوردند.
+    if (hasIncomingData === false && retry && clientAlive) {
         log(`retry`);
         retry();
     }
