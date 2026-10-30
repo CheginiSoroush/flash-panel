@@ -4,7 +4,7 @@ import { fetchWarpAccounts } from '@api/warp';
 import { safeError } from '@common';
 import { getKvSettings, syncKvSettings } from '@settings';
 import { setCustomDomain } from '@main';
-import { commitSettingsBlob, mutateSettings } from './store';
+import { mutateSettings } from './store';
 
 export interface Dataset {
     settings: KvSettings;
@@ -127,15 +127,21 @@ async function loadDataset(env: Env): Promise<Dataset> {
         }
 
         if (VERSION !== settings.panelVersion && Date.now() >= migrationRetryAfter) {
-            // مهاجرت نسخه — مستقیم از روی settings ذخیره‌شده merge می‌شه
-            // (بدون خواندن دوباره KV + بدون overwrite شدن با پیش‌فرض‌ها)
-            try {
-                settings = await mergeDataset(env, undefined, settings);
+            // مهاجرت نسخه — از طریق صف نوشتن (v0.8.25): خواندن تازه داخل صف؛
+            // baseی که mutator می‌گیرد جدیدترین blob است (?? settings = حالت
+            // بوت‌استرپ/شکست خواندن). قبلاً commit مستقیم بیرون از صف بود.
+            const migrated = await mutateSettings(
+                env,
+                (kvCurrent) => computeMergedSettings(env, undefined, kvCurrent ?? settings),
+                { reason: 'migration' }
+            );
+            if (migrated.ok && migrated.settings) {
+                settings = migrated.settings;
                 migrationRetryAfter = 0;
-            } catch (error) {
+            } else {
                 // 🔴 سقف put روزانه (429) یا هر خطای write دیگر → هرگز لود تنظیمات را نکش؛
                 // سرویس با merge در حافظه ادامه می‌دهد (پس از ریست سهمیه، put بعدی مهاجرت را ثبت می‌کند)
-                console.log(`KV migration put deferred (best-effort, retry in 15m): ${safeError(error)}`);
+                console.log(`KV migration put deferred (best-effort, retry in 15m): ${migrated.error ?? migrated.skipped}`);
                 migrationRetryAfter = Date.now() + MIGRATION_RETRY_MS;
                 settings = { ...kvSettings, ...settings, panelVersion: VERSION };
                 syncKvSettings(settings);
@@ -254,10 +260,19 @@ const SETTINGS_FIELDS: Array<
     ];
 
 /**
- * هستهٔ merge — هم برای ذخیرهٔ پنل (با newSettings) و هم مهاجرت نسخه (بدون newSettings).
+ * هستهٔ merge — محاسبهٔ خالص، بدون نوشتن (v0.8.25).
+ *
+ * هم برای ذخیرهٔ پنل (با newSettings) و هم مهاجرت نسخه (بدون newSettings):
  * newSettings === undefined → مقدار ذخیره‌شده ?? پیش‌فرض (مهاجرت حفظ‌کننده)
+ *
+ * قبلاً همین تابع خودش commitSettingsBlob را مستقیم صدا می‌زد — بیرون از صف
+ * نوشتنِ store. باگ: ذخیره‌ی پنل (read دستی + merge چندصد میلی‌ثانیه‌ای با
+ * callbacks شبکه‌ای + commit مستقیم) با تراکنش tuner/رباتِ هم‌ایزوله هم‌پوشان
+ * می‌شد و تغییرِ آن‌ها بی‌صدا پاک می‌شد — همان کلاس lost-update که موتور
+ * v0.8.11 برای نابودی‌اش ساخته شد ولی بزرگ‌ترین نویسنده هنوز از صف عبور می‌کرد.
+ * حالا callerها از طریق mutateSettings صف می‌گیرند؛ این تابع فقط محاسبه می‌کند.
  */
-async function mergeDataset(
+async function computeMergedSettings(
     env: Env,
     newSettings: PanelSettings | undefined,
     currentSettings: KvSettings | null
@@ -281,28 +296,16 @@ async function mergeDataset(
         return newSettings?.[key] ?? currentSettings?.[key] ?? kvSettings[key];
     };
 
-    try {
-        const entries = await Promise.all(
-            SETTINGS_FIELDS.map(async ([key, callbackKey, callbackFunc]) => {
-                return [key, await getParam(key, callbackKey, callbackFunc)];
-            })
-        );
+    const entries = await Promise.all(
+        SETTINGS_FIELDS.map(async ([key, callbackKey, callbackFunc]) => {
+            return [key, await getParam(key, callbackKey, callbackFunc)];
+        })
+    );
 
-        const updatedSettings: KvSettings = {
-            ...Object.fromEntries(entries),
-            panelVersion: VERSION
-        };
-
-        // نوشتن از طریق موتور پایداری — no-op skip (صرفه‌ی سهمیه) + rev + retry
-        // + آگاهی از سهمیه؛ invalidate کش دیتاست و sync snapshot ماژول داخل
-        // خودِ commit انجام می‌شود (وگرنه handlerهای بدون setSettings مثل
-        // clean-ip مقدار پیش‌فرض/کهنه را می‌خوانند و روی KV پس‌می‌نویسند)
-        await commitSettingsBlob(env, currentSettings, updatedSettings, { reason: 'merge' });
-        return updatedSettings;
-    } catch (error) {
-        console.log(error);
-        throw new Error(`An error occurred while updating KV: ${safeError(error)}`);
-    }
+    return {
+        ...Object.fromEntries(entries),
+        panelVersion: VERSION
+    };
 }
 
 export async function updateDataset(env: Env, newSettings?: PanelSettings): Promise<KvSettings> {
@@ -317,15 +320,20 @@ export async function updateDataset(env: Env, newSettings?: PanelSettings): Prom
         return kvSettings;
     }
 
-    let currentSettings: KvSettings | null = null;
-    try {
-        currentSettings = await env.kv.get('proxySettings', { type: 'json' });
-    } catch (error) {
-        console.log(error);
-        throw new Error(`An error occurred while getting current KV settings: ${safeError(error)}`);
+    // ذخیره‌ی پنل/بکاپ/clean-ip — از طریق تراکنش متمرکز (v0.8.25).
+    // قبلاً read دستی + commit مستقیم بیرون از صف بود؛ tuner/رباتِ هم‌ایزوله که
+    // بین read و commit می‌نشست روی نسخه‌ی کهنه بازنویسی می‌شد (lost update).
+    // فیلدهایی که در payload پنل نیستند (مثل autoProxyIPs که tuner مدیریت می‌کند)
+    // حالا از تازه‌ترین blob داخل صف resolve می‌شوند و concurrent write می‌مانند.
+    const result = await mutateSettings(
+        env,
+        (kvCurrent) => computeMergedSettings(env, newSettings, kvCurrent),
+        { reason: 'merge' }
+    );
+    if (!result.ok || !result.settings) {
+        throw new Error(`An error occurred while updating KV: ${result.error ?? result.skipped}`);
     }
-
-    return mergeDataset(env, newSettings, currentSettings);
+    return result.settings;
 }
 
 async function getDnsParams(dns: string): Promise<DnsHost> {
@@ -360,11 +368,20 @@ export async function healRemoteDnsHost(env: Env, settings: KvSettings): Promise
         const current = settings.remoteDnsHost;
         if (current?.isDomain && current.host === host) return settings; // سالم و هم‌تراز
 
+        // رزولوشن DoH بیرون از صف — صف نوشتن نباید روی شبکه‌ی DNS بایستد
         const healed = await getDnsParams(settings.remoteDNS);
-        const next: KvSettings = { ...settings, remoteDnsHost: healed };
-        // write ضمنی self-heal — از موتور پایداری (no-op skip + سهمیه‌آگاه + rev)
-        await commitSettingsBlob(env, settings, next, { reason: 'dns-heal', implicit: true });
-        return next;
+
+        // write ضمنی self-heal — از طریق صف نوشتن (v0.8.25). baseی تازه‌ترین blob
+        // است؛ اگر نویسنده‌ی دیگری همین حالا heal کرده باشد، بدون put دوم رد می‌شویم.
+        const result = await mutateSettings(env, (kvCurrent) => {
+            const base = kvCurrent ?? settings;
+            if (base.remoteDnsHost?.isDomain && base.remoteDnsHost.host === host) return null;
+            return { ...base, remoteDnsHost: healed };
+        }, { reason: 'dns-heal', implicit: true });
+
+        if (result.ok && result.settings) return result.settings;
+        // شکست write (سهمیه/شبکه) → حداقل این‌درخواست با داده‌ی heal‌شده در حافظه ادامه می‌دهد
+        return { ...settings, remoteDnsHost: healed };
     } catch {
         // best-effort — هرگز لود تنظیمات را نمی‌شکند؛ دور بعد دوباره تلاش می‌شود
         return settings;

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 
 /**
  * v0.8.11 — موتور پایداری proxySettings (src/settings/store)
@@ -330,5 +330,48 @@ describe('store: هسته‌ی commitSettingsBlob (مسیر merge/heal)', () => 
         expect(changed.changed).toBe(true);
         expect(JSON.parse(kvStore.get('proxySettings')!).settingsRev).toBe(1);
         expect(JSON.parse(kvStore.get('proxySettings')!).ports).toEqual([443, 8443]);
+    });
+});
+
+describe('store: 🔒 lost-update — updateDataset (panel save) هم در صف نوشتن (v0.8.25)', () => {
+    it('ذخیره‌ی پنل هم‌زمان با tuner → فیلد خارج از payload پنل از blob تازه resolve می‌شود (قبلاً tuner قربانی می‌شد)', async () => {
+        const { kv, store: kvStore } = createKvMock({ proxySettings: fullBlob() });
+        const env = { kv } as any;
+
+        // tuner اول صفحه می‌گیرد و عمداً داخل mutator دیر برمی‌گردد
+        const tuner = store.mutateSettings(env, async cur => {
+            await sleep(30);
+            return { ...cur!, autoProxyIPs: ['104.17.147.22'] };
+        }, { reason: 'test:tuner-holds-queue' });
+
+        // ذخیره‌ی پنل: payload فقط localDNS را عوض می‌کند — autoProxyIPs در payload نیست
+        // (قبلاً: read دستیِ بیرون از صف → tuner بین read و commit می‌نشست → commit پنل
+        // روی نسخه‌ی کهنه، tuner بی‌صدا پاک می‌شد)
+        const save = kvmod.updateDataset(env, { localDNS: '9.9.9.9' } as any);
+
+        const [tunerRes] = await Promise.all([tuner, save]);
+
+        expect(tunerRes.ok).toBe(true);
+        const final = JSON.parse(kvStore.get('proxySettings')!);
+        expect(final.localDNS).toBe('9.9.9.9');                 // ذخیره‌ی پنل
+        expect(final.autoProxyIPs).toEqual(['104.17.147.22']);  // tuner — قبلاً قربانی می‌شد
+        expect(final.settingsRev).toBe(2);                      // دو commit واقعی، پشت‌سرهم
+    });
+
+    it('خطای merge (شبکه/callback) → updateDataset throw می‌کند؛ KV دست‌نخورده می‌ماند', async () => {
+        const { kv, store: kvStore, getPutAttempts } = createKvMock({ proxySettings: fullBlob() });
+        const env = { kv } as any;
+
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('doh down'); }));
+        try {
+            // remoteDNS دامنه‌ای جدید → callback resolveDNS → شبکه می‌میرد
+            await expect(kvmod.updateDataset(env, { remoteDNS: 'https://doh-fail.example/dns-query' } as any))
+                .rejects.toThrow(/updating KV/);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+
+        expect(getPutAttempts()).toBe(0);
+        expect(JSON.parse(kvStore.get('proxySettings')!).remoteDNS).toBe('1.1.1.1');
     });
 });
