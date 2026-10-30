@@ -41,5 +41,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_KV_ID: ${{ secrets.CLOUDFLARE_KV_ID }}
           PANEL_EMBED_JSON: ${{ secrets.PANEL_EMBED_JSON }}
         run: bash deploy/ci-deploy.sh
