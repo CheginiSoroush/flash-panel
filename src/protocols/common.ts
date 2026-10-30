@@ -218,9 +218,10 @@ export async function handleTCPOutBound(
         try {
             log(`connecting via ${target.host}:${target.port}`);
             const tcpSocket = await connectAndWrite(target.host, target.port);
-            tcpSocket.closed
-                .catch(error => console.log('retry TCP socket closed error', error))
-                .finally(() => safeCloseWebSocket(webSocket));
+            // نکته‌ی v0.8.19: بستن WS به remoteSocketToWS منتقل شد (تصمیم واحد
+            // بعد از پایان جریان). قبلاً اینجا به رویداد closed سوکتِ «اولین»
+            // تلاش گره خورده بود → اولین واسطِ مرده، WS را قبل از رسیدن نوبتِ
+            // failover می‌بست و تلاش دوم هرگز به کلاینت نمی‌رسید.
 
             // سلامت ProxyIP: اگر در این تلاش داده‌ی واقعی برگشت → سالم؛
             // اگر جریان بدون هیچ داده‌ای بسته شد → مرده و cooldown می‌خورد
@@ -369,16 +370,21 @@ export async function remoteSocketToWS(
     } catch (error) {
         console.error('VLRemoteSocketToWS has exception.', error);
         safeCloseTcpSocket(remoteSocket);
-        // باگ قبلی: بستن WS حتی وقتی retry در راه بود، مسیر جایگزین را قبل از
-        // شروع می‌کشت — حالا WS فقط وقتی بسته می‌شود که راهی برای retry نمانده
-        if (!(hasIncomingData === false && retry)) {
-            safeCloseWebSocket(webSocket);
-        }
     }
     disarmWatchdog();
 
     // گزارش نتیجه برای رجیستری سلامت ProxyIP (فقط مسیر retry استفاده می‌کند)
     onResult?.(hasIncomingData);
+
+    // مالکیت بستن WS — تصمیم واحد، بعد از settle شدن جریان (v0.8.19):
+    //  • داده رد و بدل شد → تونل تمام است (EOF تمیز یا قطع) → بستن
+    //  • بدون داده + راه retry باز → WS زنده می‌ماند تا تلاش بعدی (failover)
+    //  • بدون داده + هیچ راهی نمانده → بستن تا کلاینت بی‌نهایت معطل نماند
+    // مسیر مستقیم هم حالا روی EOF تمیزِ مقصد WS را می‌بندد (قبلاً تا کلاینت
+    // خودش نبندد باز می‌ماند).
+    if (hasIncomingData || !retry) {
+        safeCloseWebSocket(webSocket);
+    }
 
     if (hasIncomingData === false && retry) {
         log(`retry`);
