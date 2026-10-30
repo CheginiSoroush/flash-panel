@@ -7,7 +7,7 @@ import { isValidSubUserId, resolveAndRecordSubUser } from '@settings/sub-users';
 import { buildSubUserInfoHeader } from '@api/clean-ip';
 import { fallback } from './utils';
 import { getWireguardConfigs } from '@cores/wireguard';
-import { HttpStatus, respond } from '@common';
+import { base64EncodeUtf8, HttpStatus, respond } from '@common';
 import { SharedSettings } from '#types/settings';
 import { subBodyCache } from './optimize';
 
@@ -201,7 +201,11 @@ async function computeSubETag(path: string, client: string, userId: string | nul
 
 async function shareSettings() {
     const sharedSettings: SharedSettings = getSharedSettings();
-    const body = btoa(JSON.stringify(sharedSettings));
+    // btoa خام روی هر کاراکتر خارج از Latin1 (ریمارک فارسی/ایموجی در customConfigs و
+    // customSubs — کاملاً رایج) InvalidCharacterError می‌دهد و کل endpoint را ۵۰۰ می‌کند.
+    // base64EncodeUtf8 همان JSON را به‌صورت UTF-8 کد می‌کند؛ برای بدنه‌های ASCII خروجی
+    // بایت‌به‌بایت با btoa یکسان است (سازگاری کامل با فایل‌های .dat قبلی).
+    const body = base64EncodeUtf8(JSON.stringify(sharedSettings));
 
     return new Response(body, {
         status: HttpStatus.OK,
