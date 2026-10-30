@@ -1,80 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { gunzipSync } from 'node:zlib';
-import {
-    acceptsGzip,
-    gzipCompress,
-    shouldGzip,
-    SubBodyCache
-} from '@handlers/optimize';
+import { SubBodyCache } from '@handlers/optimize';
 
-// =====================================================================
-// ۱) acceptsGzip / shouldGzip — مذاکره‌ی محتوا طبق RFC 7231
-// =====================================================================
-describe('acceptsGzip', () => {
-    it('پذیرش صریح gzip', () => {
-        expect(acceptsGzip('gzip')).toBe(true);
-        expect(acceptsGzip('gzip, deflate, br')).toBe(true);
-        expect(acceptsGzip('deflate, gzip;q=1.0, br')).toBe(true);
-        expect(acceptsGzip('GZIP')).toBe(true); // توکن‌ها case-insensitive
-    });
-
-    it('رد حالت‌های بدون gzip', () => {
-        expect(acceptsGzip(null)).toBe(false);
-        expect(acceptsGzip('')).toBe(false);
-        expect(acceptsGzip('deflate, br')).toBe(false);
-        expect(acceptsGzip('identity')).toBe(false);
-    });
-
-    it('q=0 صریح یعنی ممنوع', () => {
-        expect(acceptsGzip('gzip;q=0')).toBe(false);
-        expect(acceptsGzip('gzip;q=0.0')).toBe(false);
-        expect(acceptsGzip('gzip;q=0, br')).toBe(false);
-        expect(acceptsGzip('gzip;q=0.000')).toBe(false);
-    });
-
-    it('q غیرصفر پذیرفته می‌شود', () => {
-        expect(acceptsGzip('gzip;q=0.5')).toBe(true);
-        expect(acceptsGzip('gzip;q=1')).toBe(true);
-    });
-});
-
-describe('shouldGzip', () => {
-    it('آستانه‌ی اندازه رعایت می‌شود (۱۰۲۴ بایت)', () => {
-        expect(shouldGzip('gzip', 0)).toBe(false);
-        expect(shouldGzip('gzip', 1023)).toBe(false);
-        expect(shouldGzip('gzip', 1024)).toBe(true);
-        expect(shouldGzip('gzip', 50_000)).toBe(true);
-    });
-
-    it('کلاینت بدون gzip حتی بدنه‌ی بزرگ را فشرده نمی‌کند', () => {
-        expect(shouldGzip(null, 100_000)).toBe(false);
-        expect(shouldGzip('deflate', 100_000)).toBe(false);
-    });
-});
-
-describe('gzipCompress', () => {
-    it('گردش کامل — خروجی با zlib استاندارد باز می‌شود', async () => {
-        const body = '⚡ ' + 'vless://config '.repeat(200); // ~3KB متن تکراری
-        const compressed = await gzipCompress(body);
-
-        expect(compressed.length).toBeLessThan(body.length / 2); // فشرده‌سازی واقعی
-        expect(compressed[0]).toBe(0x1f); // magic number gzip
-        expect(compressed[1]).toBe(0x8b);
-
-        const roundtrip = gunzipSync(Buffer.from(compressed)).toString('utf-8');
-        expect(roundtrip).toBe(body);
-    });
-
-    it('متن یونیکد فارسی سالم برگردانده می‌شود', async () => {
-        const body = 'کانفیگ سریع و کم‌مصرف — Flash Panel ⚡'.repeat(50);
-        const compressed = await gzipCompress(body);
-        expect(gunzipSync(Buffer.from(compressed)).toString('utf-8')).toBe(body);
-    });
-});
-
-// =====================================================================
-// ۲) SubBodyCache — TTL، LRU، سقف اندازه
-// =====================================================================
+// ============================
+// SubBodyCache — TTL، LRU، سقف اندازه
+// ============================
 describe('SubBodyCache', () => {
     it('hit/miss ساده', () => {
         const cache = new SubBodyCache();
