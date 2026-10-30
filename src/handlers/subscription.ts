@@ -2,7 +2,7 @@ import { getClNormalConfig, getClWarpConfig } from '@cores/clash/configs';
 import { getURLConfigs } from '@cores/common';
 import { getSbCustomConfig, getSbWarpConfig } from '@cores/sing-box/configs';
 import { getXrCustomConfigs, getXrWarpConfigs } from '@cores/xray/configs';
-import { setSettings, getGlobals, getSharedSettings, getSettings } from '@settings';
+import { setSettings, getGlobals, getSharedSettings, getSettings, getWarpAccounts } from '@settings';
 import { isValidSubUserId, resolveAndRecordSubUser } from '@settings/sub-users';
 import { buildSubUserInfoHeader } from '@api/clean-ip';
 import { fallback } from './utils';
@@ -51,7 +51,10 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
     const path = SUB_PATH_ALIASES[userId ? seg4 : seg3] ?? (userId ? seg4 : seg3);
 
     // ETag بر اساس «ورودی‌های» تولید کانفیگ (نه خروجی‌شون):
-    // نسخه پنل + کل تنظیمات KV + تنظیمات embedded + نوع ساب + کلاینت + شناسه کاربر.
+    // نسخه پنل + کل تنظیمات KV + تنظیمات embedded + نوع ساب + کلاینت + شناسه کاربر
+    // + اکانت‌های WARP (کلید KV جداگانه — بدنه‌ی ساب‌های warp/wow/wireguard آن‌ها را
+    // embed می‌کند؛ بدون این ورودی، چرخش اکانت‌ها ETag را نمی‌لرزاند و کلاینت شرطی
+    // 304 ابدی می‌گرفت = اعتبارنامه‌ی کهنه تا همیشه — رگرسیون v0.8.30).
     // getSettings() همه‌چیز رو داره: kvSettings + globalSettings (شامل client, hostname, origin)
     const etag = await computeSubETag(path, client, userId);
 
@@ -186,9 +189,14 @@ async function routeSubscription(path: string, client: string): Promise<Response
 
 /**
  * هش SHA-256 از ورودی‌های تولید کانفیگ — ۸ بایت اول به‌صورت hex
+ *
+ * ورودی‌ها باید «هر چیزی که بدنه را می‌سازد» را پوشش دهند: settings + اکانت‌های
+ * WARP (کلید KV جداگانه، خوانده‌شده در setSettings و embed شده در ساب‌های
+ * warp/wow/wireguard). چرخش اکانت‌ها (دکمه‌ی پنل / self-heal) → ETag نو →
+ * کلاینت شرطی بدنه‌ی نو می‌گیرد و کلید subBodyCache هم تازه می‌شود.
  */
-async function computeSubETag(path: string, client: string, userId: string | null = null): Promise<string> {
-    const payload = JSON.stringify({ v: VERSION, path, client, u: userId, s: getSettings() });
+export async function computeSubETag(path: string, client: string, userId: string | null = null): Promise<string> {
+    const payload = JSON.stringify({ v: VERSION, path, client, u: userId, s: getSettings(), w: getWarpAccounts() });
     const digest = await crypto.subtle.digest('SHA-256', etagEncoder.encode(payload));
     const bytes = new Uint8Array(digest).slice(0, 8);
 

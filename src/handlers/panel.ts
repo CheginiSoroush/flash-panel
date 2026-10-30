@@ -9,7 +9,7 @@ import { loadApiToken } from '@settings';
 import { resetPassword, logout, authenticate, invalidateTotpCache } from '@auth';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotp } from '@auth/totp';
 import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
-import { getDataset, updateDataset } from '@kv';
+import { getDataset, updateDataset, invalidateDatasetCache } from '@kv';
 import { buildScript, updateMainSettings } from '@main';
 import { getGlobals, getMainSettings, getDefaultKvSettings, subscriptions, clients } from '@settings';
 import { CF_TOKEN_MISSING_ERROR } from '@api/cf-auth';
@@ -478,6 +478,9 @@ async function updateWarpConfigs(request: Request, env: Env): Promise<Response> 
         }
 
         await fetchWarpAccounts(env);
+        // fetchWarpAccounts مستقیم KV می‌نویسد — قرارداد kv.ts: کش دیتاست باید باطل شود
+        // وگرنه همین isolate تا ۵ ثانیه (TTL کش) اکانت‌های کهنه را سرو می‌کند.
+        invalidateDatasetCache();
         return respond(true, HttpStatus.OK, 'Warp configs updated successfully!');
     } catch (error) {
         console.log(error);
