@@ -678,13 +678,40 @@ async function disableTotp(request: Request, env: Env): Promise<Response> {
         return respond(false, HttpStatus.BAD_REQUEST, 'Invalid verification code.');
     }
 
-    await Promise.all([
-        env.kv.delete('totpSecret'),
-        env.kv.delete('totpEnabled'),
-        env.kv.delete('totpLastUsed'),
-        env.kv.delete('totpPendingSecret')
-    ]);
+    // v0.8.56 — ترتیب حذف fail-safe: اول کلیدِ تصمیم‌گیری (totpEnabled)؛ اگر
+    // همین حذف شکست بخورد، وضعیت کاملاً دست‌نخورده می‌ماند (2FA روشن با secret
+    // سالم) و ادمین retry می‌کند. قبلاً Promise.all با ترتیب دلخواه بود — شکست
+    // جزئیِ KV می‌توانست totpSecret را حذف کند و totpEnabled را نگه دارد؛ جریان
+    // لاگین روی secret غایب fail-closed است (auth.ts → «2FA verification code
+    // required») و بازیابی هم خودش لاگین می‌خواهد = قفل‌شدن کامل ادمین.
+    // بعد از پاک‌شدن کلید enabled، بقیه‌ی حذف‌ها best-effort‌اند — رکورد یتیم
+    // فقط تا enable بعدی می‌ماند و همان‌جا بازنویسی/پاک می‌شود. کش ۱۵ثانیه‌ای
+    // هم به‌محض پاک‌شدن کلید enabled خاموش می‌شود — قبلاً invalidateTotpCache
+    // فقط روی موفقیت کامل اجرا می‌شد و شکست جزئی، پنجره‌ی قفل دیگری می‌ساخت
+    // (کش روشن + KV خاموش → لاگین کد می‌خواهد، secret دیگر وجود ندارد).
+    try {
+        await env.kv.delete('totpEnabled');
+    } catch (error) {
+        console.log('2FA disable: totpEnabled delete failed — state kept intact, retry needed:', safeError(error));
+        return respond(
+            false,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            `Failed to disable 2FA — storage unavailable, try again: ${safeError(error)}`
+        );
+    }
+
+    // کش ۱۵ثانیه‌ای بلافاصله بعد از پاک‌شدن کلید تصمیم‌گیری خاموش می‌شود — قبل
+    // از پاک‌سازی best-effort؛ پنجره‌ی «کش روشن + KV خاموش» حتی به‌اندازه‌ی چند
+    // راند‌تریپ KV هم نباید باز بماند.
     invalidateTotpCache(false);
+
+    for (const key of ['totpSecret', 'totpLastUsed', 'totpPendingSecret'] as const) {
+        try {
+            await env.kv.delete(key);
+        } catch (error) {
+            console.log(`2FA disable: cleanup delete of ${key} skipped (best-effort):`, safeError(error));
+        }
+    }
 
     return respond(true, HttpStatus.OK, 'Two-factor authentication disabled!');
 }
