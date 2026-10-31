@@ -71,7 +71,15 @@ export async function VlOverWSHandler(request: Request, env: Env, ctx: Execution
             // استفاده از writer کش‌شده — بدون getWriter/releaseLock و بدون race
             const writer = remoteSocketWrapper.writer;
             if (writer) {
-                return writer.write(chunk);
+                // v0.8.48 — ردِ نوشته (مرگ سوکتِ تلاش فعلی در حال پرواز: وچ‌داگ first-byte،
+                // RST، سیاه‌چاله‌ی مقصد) نباید پمپِ کلاینت→ریموت را بکشد: pipeTo که یک writeاش
+                // رد شود readable را cancel می‌کند (پیام‌های بعدی حذف می‌شوند) و WS بسته می‌شود
+                // → زنجیره‌ی failover هرگز اجرا نمی‌شود و کل نشست با یک نوشته‌ی مردود می‌میرد.
+                // chunk به buffered برمی‌گردد تا قرارداد بازپخش v0.8.28/v0.8.38 آن را به ترتیب
+                // درست به تلاش بعدی برساند؛ پمپ زنده می‌ماند تا writer تلاش بعدی را بگیرد.
+                return writer.write(chunk).catch(() => {
+                    (remoteSocketWrapper.buffered ??= []).push(chunk);
+                });
             }
 
             // v0.8.28 — اگر خروجی TCP شروع شده ولی نویسنده هنوز آماده نیست
