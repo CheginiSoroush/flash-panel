@@ -142,7 +142,23 @@ export interface RemoteSocketWrapper {
      * chunkهای پنجره یا گم می‌شدند یا (بدتر) به‌جای هدر پروتکل پارس می‌شدند.
      */
     buffered?: Chunk[];
+    /**
+     * v0.8.49 — جمع بایت‌های درون buffered. در مرز push (هندلرها)، drain و
+     * بازگردانی شکست نوشته (connectAndWrite) نگه داشته می‌شود تا سقف
+     * REMOTE_SOCKET_MAX_BUFFERED_BYTES قابل اعمال باشد — پل WS در Workers
+     * هیچ backpressure به کلاینت نمی‌دهد؛ بدون سقف، آپلود به مقصد سیاه‌چاله
+     * در پنجره‌ی failover می‌تواند ایزوله را OOM کند (مرگ همه‌ی اتصال‌ها).
+     */
+    bufferedBytes?: number;
 }
+
+/**
+ * v0.8.49 — سقف بایتی بافر پنجره‌ی failover بر هر اتصال.
+ * عبور = بستن تمیز همان اتصال (کلاینت reconnect می‌کند) نه به خطر انداختن
+ * کل ایزوله. ۴MB برای پرواز اولیه‌ی TLS/HTTP بسیار سخاوتمندانه است و در
+ * عین حال بدترین‌حالت هر اتصال را ≤ ۳٪ سقف حافظه‌ی ایزوله نگه می‌دارد.
+ */
+export const REMOTE_SOCKET_MAX_BUFFERED_BYTES = 4 * 1024 * 1024;
 
 export async function handleTCPOutBound(
     remoteSocket: RemoteSocketWrapper,
@@ -194,6 +210,7 @@ export async function handleTCPOutBound(
                 drained.push(chunk);
             }
             buffered.length = 0;
+            remoteSocket.bufferedBytes = 0; // v0.8.49 — سقف بایتی با تخلیه صفر می‌شود
         }
 
         log(`connected to ${address}:${port}`);
@@ -210,6 +227,9 @@ export async function handleTCPOutBound(
                 // بسته‌ی handleTCPOutBound دوباره می‌فرستد.
                 if (drained.length) {
                     (remoteSocket.buffered ??= []).unshift(...drained);
+                    // v0.8.49 — بازگردانی دسته‌ی تخلیه‌شده به حساب بایتی برمی‌گردد
+                    remoteSocket.bufferedBytes =
+                        (remoteSocket.bufferedBytes ?? 0) + drained.reduce((sum, c) => sum + c.byteLength, 0);
                 }
                 throw error;
             }

@@ -4,7 +4,8 @@ import {
     handleTCPOutBound,
     makeReadableWebSocketStream,
     safeCloseTcpSocket,
-    safeCloseWebSocket
+    safeCloseWebSocket,
+    REMOTE_SOCKET_MAX_BUFFERED_BYTES
 } from '@protocols/common';
 import type { RemoteSocketWrapper } from '@protocols/common';
 import { attachWsGuardian, WsGuardianConfig } from './ws-guardian';
@@ -68,6 +69,19 @@ export async function TrOverWSHandler(request: Request, env: Env, ctx: Execution
     // wrapper با writer — از کش writer در common.ts استفاده می‌شه
     const remoteSocketWrapper: RemoteSocketWrapper = { value: null, writer: null };
 
+    // v0.8.49 — push به بافر پنجره با سقف بایتی؛ عبور از سقف = بستن تمیز همان
+    // اتصال (کلاینت reconnect می‌کند) نه OOM ایزوله — پل WS هیچ backpressure به
+    // کلاینت نمی‌دهد و پنجره‌ی failover می‌تواند نامحدود طول بکشد
+    const pushBuffered = (chunk: ArrayBuffer): void => {
+        (remoteSocketWrapper.buffered ??= []).push(chunk);
+        const total = (remoteSocketWrapper.bufferedBytes ?? 0) + chunk.byteLength;
+        remoteSocketWrapper.bufferedBytes = total;
+        if (total > REMOTE_SOCKET_MAX_BUFFERED_BYTES) {
+            safeCloseTcpSocket(remoteSocketWrapper.value);
+            safeCloseWebSocket(webSocket);
+        }
+    };
+
     // نگهبان اتصال — فقط وقتی در تنظیمات فعال باشه (پیش‌فرض: خاموش)
     if (guardian?.enabled) {
         attachWsGuardian(webSocket, () => {
@@ -87,7 +101,7 @@ export async function TrOverWSHandler(request: Request, env: Env, ctx: Execution
                 // هرگز اجرا نمی‌شود. chunk به buffered برمی‌گردد تا قرارداد بازپخش
                 // v0.8.28/v0.8.38 آن را به ترتیب درست به تلاش بعدی برساند.
                 return writer.write(chunk).catch(() => {
-                    (remoteSocketWrapper.buffered ??= []).push(chunk);
+                    pushBuffered(chunk);
                 });
             }
 
@@ -95,7 +109,7 @@ export async function TrOverWSHandler(request: Request, env: Env, ctx: Execution
             // (پنجره‌ی DNS مسیر forced-proxy در حالت prefix، یا پنجره‌ی retry)،
             // chunk بافر می‌شود — پارسِ آن به‌عنوان هدر یعنی مرگ تونل + WS زامبی
             if (remoteSocketWrapper.buffered) {
-                remoteSocketWrapper.buffered.push(chunk);
+                pushBuffered(chunk);
                 return;
             }
 
