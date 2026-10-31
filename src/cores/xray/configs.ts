@@ -312,56 +312,68 @@ export async function getXrCustomConfigs(isFragment: boolean): Promise<Response>
         const hosts = await getConfigAddresses(domain, isFragment);
         const totalHosts: string[] = [...hosts];
 
-        if (upstreamServer && upstreamPort && !isFragment) {
-            totalPorts.unshift(upstreamPort);
-            hosts.unshift(upstreamServer);
-        }
+        // v0.8.52 — جفت upstream دیگر در totalPorts/hosts ادغام نمی‌شود (unshift +
+        // XOR-skip). ادغامِ قدیمی وقتی upstreamPort عضو ports باشد (رایج‌ترین:
+        // ۴۴۳) دو ایراد می‌ساخت: (۱) جفت upstream دوبار تولید می‌شد — هر دو کپیِ
+        // پورت با شرط XOR پاس می‌کردند؛ (۲) کانفیگ‌های عادی همان پورت حذف می‌شدند —
+        // host عادی × پورت upstream توسط همان شرط skip می‌شد؛ با ports پیش‌فرض
+        // [443] یعنی سابِ بدون هیچ کانفیگ ورکری، فقط دو کپی upstream. حالا
+        // upstream یک «نقطه‌ی ورود اضافه» است — اول صف، بدون تداخل با پورت‌های
+        // عادی. totalHosts هم حالا شامل upstreamServer می‌ماند (قبلاً قبل از
+        // unshift کپی می‌شد و از bypass‌های DNS در Best Ping جا می‌ماند → حل
+        // وابستگی DNS برای خودِ سرور upstream در پروفایل Best Ping).
+        const hasUpstream = !!(upstreamServer && upstreamPort && !isFragment);
+        if (hasUpstream) totalHosts.unshift(upstreamServer);
 
         for (const protocol of protocols) {
             let protocolIndex = 1;
 
+            const pairs: Array<{ host: string; port: number }> = [];
+            if (hasUpstream) pairs.push({ host: upstreamServer, port: upstreamPort });
             for (const port of totalPorts) {
                 for (const host of hosts) {
-                    if ((port === upstreamPort) !== (host === upstreamServer)) continue;
+                    pairs.push({ host, port });
+                }
+            }
 
-                    const outbound = buildWebsocketOutbound('proxy', protocol, host, port, domain, isFragment, undefined, undefined, index);
-                    const proxy = modifyOutbound(outbound, `proxy-${index}`);
-                    proxies.push(proxy);
+            for (const { host, port } of pairs) {
+                const outbound = buildWebsocketOutbound('proxy', protocol, host, port, domain, isFragment, undefined, undefined, index);
+                const proxy = modifyOutbound(outbound, `proxy-${index}`);
+                proxies.push(proxy);
 
-                    const remark = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, false);
-                    const config = await buildConfig({
-                        remark,
-                        outbounds: [outbound],
+                const remark = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, false);
+                const config = await buildConfig({
+                    remark,
+                    outbounds: [outbound],
+                    isBalancer: false,
+                    isChain: false,
+                    balancerFallback: false,
+                    isWarp: false,
+                    isWorkerLess: false,
+                    outboundAddrs: [host]
+                });
+                configs.push(config);
+
+                if (chainOutbound) {
+                    const chainRemark = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, true);
+                    const chainConfig = await buildConfig({
+                        remark: chainRemark,
+                        outbounds: [chainOutbound, outbound],
                         isBalancer: false,
-                        isChain: false,
+                        isChain: true,
                         balancerFallback: false,
                         isWarp: false,
                         isWorkerLess: false,
                         outboundAddrs: [host]
                     });
-                    configs.push(config);
+                    configs.push(chainConfig);
 
-                    if (chainOutbound) {
-                        const chainRemark = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, true);
-                        const chainConfig = await buildConfig({
-                            remark: chainRemark,
-                            outbounds: [chainOutbound, outbound],
-                            isBalancer: false,
-                            isChain: true,
-                            balancerFallback: false,
-                            isWarp: false,
-                            isWorkerLess: false,
-                            outboundAddrs: [host]
-                        });
-                        configs.push(chainConfig);
-
-                        const chain = modifyOutbound(chainOutbound, `chain-${index}`, `proxy-${index}`);
-                        chains.push(chain);
-                    }
-
-                    protocolIndex++;
-                    index++;
+                    const chain = modifyOutbound(chainOutbound, `chain-${index}`, `proxy-${index}`);
+                    chains.push(chain);
                 }
+
+                protocolIndex++;
+                index++;
             }
         }
 
