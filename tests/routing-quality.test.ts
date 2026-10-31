@@ -4,13 +4,14 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 (globalThis as any).VERSION = '0.7.6';
 
 let getKvSettings: () => any;
+let syncKvSettings: (s: any) => void;
 let buildXrRules: (isChain: boolean, isBalancer: boolean, isWorkerless: boolean, isWarp: boolean) => any[];
 let buildSbRules: (isWarp: boolean) => any;
 let buildClRules: (isWarp: boolean) => string[];
 let buildXrDns: (...args: any[]) => Promise<any>;
 
 beforeAll(async () => {
-    ({ getKvSettings } = await import('@settings'));
+    ({ getKvSettings, syncKvSettings } = await import('@settings'));
     ({ buildRoutingRules: buildXrRules } = await import('@xray/routing'));
     ({ buildRoutingRules: buildSbRules } = await import('@sing-box/routing'));
     ({ buildRoutingRules: buildClRules } = await import('@clash/routing'));
@@ -18,7 +19,10 @@ beforeAll(async () => {
 });
 
 const reset = (over: Record<string, unknown> = {}) => {
-    Object.assign(getKvSettings(), {
+    // مسیر رسمی نوشتن — با اسنپ‌شات memo شده‌ی getSettings (v0.8.33) نوشتن مستقیم
+    // روی getKvSettings() دیگر به خروجی getSettings نمی‌رسد
+    syncKvSettings({
+        ...getKvSettings(),
         telegramProxy: false,
         blockUDP443: false,
         enableIPv6: false,

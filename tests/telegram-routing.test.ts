@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
 let TELEGRAM_DOMAINS: string[];
 let TELEGRAM_IPS: string[];
 let getKvSettings: () => any;
+let syncKvSettings: (s: any) => void;
 let buildXrRules: (...args: boolean[]) => any[];
 let buildSbRules: (isWarp: boolean) => any;
 let buildClRules: (isWarp: boolean) => string[];
@@ -14,7 +15,7 @@ let buildTelegramGuideText: () => string;
 
 beforeAll(async () => {
     ({ TELEGRAM_DOMAINS, TELEGRAM_IPS } = await import('../src/cores/utils'));
-    ({ getKvSettings } = await import('../src/settings/settings'));
+    ({ getKvSettings, syncKvSettings } = await import('../src/settings/settings'));
     ({ buildRoutingRules: buildXrRules } = await import('../src/cores/xray/routing'));
     ({ buildRoutingRules: buildSbRules } = await import('../src/cores/sing-box/routing'));
     ({ buildRoutingRules: buildClRules } = await import('../src/cores/clash/routing'));
@@ -22,7 +23,10 @@ beforeAll(async () => {
 });
 
 const reset = () => {
-    Object.assign(getKvSettings(), {
+    // مسیر رسمی نوشتن — با اسنپ‌شات memo شده‌ی getSettings (v0.8.33) نوشتن مستقیم
+    // روی getKvSettings() دیگر به خروجی getSettings نمی‌رسد
+    syncKvSettings({
+        ...getKvSettings(),
         telegramProxy: true,
         bypassIran: false,
         bypassChina: false,
@@ -60,7 +64,7 @@ describe('Telegram routing constants', () => {
 
 describe('Xray — telegram routing', () => {
     it('در حالت عادی: قوانین domain + ip با خروجی proxy، قبل از قوانین block/bypass', () => {
-        getKvSettings().bypassIran = true; // باید تلگرام را خنثی کند
+        syncKvSettings({ ...getKvSettings(), bypassIran: true }); // باید تلگرام را خنثی کند
         const rules = buildXrRules(false, false, false, false);
 
         const tgDomainRule = rules.find(r => r.domain?.includes('domain:t.me'));
@@ -97,7 +101,7 @@ describe('Xray — telegram routing', () => {
     });
 
     it('telegramProxy=false — هیچ قانون تلگرامی تزریق نمی‌شود', () => {
-        getKvSettings().telegramProxy = false;
+        syncKvSettings({ ...getKvSettings(), telegramProxy: false });
         const rules = buildXrRules(false, false, false, false);
         expect(rules.some(r => r.domain?.includes('domain:t.me'))).toBe(false);
         expect(rules.some(r => r.ip?.includes('149.154.160.0/20'))).toBe(false);
@@ -108,7 +112,7 @@ describe('Xray — telegram routing', () => {
 
 describe('sing-box — telegram routing', () => {
     it('قوانین domain_suffix و ip_cidr با خروجی Selector، قبل از قوانین bypass', () => {
-        getKvSettings().bypassIran = true;
+        syncKvSettings({ ...getKvSettings(), bypassIran: true });
         const route = buildSbRules(false);
 
         const tgDomain = route.rules.find(r => r.domain_suffix?.includes('t.me'));
@@ -133,7 +137,7 @@ describe('sing-box — telegram routing', () => {
     });
 
     it('telegramProxy=false — بدون قوانین تلگرام', () => {
-        getKvSettings().telegramProxy = false;
+        syncKvSettings({ ...getKvSettings(), telegramProxy: false });
         const route = buildSbRules(false);
         expect(route.rules.some(r => r.domain_suffix?.includes('t.me'))).toBe(false);
     });
@@ -143,7 +147,7 @@ describe('sing-box — telegram routing', () => {
 
 describe('Clash — telegram routing', () => {
     it('قوانین DOMAIN-SUFFIX و IP-CIDR (no-resolve) با خروجی Selector، قبل از bypass', () => {
-        getKvSettings().bypassIran = true;
+        syncKvSettings({ ...getKvSettings(), bypassIran: true });
         const rules = buildClRules(false);
 
         const tgDomainIndex = rules.indexOf('DOMAIN-SUFFIX,t.me,✅ Selector');
@@ -160,7 +164,7 @@ describe('Clash — telegram routing', () => {
     });
 
     it('telegramProxy=false — بدون قوانین تلگرام', () => {
-        getKvSettings().telegramProxy = false;
+        syncKvSettings({ ...getKvSettings(), telegramProxy: false });
         const rules = buildClRules(false);
         expect(rules.some(r => r.startsWith('DOMAIN-SUFFIX,t.me'))).toBe(false);
         expect(rules.some(r => r.includes('149.154.160.0/20'))).toBe(false);

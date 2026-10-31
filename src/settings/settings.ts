@@ -195,12 +195,16 @@ export function init(request: Request, env: Env) {
         pathname: safeDecode(pathname),
         hostname: hostname
     };
+    // ورودی‌های merge عوض شد — اسنپ‌شات memo شده باید باطل شود (v0.8.33)
+    mergedSettings = null;
 }
 
 export async function setSettings(env: Env) {
     const dataset = await getDataset(env);
     kvSettings = dataset.settings;
     warpAccounts = dataset.warpAccounts;
+    // دیتاست نو — اسنپ‌شات memo شده باید باطل شود (v0.8.33)
+    mergedSettings = null;
 }
 
 /**
@@ -221,6 +225,8 @@ export function initForScheduled(env: Env): void {
         pathname: '/',
         hostname: ''
     };
+    // ورودی‌های merge عوض شد — اسنپ‌شات memo شده باید باطل شود (v0.8.33)
+    mergedSettings = null;
 }
 
 export const getGlobals = (): EmbededSettings & ReqSettings => globalSettings;
@@ -230,6 +236,8 @@ export const getKvSettings = (): KvSettings => kvSettings;
 /** همگام‌سازی ماژول kvSettings بعد از هر نوشتن موفق KV (جلوگیری از snapshot کهنه) */
 export function syncKvSettings(settings: KvSettings): void {
     kvSettings = settings;
+    // blob نو — اسنپ‌شات memo شده باید باطل شود (v0.8.33)
+    mergedSettings = null;
 }
 export function getMainSettings(): MainSettings {
     const { accID, accEmail, apiToken, mainDomain, ...mainSettings } = EMBEDED_SETTINGS;
@@ -267,10 +275,24 @@ export function getSharedSettings(): SharedSettings {
     };
 }
 
-export const getSettings = () => ({
+// ---------- اسنپ‌شات memo شده‌ی merge (بهینه‌سازی v0.8.33) ----------
+// getSettings در طول تولید کانفیگ چند بار «به ازای هر نود» صدا زده می‌شود
+// (buildWebsocketOutbound + selectSniHost + generateRemark) و هر بار یک
+// شیء ~۱۵۰فیلدی از نو spread می‌شد. kvSettings/globalSettings فقط در ۴ نقطه‌ی
+// صریح عوض می‌شوند (init / initForScheduled / setSettings / syncKvSettings)
+// که هر کدام اسنپ‌شات را باطل می‌کنند — پس merge را می‌شود یک بار ساخت.
+// قرارداد: خروجی فقط-خواندنی است؛ ممیزی grep نشان داد هیچ فراخوانی‌ای فیلد
+// سطح-اول آن را نمی‌نویسد (نوشتن تو در تو از قبل با shallow-spread به kvSettings
+// نشت می‌کرد — بدون تغییر).
+const buildMergedSettings = () => ({
     ...kvSettings,
     ...globalSettings
 });
+
+type MergedSettings = ReturnType<typeof buildMergedSettings>;
+let mergedSettings: MergedSettings | null = null;
+
+export const getSettings = (): MergedSettings => mergedSettings ??= buildMergedSettings();
 
 let globalSettings: EmbededSettings & ReqSettings;
 let warpAccounts: WarpAccount[] = [
