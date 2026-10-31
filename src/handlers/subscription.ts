@@ -2,6 +2,7 @@ import { getClNormalConfig, getClWarpConfig } from '@cores/clash/configs';
 import { getURLConfigs } from '@cores/common';
 import { getSbCustomConfig, getSbWarpConfig } from '@cores/sing-box/configs';
 import { getXrCustomConfigs, getXrWarpConfigs } from '@cores/xray/configs';
+import { resolveDNS } from '@utils';
 import { setSettings, getGlobals, getSharedSettings, getSettings, getWarpAccounts } from '@settings';
 import { isValidSubUserId, resolveAndRecordSubUser, SubUser } from '@settings/sub-users';
 import { buildSubUserInfoHeader } from '@api/clean-ip';
@@ -204,19 +205,55 @@ async function routeSubscription(path: string, client: string): Promise<Response
  * ورودی‌ها باید «هر چیزی که بدنه را می‌سازد» را پوشش دهند: settings + اکانت‌های
  * WARP برای مسیرهای warp-خانواده (تنها مولدهای getClWarpConfig/getXrWarpConfigs/
  * getSbWarpConfig/getWireguardConfigs اکانت‌ها را می‌خوانند و wireguard فقط زیر
- * همین دو مسیر سرو می‌شود). چرخش اکانت‌ها → ETag مسیرهای warp نو → کلاینت شرطی
- * بدنه‌ی نو می‌گیرد؛ مسیرهای normal/raw/fragment که اکانت‌ها در آن‌ها نقشی ندارند
- * ETag ثابت می‌مانند → بدون دانلود مجدد بی‌دلیل و بدون تخلیه‌ی LRU کش بدنه.
+ * همین دو مسیر سرو می‌شود) + رکوردهای DNS دامنه‌ها برای مسیرهای کانفیگ‌ساز —
+ * getConfigAddresses جواب DoH را embed می‌کند و جواب رزالور خارج از settings
+ * عوض می‌شود (رگرسیون v0.8.31 همین کلاس برای اکانت‌ها بسته شد؛ v0.8.41 برای DNS).
+ * چرخش اکانت‌ها/DNS → ETag نو → کلاینت شرطی بدنه‌ی نو می‌گیرد؛ مسیرهایی که ورودی
+ * یادشده در آن‌ها نقشی ندارد ETag ثابت می‌مانند → بدون دانلود مجدد بی‌دلیل و
+ * بدون تخلیه‌ی LRU کش بدنه.
  */
 const WARP_FAMILY_PATHS = new Set(['warp', 'warp-pro']);
+const DNS_DEPENDENT_PATHS = new Set(['normal', 'fragment', 'raw']);
+
+/**
+ * اثر انگشت DNS یک دامنه — دقیقاً همان نرمال‌سازی getConfigAddresses (v0.8.41):
+ * مرتب‌سازی + حذف تکرار، تا ترتیبِ چرخانِ رزورور نه بدنه را بلغزانَد نه ETag را.
+ * resolveDNS همان کش/single-flight بدنه را مصرف می‌کند → کوئری DoH اضافی نداریم.
+ */
+async function dnsFingerprintOf(domain: string, onlyIPv4: boolean) {
+    const { ipv4, ipv6 } = await resolveDNS(domain, onlyIPv4);
+    return {
+        v4: [...new Set(ipv4)].sort(),
+        v6: [...new Set(ipv6)].sort()
+    };
+}
 
 export async function computeSubETag(path: string, client: string, userId: string | null = null): Promise<string> {
+    // رکوردهای DNS — فقط برای مسیرهایی که بدنه‌شان آدرس embed می‌کند. خطا → null:
+    // قطعی DoH سرد یعنی تولید بدنه هم در همین حالت شکست می‌خورد؛ 304 نگه‌داشتن
+    // کانفیگ قدیمیِ سالم کلاینت در همین پنجره مقصود است (تاب‌آوری مثل stale-on-error).
+    let d: unknown = null;
+    if (DNS_DEPENDENT_PATHS.has(path)) {
+        try {
+            const { mainDomain, customDomain, enableIPv6 } = getSettings();
+            const domains = customDomain && customDomain !== mainDomain
+                ? [mainDomain, customDomain]
+                : [mainDomain];
+            // پین استاتیک فرگمنت Xray (buildDNS در cores/xray/dns.ts) هم همین
+            // mainDomain را resolve می‌کند — همین اثر انگشت آن را پوشش می‌دهد.
+            d = await Promise.all(domains.map(domain => dnsFingerprintOf(domain, !enableIPv6)));
+        } catch {
+            d = null;
+        }
+    }
+
     const payload = JSON.stringify({
         v: VERSION,
         path,
         client,
         u: userId,
         s: getSettings(),
+        d,
         w: WARP_FAMILY_PATHS.has(path) ? getWarpAccounts() : null
     });
     const digest = await crypto.subtle.digest('SHA-256', etagEncoder.encode(payload));

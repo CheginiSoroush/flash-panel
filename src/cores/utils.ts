@@ -190,9 +190,16 @@ export async function getConfigAddresses(domain: string, isFragment: boolean): P
     const { enableIPv6, customCdnAddrs, cleanIPs, cleanIPsFirst } = getSettings();
     const { ipv4, ipv6 } = await resolveDNS(domain, !enableIPv6);
 
+    // نرمال‌سازی جواب DoH (v0.8.41): رزالور ترتیب رکوردها را تضمین نمی‌کند (round-robin
+    // داخل TTL). بدون این، همان «مجموعه» با ترتیب چرخان → بدنه‌ی متفاوت با ETag ثابت
+    // → همان ناسازگاری 304/کشی که v0.8.31 برای اکانت‌های WARP بسته بود. مرتب‌سازی +
+    // حذف تکرار بدنه را تابعِ صرفِ «مجموعه‌ی رکوردها» می‌کند — برای ETag و subBodyCache.
+    const v4 = [...new Set(ipv4)].sort();
+    const v6 = [...new Set(ipv6)].sort();
+
     // cleanIPsFirst: در مناطق ۴۰۳ (workers.dev بلاک)، آدرس تمیز باید اولین
     // گزینه‌ی اتصال باشد — ترتیب آدرس‌ها ترتیب امتحان کلاینت است
-    const domainAddrs = [domain, ...ipv4, ...ipv6.map((ip: string) => `[${ip}]`)];
+    const domainAddrs = [domain, ...v4, ...v6.map((ip: string) => `[${ip}]`)];
     const cleanAddrs = cleanIPs;
     const addrs = cleanIPsFirst
         ? [...cleanAddrs, ...domainAddrs]
