@@ -303,7 +303,7 @@ export async function handleTCPOutBound(
             if (target.proxyIP) markProxyFail(target.proxyIP);
             console.error('connection via proxy failed:', error);
             if (next) next();
-            else webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);
+            else safeCloseWebSocketWithReason(webSocket, 1011, `Retry connection failed: ${safeError(error)}`);
         }
     }
 
@@ -316,7 +316,7 @@ export async function handleTCPOutBound(
         try {
             const target = await resolveProxyTarget(addressRemote, portRemote);
             if (!target) {
-                webSocket.close(1011, 'Retry connection failed: Invalid Prefix');
+                safeCloseWebSocketWithReason(webSocket, 1011, 'Retry connection failed: Invalid Prefix');
                 return; // باگ قبلی: ادامه می‌داد و به همون آدرس شکست‌خورده reconnect می‌کرد
             }
 
@@ -334,13 +334,13 @@ export async function handleTCPOutBound(
                             const alt = await resolveProxyTarget(addressRemote, portRemote, exclude);
                             if (!alt || (alt.host === target.host && alt.port === target.port)) {
                                 // کاندیدای متمایز نبود (استخر تک‌نفره در عمل) — پایان تمیز
-                                webSocket.close(1011, 'Retry connection failed');
+                                safeCloseWebSocketWithReason(webSocket, 1011, 'Retry connection failed');
                                 return;
                             }
                             await attemptViaProxy(alt, null);
                         } catch (error) {
                             console.error('Retry connection failed:', error);
-                            webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);
+                            safeCloseWebSocketWithReason(webSocket, 1011, `Retry connection failed: ${safeError(error)}`);
                         }
                     })();
                 }
@@ -349,7 +349,7 @@ export async function handleTCPOutBound(
             await attemptViaProxy(target, attemptSecondProxy);
         } catch (error) {
             console.error('Retry connection failed:', error);
-            webSocket.close(1011, `Retry connection failed: ${safeError(error)}`);
+            safeCloseWebSocketWithReason(webSocket, 1011, `Retry connection failed: ${safeError(error)}`);
         }
     }
 
@@ -359,7 +359,7 @@ export async function handleTCPOutBound(
             remoteSocketToWS(tcpSocket, webSocket, VLResponseHeader, retry, log);
         } catch (error) {
             console.error(`Connection failed: ${error}`);
-            webSocket.close(1011, `Connection failed: ${safeError(error)}`);
+            safeCloseWebSocketWithReason(webSocket, 1011, `Connection failed: ${safeError(error)}`);
         }
     };
 
@@ -569,6 +569,52 @@ export function safeCloseWebSocket(socket: WebSocket) {
         }
     } catch (error) {
         console.error('safeCloseWebSocket error', error);
+    }
+}
+
+/**
+ * v0.8.60 — سقف بایتی reason بستن WS (RFC 6458: حداکثر ۱۲۳ بایت UTF-8).
+ * workerd پرتاب نمی‌کند — close() با reason بلندتر «موفق» به نظر می‌رسد ولی فریم
+ * close روی سیم نامعتبر می‌شود: کلاینت به‌جای کد/دلیل ما، 1002 «Protocol error -
+ * invalid control frame» با clean=false می‌گیرد. نتیجه در مسیرهای خطا:
+ * دلیل تشخیصی گم می‌شود و بسته‌شدن تمیز 1011 به خطای پروتکل تبدیل می‌شود.
+ * (اثبات wire-level با wrangler dev محلی: reason≤123 → 1011 می‌رسد؛ ≥124 → 1002.)
+ */
+export const WS_CLOSE_REASON_MAX_BYTES = 123;
+
+/** برش امن UTF-8 — هرگز دنباله‌ی چندبایتی را نصف نمی‌کند */
+export function clampWsCloseReason(reason: string, maxBytes: number = WS_CLOSE_REASON_MAX_BYTES): string {
+    if (maxBytes <= 0) return '';
+
+    // مسیر سریع: ASCII خالص (همه‌ی پیام‌های خودمان) — طول کاراکتر = طول بایت
+    let isAscii = true;
+    for (let i = 0; i < reason.length; i++) {
+        if (reason.charCodeAt(i) > 0x7f) {
+            isAscii = false;
+            break;
+        }
+    }
+    if (isAscii) {
+        return reason.length <= maxBytes ? reason : reason.slice(0, maxBytes);
+    }
+
+    // چندبایتی: کدگذاری کامل، برش روی مرز دنباله‌ی UTF-8، برگرداندن رشته‌ی معتبر
+    const encoded = new TextEncoder().encode(reason);
+    if (encoded.length <= maxBytes) return reason;
+
+    let end = maxBytes;
+    while (end > 0 && (encoded[end] & 0xc0) === 0x80) end--; // ادامه‌ی ناتمام = برش پیش از بایت آغازین
+    return new TextDecoder().decode(encoded.slice(0, end));
+}
+
+/** بستن WS با کد و reason — reason بلند به‌صورت بایت-ایمن کلمپ می‌شود (v0.8.60) */
+export function safeCloseWebSocketWithReason(socket: WebSocket, code: number, reason: string): void {
+    try {
+        if (socket.readyState === WS_READY_STATE_OPEN || socket.readyState === WS_READY_STATE_CLOSING) {
+            socket.close(code, clampWsCloseReason(reason));
+        }
+    } catch (error) {
+        console.error('safeCloseWebSocketWithReason error', error);
     }
 }
 
