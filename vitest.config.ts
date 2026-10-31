@@ -30,6 +30,10 @@ export default defineConfig({
     },
     test: {
         environment: 'node',
-        include: ['tests/**/*.test.ts']
+        include: ['tests/**/*.test.ts'],
+        // ۱۵ث — تست‌های سنگینِ محلی (تولید ساب کامل چندباره) زیر بار CPU ران
+        // موازی گاهی از سقف پیش‌فرض ۵ث گذرا عبور می‌کنند (فلیک sub-304/sub-users
+        // در ایزولاسیون همیشه سبز) — خودِ تست‌ها شبکه‌ای نیستند، فقط سنگین‌اند
+        testTimeout: 15_000
     }
 });

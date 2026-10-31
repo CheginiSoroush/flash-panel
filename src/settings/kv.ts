@@ -19,6 +19,16 @@ const DATASET_CACHE_TTL = 5_000; // ۵ ثانیه
 
 let datasetCache: { data: Dataset; expiresAt: number } | null = null;
 let inflight: Promise<Dataset> | null = null;
+/**
+ * v0.8.66 — نسلِ شروعِ لودِ درحال‌انجام.
+ *
+ * حفره‌ی joiner در قفل v0.8.55: callerی که بعد از کامیتِ write و قبل از resolve
+ * لودِ معلق وارد می‌شد، snapshot خودش را از قبل bump‌شده می‌گرفت و چک
+ * «نسلِ من ≠ نسلِ فعلی» همیشه سبز بود → دیتای پیش از نوشتن به‌عنوان تازه سرو
+ * می‌شد (و در مسیر setSettings، snapshot تازه‌ی syncKvSettings را clobber
+ * می‌کرد). مبنای درست، نسلِ شروعِ لودی است که به آن پیوسته‌ایم.
+ */
+let inflightGeneration = 0;
 
 /**
  * نسلِ دیتاست (v0.8.55) — با هر invalidate یک واحد جلو می‌رود.
@@ -75,13 +85,14 @@ export async function getDataset(env: Env, _reloadAttempt = 0): Promise<Dataset>
     }
 
     // جلوگیری از stampede — request های همزمان فقط یک بار KV می‌خونن
-    const generation = datasetGeneration;
     if (!inflight) {
+        const startGeneration = datasetGeneration;
+        inflightGeneration = startGeneration;
         inflight = loadDataset(env)
             .then(data => {
                 // v0.8.55 — نتیجه فقط وقتی کش می‌شود که در طول لود invalidate‌ای
                 // رخ نداده باشد؛ وگرنه دیتای پیش از نوشتن به‌جای دیتای تازه می‌نشیند
-                if (generation === datasetGeneration) {
+                if (startGeneration === datasetGeneration) {
                     datasetCache = { data, expiresAt: Date.now() + DATASET_CACHE_TTL };
                 }
                 return data;
@@ -91,13 +102,18 @@ export async function getDataset(env: Env, _reloadAttempt = 0): Promise<Dataset>
             });
     }
 
+    // v0.8.66 — نسلِ شروعِ لودی که به آن ملحق می‌شویم (سازنده یا joiner).
+    // خواندنش قبل از هر await — جفتِ معتبر با همان inflight بالاست.
+    const loadGeneration = inflightGeneration;
     const data = await inflight;
 
-    if (generation !== datasetGeneration && _reloadAttempt < 2) {
+    if (loadGeneration !== datasetGeneration && _reloadAttempt < 2) {
         // لود با یک write هم‌پوشان شده — این نتیجه پیش از نوشتن است. یک‌بار
         // تازه‌خوانی: هم مصرف‌کننده‌ی جاری دیتای تازه می‌گیرد، هم setSettings
         // دیگر snapshot تازه‌ی syncKvSettings را clobber نمی‌کند. سقف ۲ تلاش —
         // در نویز write بی‌پایان، بهترینِ موجود سرو می‌شود (رفتار قدیمی).
+        // چک روی نسلِ شروعِ لود است (v0.8.66) نه snapshot لحظه‌ی فراخوانی —
+        // joinerِ پس از write هم پوشیده می‌شود.
         // (مهاجرت/heal داخلِ loadDataset هم invalidate می‌زنند؛ لودِ بعد از آن‌ها
         // دیتای تازه می‌خواند و بدون write جدید کش می‌شود — حلقه نمی‌زند.)
         return getDataset(env, _reloadAttempt + 1);
