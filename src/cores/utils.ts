@@ -237,23 +237,31 @@ export function generateRemark(
         : `⚡ ${index}. ${chainSign}${protoSign} ${configType}- ${addressType} : ${port}`;
 }
 
+// ---------- ماسک کیس SNI (0x20-encoding ضد-DPI) — قطعی‌شده (v0.8.42) ----------
+// کیسِ مخلوط SNI برای فرار از امضای DPI حساس-به-کیس است (DNS case-insensitive است
+// ولی قواعد SNI-based فیلترچی معمولاً فقط شکل canonical را می‌شناسند). اما
+// Math.random اینجا بدنه‌ی ساب را تابعِ ورودی‌هایش نمی‌کرد: هر نسلِ تولید، برای
+// ETagِ ثابت بایت‌های متفاوت می‌ساخت — دقیقاً ناسازگاری‌ای که v0.8.31 (اکانت‌های
+// WARP) و v0.8.41 (رکوردهای DNS) برای قرارداد ETag/subBodyCache بستند؛ کلید
+// subBodyCache خودِ ETag است، پس نسلی تازه با کیس متفاوت زیر همان کلید بازنویسی
+// می‌شد و کلاینتِ شرطی 304 می‌گرفت و کیسِ کهنه را نگه می‌داشت.
+// حالا بیت کیسِ هر کاراکتر از هش محتوایی خود رشته می‌آید (FNV-1a seed +
+// splitmix32 per-position):
+//   • قطعی — همان ورودی، همان خروجی؛ بدنه = تابعِ صرفِ settings/WARP/DNS
+//   • تنوع بین پروفایل‌ها حفظ است — هر دامنه الگوی کیس مخصوص خودش را دارد
+//     (ضد خوشه‌بندی: همه‌ی پروفایل‌ها یک کلاس SNI-کیس نمی‌شوند؛ همان رویکرد
+//     seeded‌ی pickFingerprint برای fp)
+// توازن کیس هم محفوظ است: خروجی splitmix32 خوب مخلوط است و بیت آخر آن ~۵۰/۵۰.
 export function randomUpperCase(str: string): string {
-    let result = '';
-
+    let seed = 2166136261;
     for (let i = 0; i < str.length; i++) {
-        result += Math.random() < 0.5 ? str[i].toUpperCase() : str[i];
+        seed = Math.imul(seed ^ str.charCodeAt(i), 16777619);
     }
+    seed >>>= 0;
 
-    return result;
-}
-
-export function getRandomString(lengthMin: number, lengthMax: number): string {
     let result = '';
-    const charSet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    const length = Math.floor(Math.random() * (lengthMax - lengthMin + 1)) + lengthMin;
-
-    for (let i = 0; i < length; i++) {
-        result += charSet.charAt(Math.floor(Math.random() * charSet.length));
+    for (let i = 0; i < str.length; i++) {
+        result += splitmix32(seed + i) & 1 ? str[i].toUpperCase() : str[i];
     }
 
     return result;
