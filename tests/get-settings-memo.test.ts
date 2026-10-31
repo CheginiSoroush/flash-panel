@@ -74,6 +74,8 @@ beforeAll(async () => {
 afterEach(() => {
     kvmod.invalidateDatasetCache();
     store._resetStoreStateForTest();
+    // تزریق توکن بین تست‌ها نباید به کش ۵ ثانیه‌ای loadApiToken نشت کند
+    settings._resetApiTokenCacheForTest();
 });
 
 describe('getSettings memo — پایداری هویت + باطل‌سازی در ۴ نقطه‌ی تغییر (v0.8.33)', () => {
@@ -141,5 +143,40 @@ describe('getSettings memo — پایداری هویت + باطل‌سازی د�
         expect(s.hostname).toBe('second-host.org');
         expect(s.origin).toBe('https://second-host.org');
         expect(s.client).toBe('xray');
+    });
+});
+
+describe('getSettings memo — نقطه‌ی جهش پنجم: تزریق توکن runtime (v0.8.34)', () => {
+
+    it('🔴 applyApiToken (مسیر /cftoken ربات) → merged snapshot باید توکن نو را ببیند', async () => {
+        const { kv } = createKvMock();
+        settings.init(new Request('https://example.com/sp/login'), { kv } as any);
+        await settings.setSettings({ kv } as any);
+
+        // memo با توکن embed ساخته می‌شود (mock: 'api-token')
+        const before = settings.getSettings();
+        expect(before.apiToken).toBe('api-token');
+
+        settings.applyApiToken('brand-new-token');
+
+        // getGlobals زنده است — مصرف‌کنندگان فعلی CF-API از همین می‌خوانند
+        expect(settings.getGlobals().apiToken).toBe('brand-new-token');
+        // 🔴 کد قدیمی: memo باطل نمی‌شد → merged.apiToken کهنه ('api-token') می‌ماند
+        // تا init/setSettings بعدی؛ هر مصرف‌کننده‌ی آینده‌ی merged.apiToken توکن مرده می‌گرفت
+        expect(settings.getSettings().apiToken).toBe('brand-new-token');
+    });
+
+    it('🔴 loadApiToken از KV (مسیر lazy پنل/cron) → merged snapshot توکن تازه', async () => {
+        const { kv } = createKvMock({ cfApiToken: 'kv-injected-token' });
+        settings.init(new Request('https://example.com/sp/login'), { kv } as any);
+        await settings.setSettings({ kv } as any);
+
+        const before = settings.getSettings();
+        expect(before.apiToken).not.toBe('kv-injected-token');
+
+        await settings.loadApiToken({ kv } as any);
+
+        // 🔴 کد قدیمی: memo کهنه — توکن KV هرگز وارد merged نمی‌شود تا ری‌init
+        expect(settings.getSettings().apiToken).toBe('kv-injected-token');
     });
 });

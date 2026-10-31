@@ -130,6 +130,11 @@ function setRuntimeApiToken(token: string): void {
     getStaticGlobals().apiToken = token;
     // init/initForScheduled از staticGlobals کپی می‌سازند — snapshot جاری هم تازه شود
     if (globalSettings) globalSettings.apiToken = token;
+    // نقطه‌ی جهش پنجم globalSettings (v0.8.34) — تزریق توکن runtime فیلد سطح‌اولِ
+    // merge را عوض می‌کند؛ بدون باطل‌سازی، memo اسنپ‌شات apiToken کهنه را تا
+    // init/setSettings بعدی سرو می‌کرد (نقض قرارداد v0.8.33 — مسیر /cftoken و
+    // loadApiToken lazy در پنل/ربات/usage/cron هر دو از اینجا عبور می‌کنند)
+    mergedSettings = null;
 }
 
 /** وضعیت ماسک‌شده برای نمایش — فقط ۴ کاراکتر آخر؛ توکن کامل هرگز بازتاب نمی‌یابد */
@@ -280,7 +285,8 @@ export function getSharedSettings(): SharedSettings {
 // (buildWebsocketOutbound + selectSniHost + generateRemark) و هر بار یک
 // شیء ~۱۵۰فیلدی از نو spread می‌شد. kvSettings/globalSettings فقط در ۴ نقطه‌ی
 // صریح عوض می‌شوند (init / initForScheduled / setSettings / syncKvSettings)
-// که هر کدام اسنپ‌شات را باطل می‌کنند — پس merge را می‌شود یک بار ساخت.
+// به‌علاوه‌ی تزریق توکن runtime در setRuntimeApiToken (باطل‌ساز خودش را دارد —
+// v0.8.34) — پس merge را می‌شود یک بار ساخت.
 // قرارداد: خروجی فقط-خواندنی است؛ ممیزی grep نشان داد هیچ فراخوانی‌ای فیلد
 // سطح-اول آن را نمی‌نویسد (نوشتن تو در تو از قبل با shallow-spread به kvSettings
 // نشت می‌کرد — بدون تغییر).
