@@ -106,9 +106,15 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
     };
 
     for (const domain of domains) {
+        // هم‌راستا با هسته‌ی xray: برچسب «D» فقط برای دامنه‌ی سفارشیِ واقعی —
+        // customDomain === mainDomain یعنی دامنه‌ی اصلی، نه سفارشی (v0.8.43)
+        const isCustomDomain = domain === customDomain && domain !== mainDomain;
         const totalPorts = ports.filter(port => !isFragment && domain.endsWith('workers.dev') || isHttps(port));
         const hosts = await getConfigAddresses(domain, isFragment);
-        if (upstreamServer && upstreamPort) {
+        // هم‌راستا با هسته‌ی xray: جفت upstream فقط در پروفایل‌های non-fragment —
+        // پروفایل fragment روی پین استاتیک mainDomain بنا شده و TLS-fragment
+        // به سمت سرور upstream بی‌معناست (v0.8.43)
+        if (upstreamServer && upstreamPort && !isFragment) {
             totalPorts.unshift(upstreamPort);
             hosts.unshift(upstreamServer);
         }
@@ -123,7 +129,7 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
                     const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain, isFragment, outbounds.length);
                     outbounds.push(outbound);
                     
-                    if (domain === customDomain) {
+                    if (isCustomDomain) {
                         tagGroup['⚡ Best Ping D 🚀'].push(tag);
                     } else {
                         tagGroup['⚡ Best Ping 🚀'].push(tag);
@@ -136,7 +142,7 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
                         chain.detour = tag;
                         outbounds.push(chain);
 
-                        if (domain === customDomain) {
+                        if (isCustomDomain) {
                             tagGroup['⚡ 🔗 Best Ping D 🚀'].push(chainTag);
                         } else {
                             tagGroup['⚡ 🔗 Best Ping 🚀'].push(chainTag);
