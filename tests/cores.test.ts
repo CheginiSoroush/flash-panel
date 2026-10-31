@@ -202,14 +202,21 @@ describe('buildWebsocketOutbound', () => {
         expect(String(stream.wsSettings?.path)).toMatch(/^\/vl\//);
     });
 
-    it('trojan روی 80 — بدون TLS و پسورد trojan', () => {
+    it('trojan روی 80 (non-TLS) — تولید نمی‌شود (v0.8.63 پاریتی clash)', () => {
+        // قرارداد قدیمی که همین تست اثباتش می‌کرد (security 'none' + پسورد)
+        // خودِ باگ بود: هش sha224 رمز plaintext روی سیم — قابل کپچر و replay.
+        // از v0.8.63 هر چهار هسته trojan روی پورت non-TLS تولید نمی‌کنند.
         const outbound = buildWebsocketOutbound('proxy', 'trojan', 'speed.example.com', 80, 'panel.example.com', false);
-        expect(outbound.protocol).toBe('trojan');
-        expect((outbound.settings as any).servers?.[0]?.password).toBe(MOCK_EMBEDED.trPass);
+        expect(outbound).toBeUndefined();
+    });
 
-        const stream = outbound.streamSettings!;
-        expect(stream.security).toBe('none');
-        expect(stream.tlsSettings).toBeUndefined();
+    it('trojan روی 443 — TLS و پسورد trojan', () => {
+        const outbound = buildWebsocketOutbound('proxy', 'trojan', 'speed.example.com', 443, 'panel.example.com', false);
+        expect(outbound?.protocol).toBe('trojan');
+        expect((outbound?.settings as any)?.servers?.[0]?.password).toBe(MOCK_EMBEDED.trPass);
+
+        const stream = outbound!.streamSettings!;
+        expect(stream.security).toBe('tls');
         expect(String(stream.wsSettings?.path)).toMatch(/^\/tr\//);
     });
 

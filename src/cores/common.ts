@@ -97,7 +97,12 @@ export async function getURLConfigs() {
                 VLConfs += `${vlConfig}\n`;
             }
 
-            if (protocols.includes(_TR_)) {
+            if (protocols.includes(_TR_) && (httpsPorts.includes(port) || addr === upstreamServer)) {
+                // v0.8.63 — شرط دومِ گارد: جفت upstream مصون است (قرارداد
+                // upstreamServer همیشه TLS — حتی روی پورت non-TLS). بدون شرط
+                // گارد، trojan://...?security=none تولید می‌شد: هش sha224 رمز
+                // plaintext روی سیم — قابل کپچر و replay (پاریتی clash/xray/
+                // sing-box از v0.8.63). vless پلین عمداً می‌ماند.
                 const remark = generateRemark(proxyIndex, port, addr, _TR_, domain, false, false);
                 const trConfig = buildConfig(_TR_, addr, port, host, sni, remark, proxyIndex);
                 TRConfs += `${trConfig}\n`;

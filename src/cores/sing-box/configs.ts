@@ -153,6 +153,10 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
             for (const { host, port } of pairs) {
                 const tag = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, false);
                 const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain, isFragment, outbounds.length);
+                // v0.8.63 — trojan روی پورت non-TLS skip می‌شود (پاریتی clash)؛
+                // شمارنده هم فقط برای جفتِ صادرشده جلو می‌رود تا شماره‌گذاری
+                // remark بدون حفره بماند — همان قرارداد گاردِ clash
+                if (!outbound) continue;
                 outbounds.push(outbound);
 
                 if (isCustomDomain) {

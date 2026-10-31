@@ -94,7 +94,7 @@ export function buildWebsocketOutbound(
     fragInterval?: string,
     // ضد خوشه‌بندی JA3 — seed قطعی هر پروفایل؛ بدون seed، fp ادمین ثابت می‌ماند
     fpSeed?: number
-): Outbound {
+): Outbound | undefined {
     const {
         vlUUID,
         trPass,
@@ -106,6 +106,15 @@ export function buildWebsocketOutbound(
     } = getSettings();
 
     const isTLS = isHttps(port) || address === upstreamServer;
+
+    // v0.8.63 — trojan روی پورت non-TLS تولید نمی‌شود (پاریتی با clash که از
+    // همیشه null برمی‌گرداند). trojan بدون TLS یعنی هش sha224 رمز به‌صورت
+    // plaintext روی سیم — قابل کپچر و replay توسط هر ناظر مسیر، و برای DPI
+    // یک‌نگاهی قابل‌تشخیص؛ کل مدل امنیتی trojan بر TLS بنا شده. VLESS پلین
+    // عمداً می‌ماند (header رمزنگاری‌ناپذیر بخشی از طراحی VLESS است). جفت
+    // upstream مصون است — upstreamServer همیشه TLS می‌گیرد حتی روی پورت
+    // non-TLS. فیکس خانوادگی با sing-box و ساب raw در همان کامیت.
+    if (protocol === _TR_ && !isTLS) return undefined;
     const { host, sni } = selectSniHost(address, domain);
     const tlsSettings = isTLS ? buildTlsSettings(
         sni,

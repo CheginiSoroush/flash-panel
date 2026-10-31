@@ -226,6 +226,9 @@ async function addBestFragmentConfigs(
             `${fragmentDelayMin}-${fragmentDelayMax}`,
             index + 1
         );
+        // v0.8.63 — proxy اینجا همیشه _VL_ و پورت ۴۴۳ است، پس undefined نمی‌شود؛
+        // گارد فقط برای باریک‌سازی نوع بعد از گسترش خروجی builder
+        if (!proxy) return;
 
         outbounds.push(proxy);
     });
@@ -338,6 +341,10 @@ export async function getXrCustomConfigs(isFragment: boolean): Promise<Response>
 
             for (const { host, port } of pairs) {
                 const outbound = buildWebsocketOutbound('proxy', protocol, host, port, domain, isFragment, undefined, undefined, index);
+                // v0.8.63 — trojan روی پورت non-TLS skip می‌شود (پاریتی clash)؛
+                // شمارنده‌ها هم فقط برای جفتِ صادرشده جلو می‌روند تا شماره‌گذاری
+                // remark بدون حفره بماند — همان قرارداد گاردِ clash
+                if (!outbound) continue;
                 const proxy = modifyOutbound(outbound, `proxy-${index}`);
                 proxies.push(proxy);
 
