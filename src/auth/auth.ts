@@ -246,6 +246,17 @@ export async function isTotpEnabled(env: Env): Promise<boolean> {
     try {
         cachedTotpEnabled = (await env.kv.get('totpEnabled')) === 'true';
     } catch {
+        // v0.8.47 — fail-closed روی کش سرد: خطای خواندن KV نباید «TOTP خاموش»
+        // تفسیر شود (وگرنه فاکتور دوم دقیقاً هنگام ناپایداری زیرساخت بی‌صدا باز
+        // می‌شود — همان استدلال v0.8.37 برای getPwd که اینجا ناقص اعمال شده بود).
+        // کش سرد (هیچ مقدار شناخته‌ای نداریم) → فرض فعال؛ جریان لاگین ادامه
+        // می‌دهد و به خواندن totpSecret می‌رسد — اگر KV هنوز مرده باشد همان‌جا
+        // 503 تمیز می‌گیرد، اگر ناپایداری رفع شده باشد وریفای عادی انجام می‌شود.
+        if (totpLoadedAt === 0) {
+            cachedTotpEnabled = true;
+            totpLoadedAt = Date.now();
+            return true;
+        }
         // v0.8.37 — stale-on-error: آخرین مقدار معتبر بماند؛ تیک بعدی دوباره می‌خواند
     }
     totpLoadedAt = Date.now();

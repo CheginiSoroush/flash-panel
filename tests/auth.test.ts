@@ -494,3 +494,91 @@ describe('auth v0.8.37 — KV-outage hardening', () => {
         expect(((await r3.json()) as any).body.enabled).toBe(true); // stale = آخرین مقدار معتبر
     });
 });
+
+// ---------- v0.8.47 — fail-closed فلگ TOTP روی خطای KV با کش سرد ----------
+// باگ: isolate سرد + خطای خواندن 'totpEnabled' → catch مقدار false می‌گذاشت →
+// فاکتور دوم بی‌صدا رد می‌شد (دقیقاً هنگام ناپایداری زیرساخت). همان استدلال
+// v0.8.37 برای getPwd که به فلگ TOTP تعمیم داده نشده بود. فیکس: کش سرد +
+// خطا → فرض فعال (جریان لاگین به خواندن totpSecret می‌رسد — KV مرده → 503
+// تمیز؛ کش گرم → stale-on-error قبلی دست‌نخورده).
+
+function kvThrowsOnGet(keys: string[], base: Record<string, string> = {}): KVNamespace {
+    const { kv } = createKvMock(base);
+    const rawGet = (kv as unknown as { get: (k: string, o?: { type?: string }) => Promise<string | null> }).get.bind(kv);
+    return {
+        get: async (key: string, opts?: { type?: string }) => {
+            if (keys.includes(key)) throw new Error('kv outage (test)');
+            return rawGet(key, opts);
+        },
+        put: (kv as unknown as { put: (k: string, v: string) => Promise<void> }).put.bind(kv),
+        delete: (kv as unknown as { delete: (k: string) => Promise<void> }).delete.bind(kv)
+    } as unknown as KVNamespace;
+}
+
+describe('v0.8.47 — TOTP flag fail-closed on cold cache', () => {
+    let auth: typeof import('../src/auth/auth');
+    let totp: typeof import('../src/auth/totp');
+
+    beforeAll(async () => {
+        auth = (await import('../src/auth/auth')) as any;
+        totp = await import('../src/auth/totp');
+    });
+
+    it('cold cache + KV read error → flag assumed ENABLED (fail-closed)', async () => {
+        auth._resetAuthStateForTest();
+        const env = { kv: kvThrowsOnGet(['totpEnabled']) } as Env;
+        // روی کد قدیمی false برمی‌گشت → فاکتور دوم باز (RED)
+        expect(await auth.isTotpEnabled(env)).toBe(true);
+    });
+
+    it('cold cache + KV error → login flow still demands a real 2FA code', async () => {
+        auth._resetAuthStateForTest();
+        const SECRET = 'JBSWY3DPEHPK3PXP';
+        const env = { kv: kvThrowsOnGet(['totpEnabled'], { pwd: 'correct-pass', totpSecret: SECRET }) } as Env;
+
+        // پسورد درست بدون کد → نباید توکن صادر شود
+        const noCode = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'correct-pass'
+        }, nextIp()), env);
+        expect(noCode.status).toBe(401); // کد قدیمی: 200 + کوکی بدون 2FA (RED)
+
+        // کد غلط → 401
+        const badCode = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'correct-pass', totp: '000000'
+        }, nextIp()), env);
+        expect(badCode.status).toBe(401);
+
+        // کد معتبر → 200 و سشن واقعی
+        const code = await totp.totp(SECRET);
+        const good = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'correct-pass', totp: code
+        }, nextIp()), env);
+        expect(good.status).toBe(200);
+        expect(await auth.authenticate(
+            new Request('https://example.com/sp/panel', { headers: { Cookie: `jwtToken=${getCookieToken(good)}` } }),
+            env
+        )).toBe(true);
+    });
+
+    it('warm cache + KV error → stale-on-error preserved in both directions (no over-closure)', async () => {
+        const env = { kv: kvThrowsOnGet(['totpEnabled']) } as Env;
+
+        auth._resetAuthStateForTest();
+        auth.invalidateTotpCache(false);
+        expect(await auth.isTotpEnabled(env)).toBe(false);
+
+        auth._resetAuthStateForTest();
+        auth.invalidateTotpCache(true);
+        expect(await auth.isTotpEnabled(env)).toBe(true);
+    });
+
+    it('healthy KV, flag absent → false (guard against blanket fail-closed)', async () => {
+        auth._resetAuthStateForTest();
+        const { kv } = createKvMock({ pwd: 'x' });
+        expect(await auth.isTotpEnabled({ kv } as Env)).toBe(false);
+
+        auth._resetAuthStateForTest();
+        const { kv: kv2 } = createKvMock({ totpEnabled: 'true' });
+        expect(await auth.isTotpEnabled({ kv: kv2 } as Env)).toBe(true);
+    });
+});
