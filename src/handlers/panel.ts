@@ -49,14 +49,30 @@ async function getPanelHtml(): Promise<{ html: string; etag: string }> {
     return { html: cachedPanelHtml, etag: cachedPanelEtag };
 }
 
+// فقط این سه زیرمسیر apiToken را واقعاً مصرف می‌کنند (usage → GraphQL کوئری
+// اکانت؛ update-panel/delete-panel → deploy/delete از api/workers و api/pages).
+// usage/history فقط سری KV می‌خواند؛ update-warp از API مصرف‌کننده‌ی WARP
+// (api.cloudflareclient.com) می‌گیرد — نه apiToken پنل.
+const CF_API_PANEL_PATHS: ReadonlySet<string> = new Set([
+    'panel/usage',
+    'panel/update-panel',
+    'panel/delete-panel',
+]);
+
 export async function handlePanel(request: Request, env: Env): Promise<Response> {
     const { pathname } = getGlobals();
     const parts = pathname.split('/');
     const path = parts.slice(2).join('/');
 
-    // v0.8.16 — توکن CF فقط برای مسیرهای API پنل lazy لود می‌شود (نه رندر HTML)؛
-    // خودِ usage و cron هم جداگانه لود می‌کنند
-    if (path !== 'panel') {
+    // v0.8.39 — توکن CF فقط برای زیرمسیرهای واقعاً مصرف‌کننده‌ی CF-API لود می‌شود
+    // (usage → GraphQL، update-panel/delete-panel → deploy/delete API). بقیه‌ی
+    // زیرمسیرها (logout، totp-status که صفحه‌ی login در هر بازدید صدا می‌زند،
+    // sub-users، my-ip، edge، settings/import/export) دیگر خواندن KV توکن را
+    // نمی‌پردازند — قبلاً سقف «۱ خواندن اضافه در ۵ث» روی همه بود. usage/history
+    // فقط KV می‌خواند (بدون GraphQL) و update-warp از API مصرف‌کننده‌ی WARP
+    // می‌گیرد نه apiToken پنل — هیچ‌کدام توکن نمی‌خواهند. کرون (sampleUsageNow)
+    // توکن را خودش لود می‌کند (v0.8.12) و رندر HTML از قبل مستثنا بود (v0.8.16).
+    if (CF_API_PANEL_PATHS.has(path)) {
         await loadApiToken(env);
     }
 
