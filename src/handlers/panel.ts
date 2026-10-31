@@ -300,7 +300,15 @@ async function updatePanelSettings(request: Request, env: Env): Promise<Response
         if (newSettings.securePath !== securePath) {
             const bot: TelegramBot | null = await env.kv.get('telegramBot', { type: 'json' });
             if (bot) {
-                await setTelegramBot(newSettings.securePath, bot.telegramBotToken);
+                // v0.8.45 — ثبت وب‌هوک best-effort (همان قرارداد بازیابی بکاپ):
+                // تنظیمات همین‌جا ذخیره شده‌اند؛ خطای سمت تلگرام (API پایین/429/توکن
+                // باطل) نباید یک ذخیره‌ی موفق را 500 کاذب کند — وب‌هوک بعداً از
+                // Settings تلگرام دوباره ست می‌شود.
+                try {
+                    await setTelegramBot(newSettings.securePath, bot.telegramBotToken);
+                } catch (e) {
+                    console.log('Telegram webhook re-registration skipped:', safeError(e));
+                }
             }
         }
 
@@ -421,6 +429,12 @@ async function importSettingsBackup(request: Request, env: Env): Promise<Respons
 
         if (prepared.bot) {
             await env.kv.put('telegramBot', JSON.stringify(prepared.bot));
+            // v0.8.45 — قرارداد kv.ts: هر write مستقیم KV کش دیتاست را باطل کند
+            // (telegramBot جزو Dataset است — همان تعهدی که updateWarpConfigs و
+            // api/telegram خودشان رعایت می‌کنند). بدون این، یک getDataset هم‌ایزوله
+            // که در پنجره‌ی میان commit تنظیمات و این put پر شده باشد، تا ۵ ثانیه
+            // رباتِ پیش از بازیابی را سرو می‌کند.
+            invalidateDatasetCache();
             if (prepared.bot.telegramBotToken) {
                 // وب‌هوک دوباره ست می‌شود — best-effort، خطای تلگرام بازیابی را خراب نمی‌کند
                 try {
@@ -472,7 +486,16 @@ async function getMyIP(request: Request, env: Env): Promise<Response> {
     }
 
     try {
-        const response = await fetch(`http://ip-api.com/json/${ip}?nocache=${Date.now()}`);
+        // v0.8.45 — سقف زمانی جست‌وجوی جغرافیای IP (همان کلاس v0.8.44 برای DoH):
+        // ip-api.com آویزان نباید درخواست پنل ادمین را بی‌نهایت نگه دارد.
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), myIpFetchTimeoutMs);
+        let response: Response;
+        try {
+            response = await fetch(`http://ip-api.com/json/${ip}?nocache=${Date.now()}`, { signal: controller.signal });
+        } finally {
+            clearTimeout(timer);
+        }
         const geoLocation = await response.json();
         return respond(true, HttpStatus.OK, '', geoLocation);
     } catch (error) {
@@ -507,6 +530,18 @@ async function updateWarpConfigs(request: Request, env: Env): Promise<Response> 
             `An error occurred while updating Warp configs: ${safeError(error)}`
         );
     }
+}
+
+// ---------- سقف زمانی جست‌وجوی IP (v0.8.45) ----------
+// getMyIP ورودی کاربر را مستقیم به ip-api.com می‌فرستد — fetch بدون سقف زمانی
+// یعنی یک آپ‌استریمِ آویزان، درخواستِ ادمین را آویزان نگه می‌دارد. الگوی همان
+// سقف DoH (v0.8.44): AbortController + هُک تست.
+const MY_IP_FETCH_TIMEOUT_MS = 5_000;
+let myIpFetchTimeoutMs = MY_IP_FETCH_TIMEOUT_MS;
+
+/** فقط برای تست‌ها — سقف زمانی جست‌وجوی IP را کوچک کند */
+export function _setMyIpFetchTimeoutForTest(ms: number): void {
+    myIpFetchTimeoutMs = ms;
 }
 
 // ---------- ورود دومرحله‌ای TOTP ----------
