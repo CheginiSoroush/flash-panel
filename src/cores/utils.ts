@@ -132,6 +132,24 @@ export async function resolveDNS(domain: string, onlyIPv4 = false): Promise<DnsR
     return pending;
 }
 
+// ---------- سقف زمانی fetchهای DoH (v0.8.44) ----------
+// resolveDNS در دو مسیر حساس مصرف می‌شود: تولید بدنه‌ی ساب (getConfigAddresses)
+// و mutatorهای داخل صف نوشتن KV (getDnsParams هنگام تغییر remoteDNS).
+// fetch بدون timeout یعنی یک DoHِ آویزان:
+//   • مسیر ساب → درخواست ساب آویزان می‌ماند (کلاس «کند/بدون پاسخ»)
+//   • صف نوشتن → writeChain برای همیشه روی همان await می‌ماند؛ همه‌ی writeهای
+//     بعدی همان isolate (پنل/tuner/ربات/heal/مهاجرت) مرده‌اند.
+// اصل مستند healRemoteDnsHost — «صف نوشتن نباید روی شبکه‌ی DNS بایستد» — فقط
+// وقتی برقرار است که خودِ شبکه سقف زمانی داشته باشد. stale-on-error از قبل
+// در resolveDNS هست؛ این سقف فقط باعث می‌شود «خطا» به‌موقع برسد.
+const DNS_FETCH_TIMEOUT_MS = 5_000;
+let dnsFetchTimeoutMs = DNS_FETCH_TIMEOUT_MS;
+
+/** فقط برای تست‌ها — سقف زمانی DoH را کوچک کند */
+export function _setDnsFetchTimeoutForTest(ms: number): void {
+    dnsFetchTimeoutMs = ms;
+}
+
 async function doResolveDNS(domain: string, onlyIPv4: boolean): Promise<{ result: DnsResult; ttl: number }> {
     const dohBaseURL = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}`;
     const dohURLs = {
@@ -140,8 +158,14 @@ async function doResolveDNS(domain: string, onlyIPv4: boolean): Promise<{ result
     };
 
     try {
-        const v4 = await fetchDNSRecordsWithTTL(dohURLs.ipv4, 1);
-        const v6 = onlyIPv4 ? { records: [] as string[], ttl: DNS_TTL_DEFAULT_MS / 1000 } : await fetchDNSRecordsWithTTL(dohURLs.ipv6, 28);
+        // A و AAAA موازی — قبلاً متوالی بود و بدترین‌حالتِ سرد، دو برابرِ سقف زمانی
+        // روی مسیر ساب/صف نوشتن می‌گذاشت؛ هر دو جواب برای نتیجه لازم‌اند.
+        const [v4, v6] = await Promise.all([
+            fetchDNSRecordsWithTTL(dohURLs.ipv4, 1),
+            onlyIPv4
+                ? { records: [] as string[], ttl: DNS_TTL_DEFAULT_MS / 1000 }
+                : fetchDNSRecordsWithTTL(dohURLs.ipv6, 28)
+        ]);
         return {
             result: { ipv4: v4.records, ipv6: v6.records },
             ttl: Math.min(v4.ttl, v6.ttl),
@@ -157,8 +181,11 @@ export async function fetchDNSRecords(url: string, recordType: number): Promise<
 }
 
 async function fetchDNSRecordsWithTTL(url: string, recordType: number): Promise<{ records: string[]; ttl: number }> {
+    // AbortController + setTimeout (به‌جای AbortSignal.timeout) — سازگاری گسترده‌تر و قابل‌تست با هُک بالا
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), dnsFetchTimeoutMs);
     try {
-        const response = await fetch(url, { headers: { accept: 'application/dns-json' } });
+        const response = await fetch(url, { headers: { accept: 'application/dns-json' }, signal: controller.signal });
         const data: any = await response.json();
 
         if (!data.Answer) return { records: [], ttl: DNS_TTL_DEFAULT_MS / 1000 };
@@ -178,6 +205,8 @@ async function fetchDNSRecordsWithTTL(url: string, recordType: number): Promise<
 
     } catch (error) {
         throw new Error(`Failed to fetch DNS records from ${url}: ${safeError(error)}`);
+    } finally {
+        clearTimeout(timer);
     }
 }
 
