@@ -485,7 +485,10 @@ export function makeReadableWebSocketStream(
     const stream = new ReadableStream({
         start(controller) {
             webSocketServer.addEventListener('message', (event) => {
-                if (readableStreamCancel) return;
+                // v0.8.59 — گارد streamEnded هم لازم است: بعد از controller.error،
+                // enqueue روی استریمِ errored طبق spec پرتاب می‌کند و این پرتاب داخل
+                // لیسنر WS بی‌گیرنده می‌ماند (TypeError ثبت‌نشده به‌ازای هر پیامِ دیررس)
+                if (readableStreamCancel || streamEnded) return;
                 touchWsRead(webSocketServer); // نگهبان: فعالیت سمت کلاینت
                 // متریک ترافیک: بایت آپ‌لینک (استرینگ = فریم متنی، طول کاراکتر ~ بایت)
                 const d = event.data as unknown;
@@ -607,4 +610,11 @@ function convertToNAT64IPv6(ipv4Address: string, prefix: string) {
     if (match) {
         return `[${match[1]}${hex[0]}${hex[1]}:${hex[2]}${hex[3]}]`;
     }
+
+    // v0.8.59 — prefix نامعتبر دیگر صامت undefined نیست؛ صریح پرتاب می‌شود تا
+    // قراردادِ مستند (خطای prefix با exception بالا می‌آید — تصمیم با caller،
+    // کامنت resolveProxyTarget) واقعاً برقرار باشد و دلیل واقعی در پیام خطا/بستن
+    // دیده شود، نه 'Invalid Prefix' عمومی. هر دو caller مسیر throw را از قبل
+    // try/catch دارند (retry → close؛ مسیر forced → fallback مستقیم).
+    throw new Error('Invalid NAT64 prefix format');
 }
