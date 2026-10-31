@@ -114,43 +114,50 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
         // هم‌راستا با هسته‌ی xray: جفت upstream فقط در پروفایل‌های non-fragment —
         // پروفایل fragment روی پین استاتیک mainDomain بنا شده و TLS-fragment
         // به سمت سرور upstream بی‌معناست (v0.8.43)
-        if (upstreamServer && upstreamPort && !isFragment) {
-            totalPorts.unshift(upstreamPort);
-            hosts.unshift(upstreamServer);
-        }
+        // v0.8.53 — جفت upstream دیگر در totalPorts/hosts ادغام نمی‌شود (همان
+        // فیکس xray v0.8.52): unshift + XOR-skip وقتی upstreamPort عضو ports
+        // باشد (رایج‌ترین: ۴۴۳) جفت upstream را دوبار تولید می‌کرد و کانفیگ‌های
+        // عادی همان پورت را کلاً حذف می‌کرد — با ports پیش‌فرض [443] یعنی سابِ
+        // بدون هیچ کانفیگ ورکری. حالا upstream زوج مستقلِ اولِ صف است.
+        const hasUpstream = !!(upstreamServer && upstreamPort && !isFragment);
 
         for (const protocol of protocols) {
             let protocolIndex = 1;
+
+            const pairs: Array<{ host: string; port: number }> = [];
+            if (hasUpstream) pairs.push({ host: upstreamServer, port: upstreamPort });
             for (const port of totalPorts) {
                 for (const host of hosts) {
-                    if ((port === upstreamPort) !== (host === upstreamServer)) continue;
-
-                    const tag = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, false);
-                    const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain, isFragment, outbounds.length);
-                    outbounds.push(outbound);
-                    
-                    if (isCustomDomain) {
-                        tagGroup['⚡ Best Ping D 🚀'].push(tag);
-                    } else {
-                        tagGroup['⚡ Best Ping 🚀'].push(tag);
-                    }
-
-                    if (isChain) {
-                        const chainTag = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, true);
-                        const chain = structuredClone(chainOutbound);
-                        chain.tag = chainTag;
-                        chain.detour = tag;
-                        outbounds.push(chain);
-
-                        if (isCustomDomain) {
-                            tagGroup['⚡ 🔗 Best Ping D 🚀'].push(chainTag);
-                        } else {
-                            tagGroup['⚡ 🔗 Best Ping 🚀'].push(chainTag);
-                        }
-                    }
-
-                    protocolIndex++;
+                    pairs.push({ host, port });
                 }
+            }
+
+            for (const { host, port } of pairs) {
+                const tag = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, false);
+                const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain, isFragment, outbounds.length);
+                outbounds.push(outbound);
+
+                if (isCustomDomain) {
+                    tagGroup['⚡ Best Ping D 🚀'].push(tag);
+                } else {
+                    tagGroup['⚡ Best Ping 🚀'].push(tag);
+                }
+
+                if (isChain) {
+                    const chainTag = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, true);
+                    const chain = structuredClone(chainOutbound);
+                    chain.tag = chainTag;
+                    chain.detour = tag;
+                    outbounds.push(chain);
+
+                    if (isCustomDomain) {
+                        tagGroup['⚡ 🔗 Best Ping D 🚀'].push(chainTag);
+                    } else {
+                        tagGroup['⚡ 🔗 Best Ping 🚀'].push(chainTag);
+                    }
+                }
+
+                protocolIndex++;
             }
         }
     }
