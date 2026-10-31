@@ -31,7 +31,11 @@ export async function buildDNS(
     }
 
     if (domainToStaticIPs) {
-        const { ipv4, ipv6 } = await resolveDNS(domainToStaticIPs, enableIPv6);
+        // ⚠️ قرارداد resolveDNS: پارامتر دوم onlyIPv4 است (رگرسیون v0.8.32) —
+        // قبلاً enableIPv6 خام می‌رفت یعنی دقیقاً وارونه: با IPv6 روشن فقط A و
+        // با خاموش فقط A+AAAA resolve می‌شد → پین استاتیک Smart Fragment یا
+        // مسیر edge با کلاینت v6-only را گم می‌کرد یا AAAA مرده پین می‌کرد.
+        const { ipv4, ipv6 } = await resolveDNS(domainToStaticIPs, !enableIPv6);
         hosts[domainToStaticIPs] = [...ipv4, ...ipv6];
     }
 
