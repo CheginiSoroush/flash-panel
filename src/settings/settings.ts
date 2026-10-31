@@ -412,6 +412,12 @@ export const clients: Client[] = [
 
 // ---------- پیش‌فرض‌های KV ----------
 
+// v0.8.65 — endpoint پیش‌فرض WARP؛ هم در پیش‌فرض‌ها و هم در self-heal مرزِ لود
+// (src/settings/kv.ts) استفاده می‌شود — قرارداد «warpAccounts همیشه ≥۲»ی
+// v0.8.23 این‌بار برای endpoints: ساب‌های warp هرگز خروجی بدون outbound
+ // تولید نمی‌کنند.
+export const DEFAULT_WARP_ENDPOINTS = ['engage.cloudflareclient.com:2408'];
+
 const DEFAULT_KV_SETTINGS: KvSettings = {
     localDNS: '8.8.8.8',
     antiSanctionDNS: '178.22.122.100',
@@ -458,7 +464,7 @@ const DEFAULT_KV_SETTINGS: KvSettings = {
     customSubs: [],
     customConfigs: [],
     warpRemoteDNS: '1.1.1.1',
-    warpEndpoints: ['engage.cloudflareclient.com:2408'],
+    warpEndpoints: DEFAULT_WARP_ENDPOINTS.slice(),
     warpBestPingInterval: 30,
     warpReservedBytes: true,
     xrayUdpNoises: [{

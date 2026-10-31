@@ -228,6 +228,16 @@ function validateNAT64Prefixes(form: PanelSettings, errors: ValidationError[]) {
 }
 
 function validateWarpEndpoints(form: PanelSettings, errors: ValidationError[]) {
+    // v0.8.65 — حداقل یک endpoint (هم‌تراز با «حداقل یک پورت TLS»ی validatePorts).
+    // آرایه‌ی خالی یعنی ساب‌های warp هر سه هسته + ZIP وایرگارد با صفر outbound —
+    // sing-box حتی کل پروفایل را رد می‌کند (detour DNS به گروهی که ساخته نمی‌شود).
+    if (!form.warpEndpoints.length) {
+        errors.push({
+            field: 'Warp Endpoints',
+            message: ['At least one WARP endpoint should be selected.']
+        });
+    }
+
     const invalidEndpoints = form.warpEndpoints.filter((value: string) => !isValidHost(value, true));
     if (invalidEndpoints.length) {
         errors.push({

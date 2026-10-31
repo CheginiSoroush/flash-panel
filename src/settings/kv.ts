@@ -2,7 +2,7 @@ import { DnsHost, KvSettings, PanelSettings, TelegramBot, WarpAccount } from '#t
 import { extractProxyParams, extractUpstreamParams, getDomain, resolveDNS } from '@utils';
 import { fetchWarpAccounts } from '@api/warp';
 import { safeError } from '@common';
-import { getKvSettings, syncKvSettings } from '@settings';
+import { getKvSettings, syncKvSettings, DEFAULT_WARP_ENDPOINTS } from '@settings';
 import { setCustomDomain } from '@main';
 import { mutateSettings } from './store';
 
@@ -128,6 +128,21 @@ function isWellFormedWarpAccounts(value: unknown): value is WarpAccount[] {
         );
 }
 
+/**
+ * v0.8.65 — اعتبارسنجی ساختاری warpEndpoints خوانده‌شده از KV (قرارداد v0.8.23
+ * برای accounts، این‌بار برای endpoints). validateWarpEndpoints قدیمی فقط فرمت
+ * هر عضو را می‌سنجید و آرایه‌ی خالی را قبول می‌کرد — پاک‌کردن textarea endpoints
+ * در پنل یا blob دستیِ KV یعنی ساب‌های warp هر سه هسته + ZIP وایرگارد با صفر
+ * outbound: sing-box کل پروفایل را رد می‌کرد (detour DNS به گروهی که دیگر ساخته
+ * نمی‌شود)، clash گروه Selector با proxies خالی می‌داد، xray balancer بی‌عضو.
+ * فرمت اعضا حوزه‌ی ولیدیتور است؛ این گارد فقط «ساختارِ غیرقابل‌سرو» را می‌گیرد.
+ */
+function isWellFormedWarpEndpoints(value: unknown): value is string[] {
+    return Array.isArray(value)
+        && value.length >= 1
+        && value.every(endpoint => typeof endpoint === 'string' && endpoint.length > 0);
+}
+
 async function loadDataset(env: Env): Promise<Dataset> {
     let settings: KvSettings | null, warpAccounts: WarpAccount[] | null;
     const kvSettings = getKvSettings();
@@ -184,6 +199,16 @@ async function loadDataset(env: Env): Promise<Dataset> {
 
         // self-heal — remoteDnsHost باید با remoteDNS هم‌تراز باشد (بوت‌استرپ DoH دامنه‌ای)
         settings = await healRemoteDnsHost(env, settings);
+
+        // v0.8.65 — self-heal warpEndpoints خالی/ناقص در مرزِ لود (قرارداد v0.8.23).
+        // heal در حافظه — هر لود دوباره heal می‌شود؛ نوشتنِ KV بعدی با ولیدیتورِ
+        // جدید دیگر خالی ذخیره نمی‌کند، پس persist ضمنی بی‌معناست و سهمیه write
+        // مصرف نمی‌کند. مصرف‌کنندگان: هر سه مولد warp + ZIP وایرگارد — همه از
+        // getSettings می‌خوانند و از این نقطه بعد مقدار سالم می‌بینند.
+        if (!isWellFormedWarpEndpoints(settings.warpEndpoints)) {
+            console.log(`warpEndpoints empty/malformed at KV load — healed in-memory to default (${DEFAULT_WARP_ENDPOINTS[0]})`);
+            settings = { ...settings, warpEndpoints: DEFAULT_WARP_ENDPOINTS.slice() };
+        }
 
         let telegramBot: TelegramBot | null = storedTelegramBot;
         if (!telegramBot) {
