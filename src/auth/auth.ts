@@ -42,9 +42,20 @@ export async function getPwd(env: Env): Promise<string | null> {
     if (Date.now() - pwdLoadedAt < PWD_CACHE_TTL) {
         return cachedPwd;
     }
-    cachedPwd = await env.kv.get('pwd');
-    pwdLoadedAt = Date.now();
-    return cachedPwd;
+    try {
+        cachedPwd = await env.kv.get('pwd');
+        pwdLoadedAt = Date.now();
+        return cachedPwd;
+    } catch {
+        // v0.8.37 — همان stale-on-error الگوی getSecretKey: قطعی گذرای KV نباید
+        // لاگین/ریست را استثنای هندل‌نشده کند؛ کش گرم همان مقداری است که این
+        // ایزولیت چند ثانیه پیش سرو می‌کرد. کش سرد → بالا پرتاب (فراخوان 503 صریح
+        // می‌دهد و rate-limit را آلوده نمی‌کند). مهر زمان تازه می‌شود تا KV مرده
+        // در هر درخواست هم زده نشود.
+        if (cachedPwd === null) throw new Error('kv unavailable (pwd)');
+        pwdLoadedAt = Date.now();
+        return cachedPwd;
+    }
 }
 
 // ---------- محدودکننده نرخ لاگین (per-IP: حافظه سریع + شمارش سراسری KV) ----------
@@ -152,7 +163,15 @@ export async function generateJWTToken(request: Request, env: Env): Promise<Resp
     const username = typeof data.username === 'string' ? data.username.toLowerCase() : '';
     const password = typeof data.password === 'string' ? data.password : '';
     const { accEmail } = getGlobals();
-    const savedPass = await getPwd(env);
+
+    // v0.8.37 — خطای خواندن KV زیرساخت است نه اعتبارنامه‌ی غلط: 503 تمیز بدون
+    // recordFailedLogin (سهمیه‌ی rate-limit فقط برای تلاش‌های واقعی اشغال می‌شود)
+    let savedPass: string | null;
+    try {
+        savedPass = await getPwd(env);
+    } catch {
+        return respond(false, HttpStatus.SERVICE_UNAVAILABLE, 'Service temporarily unavailable. Try again shortly.');
+    }
 
     // بدون پسورد ست‌شده نمی‌شه لاگین کرد (رفتار قبلی حفظ شده)
     if (!savedPass || username !== accEmail || !constantTimeEqual(password, savedPass)) {
@@ -163,7 +182,16 @@ export async function generateJWTToken(request: Request, env: Env): Promise<Resp
     // ---------- ورود دومرحله‌ای TOTP (بعد از تأیید پسورد) ----------
     // خطای TOTP هم در سهمیه‌ی rate-limit محاسبه می‌شه (همان ۵ تلاش در دقیقه)
     if (await isTotpEnabled(env)) {
-        const totpSecret = await env.kv.get('totpSecret');
+        // v0.8.37 — خواندن‌های TOTP هم محافظت‌شده‌اند (خطای KV → 503؛ نوشتن
+        // totpLastUsed عمداً fail-closed می‌ماند تا replay-guard ضعیف نشود)
+        let totpSecret: string | null;
+        let lastUsedRaw: string | null;
+        try {
+            totpSecret = await env.kv.get('totpSecret');
+            lastUsedRaw = await env.kv.get('totpLastUsed');
+        } catch {
+            return respond(false, HttpStatus.SERVICE_UNAVAILABLE, 'Service temporarily unavailable. Try again shortly.');
+        }
         const code = typeof data.totp === 'string' ? data.totp : '';
 
         if (!totpSecret || !code) {
@@ -174,7 +202,6 @@ export async function generateJWTToken(request: Request, env: Env): Promise<Resp
         const { ok, counter } = await verifyTotp(totpSecret, code);
 
         // جلوگیری از replay — یک کد فقط یک‌بار مصرف می‌شه (بهترین تلاش روی KV نهایی‌المنطقه)
-        const lastUsedRaw = await env.kv.get('totpLastUsed');
         const lastUsed = lastUsedRaw ? Number(lastUsedRaw) : 0;
 
         if (!ok || counter === null || counter <= lastUsed) {
@@ -216,7 +243,11 @@ export async function isTotpEnabled(env: Env): Promise<boolean> {
         return cachedTotpEnabled;
     }
 
-    cachedTotpEnabled = (await env.kv.get('totpEnabled')) === 'true';
+    try {
+        cachedTotpEnabled = (await env.kv.get('totpEnabled')) === 'true';
+    } catch {
+        // v0.8.37 — stale-on-error: آخرین مقدار معتبر بماند؛ تیک بعدی دوباره می‌خواند
+    }
     totpLoadedAt = Date.now();
     return cachedTotpEnabled;
 }
@@ -267,7 +298,16 @@ export async function resetPassword(request: Request, env: Env): Promise<Respons
     }
 
     const auth = await authenticate(request, env);
-    const oldPwd = await getPwd(env);
+
+    // v0.8.37 — خطای خواندن هرگز نباید شبیه «پسوردی ست نشده» تفسیر شود (وگرنه
+    // مسیر setup بدون احراز باز می‌شود) — fail-closed با 503 صریح
+    let oldPwd: string | null;
+    try {
+        oldPwd = await getPwd(env);
+    } catch {
+        return respond(false, HttpStatus.SERVICE_UNAVAILABLE, 'Service temporarily unavailable. Try again shortly.');
+    }
+
     if (oldPwd && !auth) {
         return respond(false, HttpStatus.UNAUTHORIZED, 'Unauthorized.');
     }

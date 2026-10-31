@@ -1,4 +1,4 @@
-import { generateJWTToken, authenticate } from '@auth';
+import { generateJWTToken, authenticate, isTotpEnabled } from '@auth';
 import { decompressGzipBase64, respond, HttpStatus } from '@common';
 import { getGlobals } from '@settings';
 import { fallback } from './utils';
@@ -84,7 +84,9 @@ async function getTotpStatus(request: Request, env: Env): Promise<Response> {
         return respond(false, HttpStatus.METHOD_NOT_ALLOWED, 'Method not allowed.');
     }
 
-    const enabled = (await env.kv.get('totpEnabled')) === 'true';
+    // v0.8.37 — از کش ۱۵ثانیه‌ای isTotpEnabled به‌جای خواندن خام KV در هر بازدید
+    // (صفحه‌ی لاگین داغ‌ترین مسیر عمومی است) + stale-on-error داخلی → outage هم 200
+    const enabled = await isTotpEnabled(env);
 
     return respond(true, HttpStatus.OK, undefined, { enabled }, {
         'Cache-Control': 'no-store'

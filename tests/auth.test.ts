@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import type { Response } from 'undici';
 
 /**
@@ -350,5 +350,147 @@ describe('auth v0.8.27 — password reset revokes sessions', () => {
         }, nextIp()), env);
         expect(login.status).toBe(200);
         expect(await auth.authenticate(reqWith(getCookieToken(login)), env)).toBe(true);
+    });
+});
+
+// ---------- v0.8.37 — مقاوم‌سازی مسیر auth در برابر قطعی KV ----------
+//
+// قبلاً getPwd / isTotpEnabled / خواندن‌های TOTP تنها خواندن‌های KV محافظت‌نشده‌ی
+// مسیر لاگین بودند (بقیه‌ی ماژول fail-safe است: getSecretKey stale-on-error،
+// isRateLimited fail-open، authenticate catch-all) → یک قطعی گذرای KV:
+//   - لاگین با اعتبارنامه‌ی درست → استثنای هندل‌نشده (صفحه‌ی خطای عمومی)
+//   - resetPassword → استثنای هندل‌نشده (fail-closed ولی زشت)
+//   - totp-status صفحه‌ی لاگین → استثنای هندل‌نشده + خواندن KV در هر بازدید
+//
+// قرارداد جدید: «همه‌ی خواندن‌های KV مسیر auth محافظت‌شده‌اند؛ نوشتن‌ها fail-closed».
+//   - خطای زیرساخت ≠ اعتبارنامه‌ی غلط: 503 تمیز، بدون آلودن کردن rate-limit
+//   - کش گرم pwd → stale-on-error (همان الگوی getSecretKey) → لاگین در outage هم کار می‌کند
+//   - resetPassword هرگز به‌خاطر خطای خواندن وارد «حالت setup بدون احراز» نمی‌شود
+
+describe('auth v0.8.37 — KV-outage hardening', () => {
+    let auth: typeof import('../src/auth/auth');
+    let settings: typeof import('../src/settings/settings');
+    let login: typeof import('../src/handlers/login');
+
+    beforeAll(async () => {
+        settings = await import('../src/settings/settings');
+        auth = (await import('../src/auth/auth')) as any;
+        login = await import('../src/handlers/login');
+    });
+
+    afterEach(() => {
+        auth._resetAuthStateForTest();
+        vi.useRealTimers();
+    });
+
+    /** KV سالم که فقط روی کلیدهای داده‌شده get پرتاب می‌کند (outage خواندنی) */
+    function flakyKv(seed: Record<string, string>, failKeys: string[]) {
+        const store = new Map<string, string>(Object.entries(seed));
+        return {
+            async get(key: string) {
+                if (failKeys.includes(key)) throw new Error('kv down');
+                return store.get(key) ?? null;
+            },
+            async put(key: string, value: string) { store.set(key, value); },
+            async delete(key: string) { store.delete(key); }
+        } as unknown as KVNamespace;
+    }
+
+    it('قطعی KV با کش سرد → 503 تمیز، نه استثنای هندل‌نشده و بدون آلودن rate-limit', async () => {
+        auth._resetAuthStateForTest();
+        const ip = nextIp();
+        const env = { kv: flakyKv({ pwd: 'correct-pass' }, ['pwd']) } as Env;
+
+        // ۵ بار — روی کد قدیمی اولین فراخوانی reject می‌شود (RED)
+        for (let i = 0; i < 5; i++) {
+            const res = await auth.generateJWTToken(loginRequest({
+                username: 'admin@example.com', password: 'correct-pass'
+            }, ip), env);
+            expect(res.status).toBe(503);
+        }
+
+        // KV برگشت — همان IP با اعتبارنامه‌ی درست باز هم لاگین می‌کند:
+        // خطای زیرساخت نباید سهمیه‌ی ۵تایی را پر کرده باشد
+        const healthy = { kv: createKvMock({ pwd: 'correct-pass' }).kv } as Env;
+        const ok = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'correct-pass'
+        }, ip), healthy);
+        expect(ok.status).toBe(200);
+    });
+
+    it('قطعی KV با کش گرم pwd → لاگین همچنان کار می‌کند (stale-on-error)', async () => {
+        auth._resetAuthStateForTest();
+        const kv = createKvMock({ pwd: 'correct-pass' }).kv;
+        const env = { kv } as Env;
+
+        // گرم کردن کش (pwd + secretKey)
+        const warm = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'correct-pass'
+        }, nextIp()), env);
+        expect(warm.status).toBe(200);
+
+        // TTL کش‌ها را منقضی کن و KV را بمیران — stale-on-error باید نگه دارد
+        vi.useFakeTimers();
+        vi.setSystemTime(Date.now() + 60_000);
+        const dead = { kv: flakyKv({ pwd: 'correct-pass' }, ['pwd', 'secretKey', 'loginBlock:10.0.0.1']) } as Env;
+        const res = await auth.generateJWTToken(loginRequest({
+            username: 'admin@example.com', password: 'correct-pass'
+        }, nextIp()), dead);
+        expect(res.status).toBe(200);
+    });
+
+    it('resetPassword با قطعی KV → 503 fail-closed، هرگز حالت setup بدون احراز باز نمی‌شود', async () => {
+        auth._resetAuthStateForTest();
+        const env = { kv: flakyKv({ pwd: 'correct-pass' }, ['pwd']) } as Env;
+
+        const res = await auth.resetPassword(new Request('https://example.com/sp/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': nextIp() },
+            body: JSON.stringify({ password: 'attacker-pass' })
+        }), env);
+
+        // روی کد قدیمی reject می‌شود (RED)؛ جدید: 503 صریح و fail-closed
+        expect(res.status).toBe(503);
+    });
+
+    it('totp-status از کش ۱۵ث می‌خواند (صفر خواندن اضافه) و در outage هم 200 می‌دهد', async () => {
+        auth._resetAuthStateForTest();
+        let reads = 0;
+        const store = new Map<string, string>([['totpEnabled', 'true']]);
+        const kv = {
+            async get(key: string) {
+                if (key === 'totpEnabled') reads++;
+                if (key === 'totpEnabled' && reads > 1) throw new Error('kv down');
+                return store.get(key) ?? null;
+            },
+            async put(key: string, value: string) { store.set(key, value); },
+            async delete(key: string) { store.delete(key); }
+        } as unknown as KVNamespace;
+
+        settings.init(
+            new Request('https://example.com/sp/login/totp-status'),
+            { kv } as Env
+        );
+
+        const call = () => login.handleLogin(new Request('https://example.com/sp/login/totp-status'), { kv } as Env);
+
+        // فراخوانی اول — از KV می‌خواند و کش می‌کند
+        const r1 = await call();
+        expect(r1.status).toBe(200);
+        expect(((await r1.json()) as any).body.enabled).toBe(true);
+        expect(reads).toBe(1);
+
+        // فراخوانی دوم در همان TTL — بدون خواندن KV (روی کد قدیمی reads=2 → RED)
+        const r2 = await call();
+        expect(r2.status).toBe(200);
+        expect(((await r2.json()) as any).body.enabled).toBe(true);
+        expect(reads).toBe(1);
+
+        // TTL منقضی + KV مرده (خواندن دوم به بعد پرتاب می‌کند) — باز هم 200 با مقدار stale
+        vi.useFakeTimers();
+        vi.setSystemTime(Date.now() + 60_000);
+        const r3 = await call();
+        expect(r3.status).toBe(200);
+        expect(((await r3.json()) as any).body.enabled).toBe(true); // stale = آخرین مقدار معتبر
     });
 });
