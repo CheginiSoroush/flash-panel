@@ -1,10 +1,11 @@
 import { buildDNS } from './dns';
 import { buildRoutingRules, buildRuleProviders } from './routing';
 import { buildChainOutbound, buildUrlTest, buildWarpOutbound, buildWebsocketOutbound } from './outbounds';
-import type { WireguardOutbound, Config, Outbound } from '#types/clash';
+import type { ChainOutbound, WireguardOutbound, Config, Outbound } from '#types/clash';
 import { getConfigAddresses, generateRemark, isHttps, getProtocols } from '@utils';
 import { sniffer, tun } from './inbounds';
 import { getSettings, getWarpAccounts } from '@settings';
+import { safeError } from '@common';
 
 type TagGroup = Record<string, string[]>;
 
@@ -91,7 +92,22 @@ export async function getClNormalConfig(): Promise<Response> {
         upstreamParams: { upstreamServer, upstreamPort }
     } = getSettings();
 
-    const chainOutbound = chainProxy ? buildChainOutbound() : undefined;
+    // v0.8.51 — زنجیره قابلیتی «اختیاری» است؛ داده‌ی زنجیره‌ی خراب (blob KV باستان از
+    // پیش از ولیدیتور، بازیابی بکاپ ناقص، نویسنده‌ی معیوب آینده) هرگز نباید کل ساب
+    // clash normal را ۵۰۰ کند — قرارداد fail-soft هم‌راستا با بقیه‌ی کد‌بیس:
+    // parseHostPort → direct، resolveDNS → null، ساب سفارشی مرده → حذف محتوا.
+    // ذخیره‌ی پنل خودش ولیدیتور دارد (new URL/JSON.parse گارد شده)؛ این گارد برای
+    // مسیرهایی است که از ولیدیتور عبور نکرده‌اند — بدون زنجیره سرو می‌شود و لاگ می‌ماند.
+    let chainAttempt: ChainOutbound | undefined;
+    if (chainProxy) {
+        try {
+            chainAttempt = buildChainOutbound();
+        } catch (error) {
+            console.log(`chain outbound skipped (bad chainProxy — sub continues without chain): ${safeError(error)}`);
+        }
+    }
+    // const مجدد — باریک‌سازی نوع از طریق isChain (aliased condition) فقط روی const کار می‌کند
+    const chainOutbound = chainAttempt;
     const isChain = !!chainOutbound;
     const domains = [...new Set([mainDomain].concatIf(!!customDomain, customDomain))];
     const protocols = getProtocols();
