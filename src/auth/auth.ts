@@ -21,11 +21,20 @@ async function getSecretKey(env: Env): Promise<string | null> {
     try {
         cachedSecretKey = await env.kv.get('secretKey');
         secretKeyLoadedAt = Date.now();
+        return cachedSecretKey;
     } catch {
-        // KV قطع است — اگر کشی داریم همان را نگه دار (تیک بعدی دوباره تلاش می‌شود)
-        if (cachedSecretKey !== null) secretKeyLoadedAt = Date.now();
+        // v0.8.58 — همان stale-on-error الگوی getPwd: قطعی گذرای KV نباید مسیر را
+        // استثنای هندل‌نشده کند؛ کش گرم همان مقداری است که این ایزولیت چند ثانیه پیش
+        // سرو می‌کرد. کش سرد → بالا پرتاب — نکته‌ی حیاتی: caller لاگین روی null
+        // «کلید در KV نیست» را با «کلید تازه بساز و بنویس» اشتباه می‌گرفت؛ یعنی یک
+        // لغزش گذرای خواندن (با نوشتن سالم — دو مسیر مستقل‌اند) secretKey سراسری را
+        // بازتولید و جایگزین می‌کرد = ابطال بی‌صدای همه‌ی سشن‌ها — دقیقاً همان بلایی
+        // که stale-on-error (کامنت v0.8.27 بالا) قول داده بود نمی‌دهد. لاگین ۵۰۳ صریح
+        // می‌دهد و authenticate fail-closed می‌ماند.
+        if (cachedSecretKey === null) throw new Error('kv unavailable (secretKey)');
+        secretKeyLoadedAt = Date.now();
+        return cachedSecretKey;
     }
-    return cachedSecretKey;
 }
 
 function setSecretKeyCache(key: string | null): void {
@@ -212,7 +221,14 @@ export async function generateJWTToken(request: Request, env: Env): Promise<Resp
         await env.kv.put('totpLastUsed', String(counter));
     }
 
-    let secretKey = await getSecretKey(env);
+    // v0.8.58 — خطای خواندن secretKey دیگر «کلید وجود ندارد» تفسیر نمی‌شود:
+    // ۵۰۳ صریح به‌جای بازتولید مخرب کلید سراسری (هم‌الگوی getPwd در بالا)
+    let secretKey: string | null;
+    try {
+        secretKey = await getSecretKey(env);
+    } catch {
+        return respond(false, HttpStatus.SERVICE_UNAVAILABLE, 'Service temporarily unavailable. Try again shortly.');
+    }
     if (!secretKey) {
         secretKey = generateSecretKey();
         await env.kv.put('secretKey', secretKey);
