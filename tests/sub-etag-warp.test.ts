@@ -208,4 +208,28 @@ describe('sub ETag: پوشش اکانت‌های WARP (v0.8.30)', () => {
         const etagAfter = await sub.computeSubETag('warp', 'clash');
         expect(etagAfter).not.toBe(etagBefore);
     });
+
+    it('⚖️ دامنه‌ی اثر — چرخش اکانت‌ها ETag مسیرهای غیر-warp را نمی‌لرزاند (ضد churn)', async () => {
+        // بدنه‌ی normal/raw هرگز اکانت‌ها را نمی‌خواند (تنها مولدهای warp-خانواده
+        // + wireguard — که فقط زیر مسیرهای warp/warp-pro سرو می‌شوند — getWarpAccounts
+        // صدا می‌زنند). چرخش اکانت نباید کلاینت‌های normal/raw را به دانلود مجدد
+        // ۸۱–۲۵۵KB وادارد یا LRU کش بدنه را تخلیه کند.
+        const { kv, store: kvStore } = freshEnv();
+        const env = { kv } as any;
+
+        await settings.setSettings(env);
+        const normalBefore = await sub.computeSubETag('normal', 'clash');
+        const rawBefore = await sub.computeSubETag('raw', 'xray');
+        const warpProBefore = await sub.computeSubETag('warp-pro', 'clash');
+
+        kvStore.set('warpAccounts', JSON.stringify([acc3, acc4]));
+        kvmod.invalidateDatasetCache();
+        await settings.setSettings(env);
+
+        // کد قدیمی (w برای همه‌ی مسیرها): برابر نیست → churn بی‌دلیل → قرمز
+        expect(await sub.computeSubETag('normal', 'clash')).toBe(normalBefore);
+        expect(await sub.computeSubETag('raw', 'xray')).toBe(rawBefore);
+        // اما مسیرهای warp-خانواده باید عوض شوند (اعتبارنامه‌ی نو می‌رسد)
+        expect(await sub.computeSubETag('warp-pro', 'clash')).not.toBe(warpProBefore);
+    });
 });

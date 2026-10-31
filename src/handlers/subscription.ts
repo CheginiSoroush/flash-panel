@@ -52,9 +52,9 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
 
     // ETag بر اساس «ورودی‌های» تولید کانفیگ (نه خروجی‌شون):
     // نسخه پنل + کل تنظیمات KV + تنظیمات embedded + نوع ساب + کلاینت + شناسه کاربر
-    // + اکانت‌های WARP (کلید KV جداگانه — بدنه‌ی ساب‌های warp/wow/wireguard آن‌ها را
-    // embed می‌کند؛ بدون این ورودی، چرخش اکانت‌ها ETag را نمی‌لرزاند و کلاینت شرطی
-    // 304 ابدی می‌گرفت = اعتبارنامه‌ی کهنه تا همیشه — رگرسیون v0.8.30).
+    // + اکانت‌های WARP فقط برای مسیرهای warp-خانواده (کلید KV جداگانه — تنها
+    // مولدهای warp/wow/wireguard آن‌ها را embed می‌کنند؛ رگرسیون v0.8.30 و دامنه‌ی
+    // اثرش v0.8.31: بدون این ورودی 304 ابدی، با اضافه‌شدن بی‌شرط churn بی‌دلیل).
     // getSettings() همه‌چیز رو داره: kvSettings + globalSettings (شامل client, hostname, origin)
     const etag = await computeSubETag(path, client, userId);
 
@@ -191,12 +191,23 @@ async function routeSubscription(path: string, client: string): Promise<Response
  * هش SHA-256 از ورودی‌های تولید کانفیگ — ۸ بایت اول به‌صورت hex
  *
  * ورودی‌ها باید «هر چیزی که بدنه را می‌سازد» را پوشش دهند: settings + اکانت‌های
- * WARP (کلید KV جداگانه، خوانده‌شده در setSettings و embed شده در ساب‌های
- * warp/wow/wireguard). چرخش اکانت‌ها (دکمه‌ی پنل / self-heal) → ETag نو →
- * کلاینت شرطی بدنه‌ی نو می‌گیرد و کلید subBodyCache هم تازه می‌شود.
+ * WARP برای مسیرهای warp-خانواده (تنها مولدهای getClWarpConfig/getXrWarpConfigs/
+ * getSbWarpConfig/getWireguardConfigs اکانت‌ها را می‌خوانند و wireguard فقط زیر
+ * همین دو مسیر سرو می‌شود). چرخش اکانت‌ها → ETag مسیرهای warp نو → کلاینت شرطی
+ * بدنه‌ی نو می‌گیرد؛ مسیرهای normal/raw/fragment که اکانت‌ها در آن‌ها نقشی ندارند
+ * ETag ثابت می‌مانند → بدون دانلود مجدد بی‌دلیل و بدون تخلیه‌ی LRU کش بدنه.
  */
+const WARP_FAMILY_PATHS = new Set(['warp', 'warp-pro']);
+
 export async function computeSubETag(path: string, client: string, userId: string | null = null): Promise<string> {
-    const payload = JSON.stringify({ v: VERSION, path, client, u: userId, s: getSettings(), w: getWarpAccounts() });
+    const payload = JSON.stringify({
+        v: VERSION,
+        path,
+        client,
+        u: userId,
+        s: getSettings(),
+        w: WARP_FAMILY_PATHS.has(path) ? getWarpAccounts() : null
+    });
     const digest = await crypto.subtle.digest('SHA-256', etagEncoder.encode(payload));
     const bytes = new Uint8Array(digest).slice(0, 8);
 
