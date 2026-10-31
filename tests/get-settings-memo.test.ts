@@ -1,4 +1,8 @@
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+
+// v0.8.38 — این فایل merge واقعی ~۱۵۰فیلدی را هزاران بار می‌چرخاند؛ زیر بار
+// ۴۴-workerِ ران کامل، یک تک‌تست از سقف پیش‌فرض ۵ث رد می‌شود (فلیک محیطی
+// تکرارشده در iteration 18/19/20/21). سقف همین فایل ۲۰ث — بدون اثر بیرونی.
 
 /**
  * بهینه‌سازی v0.8.33 — اسنپ‌شات memo شده‌ی getSettings (src/settings/settings.ts)
@@ -18,6 +22,8 @@ import { describe, it, expect, beforeAll, afterEach } from 'vitest';
  * هیچ فراخوانی‌ای در src/ فیلد سطح-اول خروجی را می‌نویسد؛ نوشتن تو در تو از قبل
  * با shallow-spread به kvSettings نشت می‌کرد — بدون تغییر.
  */
+
+vi.setConfig({ testTimeout: 20_000 });
 
 const MOCK_EMBEDED = {
     accID: 'test-account-id',
