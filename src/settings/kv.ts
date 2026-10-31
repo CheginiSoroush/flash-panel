@@ -20,6 +20,20 @@ const DATASET_CACHE_TTL = 5_000; // ۵ ثانیه
 let datasetCache: { data: Dataset; expiresAt: number } | null = null;
 let inflight: Promise<Dataset> | null = null;
 
+/**
+ * نسلِ دیتاست (v0.8.55) — با هر invalidate یک واحد جلو می‌رود.
+ *
+ * کلاس باگ: لودِ سردی که قبل از یک write شروع شده بود، وقتی resolve می‌شد
+ * `.then` آن cache را با «دیتای پیش از نوشتن» دوباره پر می‌کرد و invalidate‌ای
+ * که commit تازه زده بود را خنثی می‌ساخت — نتیجه: تا ۵ ثانیه (TTL) تنظیماتِ
+ * پیش از write سرو می‌شد و بدتر، `setSettings` (subscription/telegram/clean-ip)
+ * همان دیتای کهنه را روی snapshot ماژول می‌نشت و `syncKvSettings` تازه را
+ * clobber می‌کرد. این مسابقه در دورهای دوم و سومِ ممیزی ثبت شده بود («برای دور
+ * بعد»). فیکس: نتیجه‌ی لود فقط وقتی کش می‌شود که در طول لود invalidate‌ای
+ * رخ نداده باشد؛ مصرف‌کننده‌ی هم‌پوشان هم یک‌بار تازه‌خوانی می‌شود.
+ */
+let datasetGeneration = 0;
+
 // ---------- رژیم degrade سهمیه‌ی KV ----------
 // سقف رایگان ۱٬۰۰۰ put/روز است؛ وقتی تمام شود (429 «KV put() limit exceeded»)
 // هیچ نوشتنیِ *ضمنی* (مهاجرت نسخه/بوت‌استرپ) نباید سرویس را پایین بیاورد —
@@ -35,9 +49,12 @@ export function _resetMigrationThrottleForTest(): void {
 /**
  * باطل کردن کش — بعد از هر write به KV باید صدا زده بشه.
  * (برای فایل‌هایی که مستقیم KV می‌نویسن — مثل telegram و warp — هم export شده)
+ * نسل هم جلو می‌رود تا لودِ درحال‌انجامِ هم‌پوشان با این invalidate، دیگر نتیجه‌ی
+ * پیش از نوشتن را کش/سرو نکند (v0.8.55 — جزئیات بالای datasetGeneration).
  */
 export function invalidateDatasetCache() {
     datasetCache = null;
+    datasetGeneration++;
 }
 
 /**
@@ -52,16 +69,21 @@ function cloneDataset(data: Dataset): Dataset {
     };
 }
 
-export async function getDataset(env: Env): Promise<Dataset> {
+export async function getDataset(env: Env, _reloadAttempt = 0): Promise<Dataset> {
     if (datasetCache && Date.now() < datasetCache.expiresAt) {
         return cloneDataset(datasetCache.data);
     }
 
     // جلوگیری از stampede — request های همزمان فقط یک بار KV می‌خونن
+    const generation = datasetGeneration;
     if (!inflight) {
         inflight = loadDataset(env)
             .then(data => {
-                datasetCache = { data, expiresAt: Date.now() + DATASET_CACHE_TTL };
+                // v0.8.55 — نتیجه فقط وقتی کش می‌شود که در طول لود invalidate‌ای
+                // رخ نداده باشد؛ وگرنه دیتای پیش از نوشتن به‌جای دیتای تازه می‌نشیند
+                if (generation === datasetGeneration) {
+                    datasetCache = { data, expiresAt: Date.now() + DATASET_CACHE_TTL };
+                }
                 return data;
             })
             .finally(() => {
@@ -69,7 +91,19 @@ export async function getDataset(env: Env): Promise<Dataset> {
             });
     }
 
-    return cloneDataset(await inflight);
+    const data = await inflight;
+
+    if (generation !== datasetGeneration && _reloadAttempt < 2) {
+        // لود با یک write هم‌پوشان شده — این نتیجه پیش از نوشتن است. یک‌بار
+        // تازه‌خوانی: هم مصرف‌کننده‌ی جاری دیتای تازه می‌گیرد، هم setSettings
+        // دیگر snapshot تازه‌ی syncKvSettings را clobber نمی‌کند. سقف ۲ تلاش —
+        // در نویز write بی‌پایان، بهترینِ موجود سرو می‌شود (رفتار قدیمی).
+        // (مهاجرت/heal داخلِ loadDataset هم invalidate می‌زنند؛ لودِ بعد از آن‌ها
+        // دیتای تازه می‌خواند و بدون write جدید کش می‌شود — حلقه نمی‌زند.)
+        return getDataset(env, _reloadAttempt + 1);
+    }
+
+    return cloneDataset(data);
 }
 
 /**
