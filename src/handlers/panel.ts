@@ -6,7 +6,7 @@ import { deployWorkers, deleteWorker } from '@api/workers';
 import { getUpdateCheckEndpoint } from '@api/update-check';
 import { getEdgeTelemetryEndpoint } from '@settings/edge-telemetry';
 import { loadApiToken } from '@settings';
-import { resetPassword, logout, authenticate, invalidateTotpCache } from '@auth';
+import { resetPassword, logout, authenticate, invalidateTotpCache, getPwd } from '@auth';
 import { buildOtpAuthUri, generateTotpSecret, verifyTotp } from '@auth/totp';
 import { decompressGzipBase64, respond, HttpStatus, safeError } from '@common';
 import { getDataset, updateDataset, invalidateDatasetCache } from '@kv';
@@ -146,7 +146,11 @@ export async function handlePanel(request: Request, env: Env): Promise<Response>
 }
 
 async function renderPanel(request: Request, env: Env): Promise<Response> {
-    const pwd = await env.kv.get('pwd');
+    // v0.8.67 — خواندن pwd از کش ۵ثانیه‌ای getPwd (الگوی v0.8.37/58) — قبلاً
+    // خواندن خام KV در هر رندر؛ روی قطعی گذرای KV گرم هم stale-on-error می‌دهد
+    // نه 1101. قرارداد invalidation: resetPassword کش را بلافاصله بعد از put
+    // به‌روز می‌کند — پنجره‌ی «پنل باز پس از ست‌شدن پسورد» صفر است.
+    const pwd = await getPwd(env);
     if (pwd) {
         const auth = await authenticate(request, env);
         if (!auth) {
@@ -242,7 +246,9 @@ async function deletePanel(request: Request, env: Env): Promise<Response> {
 }
 
 async function getPanelSettings(request: Request, env: Env): Promise<Response> {
-    const isPassSet = Boolean(await env.kv.get('pwd'));
+    // v0.8.67 — کش ۵ثانیه‌ای getPwd به‌جای خواندن خام (قرارداد invalidation
+    // resetPassword → پس از setup اولیه، isPassSet بلافاصله true می‌بینیم)
+    const isPassSet = Boolean(await getPwd(env));
 
     try {
         const auth = await authenticate(request, env);
@@ -469,7 +475,8 @@ async function importSettingsBackup(request: Request, env: Env): Promise<Respons
 
 async function getMyIP(request: Request, env: Env): Promise<Response> {
     // auth — بقیه endpoint ها این چک رو دارن، این یکی نداشت!
-    const pwd = await env.kv.get('pwd');
+    // v0.8.67 — pwd از کش ۵ثانیه‌ای getPwd — الگوی renderPanel
+    const pwd = await getPwd(env);
     if (pwd) {
         const auth = await authenticate(request, env);
         if (!auth) {
