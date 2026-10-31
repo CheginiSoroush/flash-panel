@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from 'vitest';
 import {
     createSubUser,
     deleteSubUser,
@@ -489,5 +489,112 @@ describe('resolveAndRecordSubUser', () => {
         expect(first!.fetchCount).toBe(1);
         expect(second!.fetchCount).toBe(1); // داخل آستانه — بدون افزایش
         expect(second!.lastFetchedAt).toBe(t0); // رکورد KV همان t0 است (write جدیدی نشده)
+    });
+});
+
+// ---------- v0.8.40 — handleSubscriptions × قطعی KV (قرارداد fail-closed 503) ----------
+//
+// تعمیم قرارداد v0.8.37 به مسیر اشتراک چندکاربره: خطای زیرساخت ≠ کاربر revoke شده.
+// بدون گارد، قطعی گذرای KV در resolveAndRecordSubUser به‌صورت استثنای هندل‌نشده به
+// renderError سرریز می‌شد (صفحه‌ی خطای عمومی) — و کلاینت نمی‌توانست آن را از
+// «لینک باطل شده» تشخیص دهد. رفتار درست: 503 صریح + Retry-After.
+
+describe('handleSubscriptions × KV outage (v0.8.40 contract)', () => {
+    let handleSubscriptions: typeof import('../src/handlers/subscription').handleSubscriptions;
+    let settingsMod: typeof import('../src/settings/settings');
+
+    beforeAll(async () => {
+        // globals شبیه‌سازی‌شده — همان الگوی auth.test.ts (import پویا بعد از ست‌شدن)
+        (globalThis as any).EMBEDED_SETTINGS = {
+            accID: 'test-account-id',
+            accEmail: 'admin@example.com',
+            apiToken: 'api-token',
+            vlUUID: 'b831381d-6324-4d53-ad4f-8cda48b30811',
+            trPass: 'trojan-pass',
+            securePath: 'sp',
+            proxyIpMode: 'public',
+            proxyIPs: [] as string[],
+            prefixes: [] as string[],
+            mainDomain: 'example.com',
+            fallback: '',
+            dohUrl: ''
+        };
+        (globalThis as any).VERSION = '0.8.40';
+        (globalThis as any)._repo_ = 'https://github.com/CheginiSoroush/flash-panel';
+        (globalThis as any)._public_proxy_ip_ = 'bpb.yousef.isegaro.com';
+
+        settingsMod = await import('../src/settings/settings');
+        ({ handleSubscriptions } = await import('../src/handlers/subscription'));
+    });
+
+    function subRequest(userId: string): Request {
+        return new Request(`https://example.com/sp/sub/${userId}/normal`, {
+            method: 'GET',
+            headers: { 'User-Agent': 'ClashForAndroid/2.5.12' }
+        });
+    }
+
+    /** KV سالم + یک کاربر فعال؛ کلید subUsers قابل قطعی‌کردن (فقط همان کلید throw می‌کند) */
+    async function setupWithUser() {
+        const base = createKvMock();
+        const env = { kv: base.kv } as Env;
+        const user = (await createSubUser(env, 'OutageUser'))!;
+
+        let subUsersDown = false;
+        const outageKv = {
+            get: async (key: string, opts?: { type?: string }) => {
+                if (key === 'subUsers' && subUsersDown) throw new Error('kv down');
+                return (base.kv as KVNamespace).get(key, opts);
+            },
+            put: (base.kv as KVNamespace).put.bind(base.kv),
+            delete: (base.kv as KVNamespace).delete.bind(base.kv)
+        } as unknown as KVNamespace;
+
+        return { user, outageEnv: { kv: outageKv } as Env, setDown: (v: boolean) => { subUsersDown = v; } };
+    }
+
+    beforeEach(() => {
+        _resetSubUserFetchState();
+    });
+
+    afterEach(() => {
+        _resetSubUserFetchState();
+    });
+
+    it('serves an active sub-user normally when KV is healthy (harness anchor)', async () => {
+        const { user, outageEnv } = await setupWithUser();
+        settingsMod.init(subRequest(user.id), outageEnv);
+
+        const res = await handleSubscriptions(subRequest(user.id), outageEnv);
+        expect(res.status).toBe(200);
+        expect(res.headers.get('X-Sub-User')).toBe(user.id);
+    });
+
+    it('KV outage during resolve → explicit 503 with Retry-After, never 401/exception', async () => {
+        const { user, outageEnv, setDown } = await setupWithUser();
+        settingsMod.init(subRequest(user.id), outageEnv);
+        setDown(true);
+
+        // کد قدیمی: استثنای هندل‌نشده ('kv down') از handleSubscriptions بیرون می‌پرد
+        const res = await handleSubscriptions(subRequest(user.id), outageEnv);
+        expect(res.status).toBe(503);
+        expect(res.headers.get('Retry-After')).toBe('30');
+        const body = await res.json() as { success: boolean };
+        expect(body.success).toBe(false);
+    });
+
+    it('KV outage inside the throttle window → still 503 (revoke-check read is mandatory)', async () => {
+        const { user, outageEnv, setDown } = await setupWithUser();
+        settingsMod.init(subRequest(user.id), outageEnv);
+
+        // واکشی اول سالم → fetchSeenAt پر می‌شود (پنجره‌ی ۳۰ دقیقه‌ای)
+        const first = await handleSubscriptions(subRequest(user.id), outageEnv);
+        expect(first.status).toBe(200);
+
+        // قطعی در واکشی دوم — خواندن چکِ revoke هنوز الزامی است → 503 نه سروی کور
+        setDown(true);
+        const second = await handleSubscriptions(subRequest(user.id), outageEnv);
+        expect(second.status).toBe(503);
+        expect(second.headers.get('Retry-After')).toBe('30');
     });
 });

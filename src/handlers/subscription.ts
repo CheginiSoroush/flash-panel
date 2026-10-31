@@ -3,7 +3,7 @@ import { getURLConfigs } from '@cores/common';
 import { getSbCustomConfig, getSbWarpConfig } from '@cores/sing-box/configs';
 import { getXrCustomConfigs, getXrWarpConfigs } from '@cores/xray/configs';
 import { setSettings, getGlobals, getSharedSettings, getSettings, getWarpAccounts } from '@settings';
-import { isValidSubUserId, resolveAndRecordSubUser } from '@settings/sub-users';
+import { isValidSubUserId, resolveAndRecordSubUser, SubUser } from '@settings/sub-users';
 import { buildSubUserInfoHeader } from '@api/clean-ip';
 import { fallback } from './utils';
 import { getWireguardConfigs } from '@cores/wireguard';
@@ -36,7 +36,18 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
 
     if (isValidSubUserId(seg3)) {
         // resolve + ثبت آمار واکشی (best-effort، آستانه‌ی ۵ دقیقه‌ای) در یک خواندن KV
-        const user = await resolveAndRecordSubUser(env, seg3);
+        let user: SubUser | null | undefined;
+        try {
+            user = await resolveAndRecordSubUser(env, seg3);
+        } catch {
+            // قرارداد v0.8.37 که v0.8.40 به مسیر اشتراک چندکاربره تعمیم یافت:
+            // خطای زیرساخت (قطعی KV) ≠ کاربر revoke شده. بدون این گارد، یک قطعی
+            // گذرای KV استثنای هندل‌نشده می‌ساخت و به صفحه‌ی خطای عمومی سرریز
+            // می‌شد — که در چشم کلاینت از «لینک باطل شده» غیرقابل‌تفکیک بود.
+            // 503 صریح + Retry-After: کلاینت طبق برنامه‌ی به‌روزرسانی خودش دوباره
+            // تلاش می‌کند و revoke هیچ‌وقت fail-open (سروِ کاربر باطل‌شده) نمی‌شود.
+            return respond(false, HttpStatus.SERVICE_UNAVAILABLE, 'Service temporarily unavailable. Try again shortly.', null, { 'Retry-After': '30' });
+        }
         if (!user) {
             // کاربر حذف/غیرفعال شده — پاس صریح 401 (نه صفحه‌ی fallback)
             return respond(false, HttpStatus.UNAUTHORIZED, 'This subscription link has been revoked or is inactive.');
