@@ -41,21 +41,43 @@ const ALERT_COOLDOWN_MS = 12 * 3_600_000;
 /** سقف اسکریپت‌های چک‌شده در هر دور — پلن رایگان سقف subrequest خشک دارد؛ ۲۵ امن است */
 const MAX_SCRIPTS = 25;
 
+// ---------- سقف زمانی CF-API (v0.8.46) ----------
+// گارد در هر tick تا ۵۱ فراخوانی CF-API می‌زند (لیست اسکریپت‌ها + GET/PATCH
+// هر اسکریپت تا سقف ۲۵) — همه بدون سقف زمانی بودند؛ یک api.cloudflare.com
+// آویزان، گارد و کل tick کرون را روی همان await نگه می‌داشت. سقف ۱۰ث هر
+// فراخوانی؛ abort در catchِ موجود به «پاس غریبه» (status 0) ترجمه می‌شود —
+// رفتار fallback دست‌نخورده، فقط به‌موقع. الگوی سقف DoH (v0.8.44): هُک تست.
+const GUARD_FETCH_TIMEOUT_MS = 10_000;
+let guardFetchTimeoutMs = GUARD_FETCH_TIMEOUT_MS;
+
+/** فقط برای تست‌ها — سقف زمانی fetch گارد را کوچک کند */
+export function _setGuardFetchTimeoutForTest(ms: number): void {
+    guardFetchTimeoutMs = ms;
+}
+
 async function cfJson(accID: string, apiToken: string, path: string, method: string = 'GET', body?: unknown) {
     let res: Response;
     try {
         // v0.8.7: احراز دوحالته — Global API Key (۳۷ hex) با X-Auth-Key و API Token با Bearer
         const auth = cfAuthHeaders(apiToken, getGlobals().accEmail);
-        res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts${path}`, {
-            method,
-            headers: {
-                ...auth,
-                ...(body !== undefined ? { 'Content-Type': 'application/json' } : {})
-            },
-            ...(body !== undefined ? { body: JSON.stringify(body) } : {})
-        });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), guardFetchTimeoutMs);
+        try {
+            res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accID}/workers/scripts${path}`, {
+                method,
+                headers: {
+                    ...auth,
+                    ...(body !== undefined ? { 'Content-Type': 'application/json' } : {})
+                },
+                ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timer);
+        }
     } catch {
-        // خطای سطح شبکه — مثل پاس غریبه رفتار می‌کنیم تا caller بتواند fallback بگیرد
+        // خطای سطح شبکه (شامل abort سقف زمانی) — مثل پاس غریبه رفتار می‌کنیم
+        // تا caller بتواند fallback بگیرد
         return { status: 0, data: null };
     }
     const data: any = await res.json().catch(() => null);

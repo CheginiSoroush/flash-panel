@@ -48,15 +48,18 @@ export async function checkProxyIP(
         timer = setTimeout(() => reject(new Error('timeout')), timeoutMs);
     });
 
+    let socket: any;
+    let reader: any;
+
     try {
         const connect = await getConnect();
-        const socket = connect({ hostname: address, port: 443 });
+        socket = connect({ hostname: address, port: 443 });
         const writer = socket.writable.getWriter();
         const req = `GET ${TEST_PATH} HTTP/1.1\r\nHost: ${PROXY_TEST_SNI}\r\nConnection: close\r\n\r\n`;
 
         await writer.write(new TextEncoder().encode(req));
         writer.releaseLock();
-        const reader = socket.readable.getReader();
+        reader = socket.readable.getReader();
 
         const { value, done } = await Promise.race([reader.read(), timeout]);
         reader.releaseLock();
@@ -72,6 +75,14 @@ export async function checkProxyIP(
 
         return { ok: isOk && hasCfRay, elapsedMs: Date.now() - start };
     } catch {
+        // v0.8.46 — سوکتِ مسیر تایم‌اوت/خطا هم بسته شود. Promise.race روی
+        // تایم‌اوت می‌بُرد ولی read هنوز pending است و close فقط در مسیر موفق
+        // صدا زده می‌شد → سوکت باز می‌ماند. در Workers سهمیه‌ی اتصال همزمان (۶)
+        // بین fetch و سوکت مشترک است — نشتی، fetchهای بعدی همان tick
+        // (notify/guard/usage) را گرسنه می‌کند. cancel اول readِ pending را
+        // می‌بندد تا close تمیز شود؛ هر دو روی مسیر موفق idempotent/بی‌اثرند.
+        try { await reader?.cancel(); } catch { }
+        try { await socket?.close(); } catch { }
         return { ok: false, elapsedMs: Date.now() - start };
     } finally {
         if (timer !== undefined) clearTimeout(timer);

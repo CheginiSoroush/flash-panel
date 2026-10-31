@@ -23,6 +23,9 @@ import { TelegramBot } from '#types/settings';
  *   - best-effort مطلق: هیچ مرحله‌ای نمی‌تواند کل scheduled handler را crash کند
  *   - ضد duplicate: وضعیت هر روز UTC در KV (automationState) نگه داشته می‌شود —
  *     اجرای مکرر cron (یا هم‌زمانی دو isolate) پیام تکراری نمی‌سازد
+ *   - v0.8.46: همه‌ی fetchهای خروجی زنجیره سقف زمانی دارند (notify/guard/usage)
+ *     و سوکت تست ProxyIP در مسیر تایم‌اوت هم بسته می‌شود — هیچ آپ‌استریمِ
+ *     آویزانی tick کرون یا سهمیه‌ی اتصال همزمان Workers را گرون نمی‌کند
  *   - بدون بات، همه‌چیز باز هم کار می‌کند — فقط notify ها بی‌صدا رد می‌شوند
  */
 
@@ -92,17 +95,41 @@ async function getBot(env: Env): Promise<BotConfig | null> {
 // 4xx/5xx تلگرام (outage/نرخ) یا خطای شبکه = false — گاردهای «یک‌بار در روز»
 // (digest/usageWarn) فقط روی true بسته می‌شوند تا پیامِ ازدست‌رفته در تیک بعدی
 // دوباره تلاش شود، نه اینکه تا فردا ساکت بماند.
-async function notifyAdmin(bot: BotConfig, html: string): Promise<boolean> {
+
+// ---------- سقف زمانی نوتیفیکیشن (v0.8.46) ----------
+// fetch تلگرام بدون سقف زمانی بود — یک api.telegram.org آویزان، کل tick کرون را
+// روی همان await نگه می‌داشت و مراحل بعدی (usage-warn/digest/ذخیره‌ی state)
+// هرگز اجرا نمی‌شدند. notifyAdmin در ۴ نقطه await می‌شود و به‌عنوان callback به
+// workersdev-guard و edge-tuner هم پاس داده می‌شود. الگوی همان سقف DoH (v0.8.44)
+// و my-ip (v0.8.45): AbortController + هُک تست. abort = false → قرارداد v0.8.36
+// (تیک بعدی دوباره تلاش می‌کند) دست‌نخورده.
+const NOTIFY_TIMEOUT_MS = 10_000;
+let notifyTimeoutMs = NOTIFY_TIMEOUT_MS;
+
+/** فقط برای تست‌ها — سقف زمانی fetch تلگرام را کوچک کند */
+export function _setNotifyTimeoutForTest(ms: number): void {
+    notifyTimeoutMs = ms;
+}
+
+export async function notifyAdmin(bot: BotConfig, html: string): Promise<boolean> {
     try {
-        const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: bot.adminChatId,
-                text: html,
-                parse_mode: 'HTML'
-            })
-        });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), notifyTimeoutMs);
+        let res: Response;
+        try {
+            res = await fetch(`https://api.telegram.org/bot${bot.token}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: bot.adminChatId,
+                    text: html,
+                    parse_mode: 'HTML'
+                }),
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timer);
+        }
         return res.ok;
     } catch (error) {
         console.log(`automation: notify failed — ${safeError(error)}`);

@@ -25,6 +25,20 @@ interface GqlAttempt {
     authKind: 'token' | 'key';
 }
 
+// ---------- سقف زمانی GraphQL (v0.8.46) ----------
+// getCfWorkerUsage هم در کرون مصرف می‌شود و هم مستقیم زیر درخواست پنل ادمین
+// (getUsage) — آپ‌استریم آویزان نباید درخواست ادمین را بی‌نهایت نگه دارد
+// (همان استدلال my-ip در v0.8.45 و DoH در v0.8.44). دو تلاش پشت‌سرهم ×
+// سقف ۵ث = بدترین‌حالت ۱۰ث به‌جای بی‌نهایت. abort در catchِ موجود به
+// GqlAttempt ناموفق ترجمه می‌شود — پیام خطای قابل‌اقدام دست‌نخورده.
+const USAGE_FETCH_TIMEOUT_MS = 5_000;
+let usageFetchTimeoutMs = USAGE_FETCH_TIMEOUT_MS;
+
+/** فقط برای تست‌ها — سقف زمانی fetch analytics را کوچک کند */
+export function _setUsageFetchTimeoutForTest(ms: number): void {
+    usageFetchTimeoutMs = ms;
+}
+
 /** استخراج امن از پاسخ GraphQL — خطاهای سطح GraphQL را نادیده نمی‌گیرد */
 function extractUsage(gqlData: any): { ok: boolean; total: number; worker: number; gqlError?: string } {
     // GraphQL ممکن است errors بدهد ولی HTTP 200 برگرداند — بررسی هر دو لازم است
@@ -59,11 +73,19 @@ async function runUsageQuery(
     authKind: GqlAttempt['authKind']
 ): Promise<GqlAttempt> {
     try {
-        const gqlRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...authHeaders },
-            body: JSON.stringify({ query, variables })
-        });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), usageFetchTimeoutMs);
+        let gqlRes: Response;
+        try {
+            gqlRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
+                body: JSON.stringify({ query, variables }),
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timer);
+        }
 
         if (!gqlRes.ok) {
             return {
