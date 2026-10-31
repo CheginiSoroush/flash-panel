@@ -372,6 +372,77 @@ describe('outbound write race — retry window (v0.8.28)', () => {
     });
 });
 
+// ---------- ۴) v0.8.38 — نوشته‌ی شکست‌خورده نباید chunkهای تخلیه‌شده را گم کند ----------
+
+describe('outbound write race — failed write batch must restore drained chunks (v0.8.38)', () => {
+    it('VLESS: payload drained into a dead proxy socket is replayed to the direct fallback', async () => {
+        const { connect } = await import('cloudflare:sockets');
+        const { VlOverWSHandler } = await import('../src/protocols/vless');
+
+        // گیت ۱: DNS prefix معلق — پنجره‌ی بافر (پیام payload همین‌جا می‌رسد)
+        let releaseDns!: () => void;
+        const dnsGate = new Promise<void>((r) => { releaseDns = r; });
+        let dnsCalls = 0;
+
+        hoisted.globals = {
+            vlUUID: PROBE_UUID,
+            proxyIpMode: 'prefix',
+            prefixes: ['[64:ff9b::]'],
+            forceProxyDomains: undefined, // پیش‌فرض داخلی — google.com forced → مسیر واسط اول
+        };
+        hoisted.effList = []; // تلاش دومِ واسط ندارد → fallback = مستقیم
+        hoisted.resolveDNSImpl = async () => {
+            if (dnsCalls++ === 0) await dnsGate; // فقط اولی معلق — بقیه آنی
+            return { ipv4: ['203.0.113.10'], ipv6: [] };
+        };
+
+        // واسطی که نوشته‌ها را رد می‌کند — connectAndWrite باید با شکست batch بالا بیاید
+        const deadProxy = {
+            readable: new ReadableStream<Uint8Array>({ start(c) { c.close(); } }),
+            writable: new WritableStream<Uint8Array | ArrayBuffer>({
+                write() { throw new Error('proxy socket dead'); },
+            }),
+            close: () => {},
+            closed: Promise.resolve(),
+        } as unknown as Socket;
+
+        // مقصد مستقیم: نویسه‌ثبت با EOF گیت‌شده — تا قبل از assert تونل باز بماند
+        let releaseEof!: () => void;
+        const eofGate = new Promise<void>((r) => { releaseEof = r; });
+        const direct = gatedRecordingSocket(eofGate);
+        const after = recordingSocket();
+
+        const conn = vi.mocked(connect);
+        conn.mockReset();
+        conn.mockReturnValueOnce(deadProxy).mockReturnValueOnce(direct.socket).mockReturnValue(after.socket);
+
+        const res = await VlOverWSHandler(makeRequest(), {} as Env, fakeCtx(), null);
+        expect(res.status).toBe(101);
+        const server = lastPair![1];
+
+        server.fire('message', { data: vlHeader('www.google.com', 443, 'HELLO') });
+        await until(() => dnsCalls === 1);
+        await tick();
+        // پیام payload در پنجره‌ی DNS → بافر می‌شود
+        server.fire('message', { data: CLIENT_HELLO.buffer });
+        await tick();
+
+        releaseDns(); // واسط prefix حل → connectAndWrite → تخلیه‌ی بافر → نوشته رد می‌شود → fallback مستقیم
+        await until(() => direct.written.length >= 1);
+        await tick();
+
+        // کلیدی: fallback مستقیم باید «HELLO» (بازپخش rawClientData) و بعد CLIENT_HELLO
+        // (chunk تخلیه‌شده‌ی بازیابی‌شده) را بگیرد — قرارداد v0.8.28 در مسیر شکست
+        expect(decode(direct.written[0])).toBe('HELLO');
+        expect(direct.written).toHaveLength(2);
+        expect(direct.written[1][0]).toBe(0x16);
+
+        // پاک‌سازی: EOF مستقیم → retry → سوکت بعدی EOF آنی → تونل تمام، بدون تایمر معلق
+        releaseEof();
+        await until(() => server.readyState !== 1);
+    });
+});
+
 // ---------- ۳) گارد مسیر سالم — رفتار معمول proxyip دست‌نخورده بماند ----------
 
 describe('outbound write race — happy path unchanged', () => {

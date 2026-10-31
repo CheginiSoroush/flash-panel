@@ -186,9 +186,12 @@ export async function handleTCPOutBound(
             writes.push(writer.write(rawClientData));
         }
         const buffered = remoteSocket.buffered;
+        // v0.8.38 — فهرست chunkهای تخلیه‌شده؛ اگر نوشته شکست بخورد باید به بافر برگردند
+        const drained: Chunk[] = [];
         if (buffered?.length) {
             for (const chunk of buffered) {
                 writes.push(writer.write(chunk));
+                drained.push(chunk);
             }
             buffered.length = 0;
         }
@@ -196,7 +199,20 @@ export async function handleTCPOutBound(
         log(`connected to ${address}:${port}`);
 
         if (writes.length) {
-            await Promise.all(writes);
+            try {
+                await Promise.all(writes);
+            } catch (error) {
+                // v0.8.38 — نوشته‌ی شکست‌خورده یعنی chunkهای تخلیه‌شده به مقصد نرسیدند؛
+                // به بافر برمی‌گردند تا تلاش بعدی (fallback/retry) همان قرارداد v0.8.28
+                // بازپخش‌شان کند. بدون این، failover با جریان بالینک ناقص بالا می‌آمد
+                // (rawClientData بدون ادامه‌ی استریم = دقیقاً «وصل ولی بدون ترافیک»).
+                // rawClientData نیازی به بازیابی ندارد — هر تلاش آن را از پارامترِ
+                // بسته‌ی handleTCPOutBound دوباره می‌فرستد.
+                if (drained.length) {
+                    (remoteSocket.buffered ??= []).unshift(...drained);
+                }
+                throw error;
+            }
         }
 
         if (!keepWriter) {
