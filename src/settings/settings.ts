@@ -84,10 +84,21 @@ const API_TOKEN_KV_KEY = 'cfApiToken';
 const API_TOKEN_CACHE_TTL = 5_000; // ۵ ثانیه
 
 let apiTokenCache: { expiresAt: number } | null = null;
+// v0.8.57 — نسل توکن: applyApiToken (تزریق فوری پس از /cftoken) نسل را جلو می‌برد
+// تا لودِ در حال اجرا نتواند با مقدار کهنه‌ی KV توکن تازه را clobber کند —
+// هم‌کلاس فیکس v0.8.55 روی کش دیتاست: خواندنی که قبل از write شروع شده و بعد
+// از آن resolve می‌شود نباید برنده باشد (KV انتشار تدریجی دارد — تا ۶۰ث مقدار
+// کهنه سرو می‌شود، یعنی clobber می‌توانست چند پنجره‌ی ۵ثانیه‌ای دوام بیاورد).
+// single-flight هم اضافه شد: فراخوانی‌های هم‌زمان روی مرز TTL یک خواندن KV را
+// شریک می‌شوند به‌جای N خواندن موازی (هم‌الگوی inflight در kv.ts).
+let apiTokenGeneration = 0;
+let apiTokenInflight: Promise<void> | null = null;
 
 /** ریست کش توکن بین تست‌ها */
 export function _resetApiTokenCacheForTest(): void {
     apiTokenCache = null;
+    apiTokenGeneration++;
+    apiTokenInflight = null;
 }
 
 /**
@@ -96,19 +107,41 @@ export function _resetApiTokenCacheForTest(): void {
  * مسیر درخواست را نمی‌شکند. در worker.ts (بعد از init) و مسیر cron صدا زده
  * می‌شود تا هر فیچر CF-API توکن تازه را ببیند.
  */
-export async function loadApiToken(env: Env): Promise<void> {
+export async function loadApiToken(env: Env, _reloadAttempt = 0): Promise<void> {
     if (apiTokenCache && Date.now() < apiTokenCache.expiresAt) return;
 
-    try {
-        const raw = await env.kv?.get(API_TOKEN_KV_KEY);
-        const token = typeof raw === 'string' ? raw.trim() : '';
-        if (token) {
-            setRuntimeApiToken(token);
-        }
-        apiTokenCache = { expiresAt: Date.now() + API_TOKEN_CACHE_TTL };
-    } catch (error) {
-        // KV در دسترس نیست؟ توکن قبلی می‌ماند — هیچ مسیری crash نمی‌کند
-        console.log(`[settings] cfApiToken read skipped (best-effort): ${safeError(error)}`);
+    const generation = apiTokenGeneration;
+    if (!apiTokenInflight) {
+        apiTokenInflight = (async () => {
+            try {
+                const raw = await env.kv?.get(API_TOKEN_KV_KEY);
+                const token = typeof raw === 'string' ? raw.trim() : '';
+                // اگر در طول لود applyApiToken (یا ریست تست) نسل را جلو برده
+                // باشد، این نتیجه کهنه است — نه تزریق، نه کش‌پرکنی؛ فراخوانی
+                // هم‌پوشان پایین‌تر یک‌بار تازه‌خوانی می‌کند
+                if (generation === apiTokenGeneration) {
+                    if (token) {
+                        setRuntimeApiToken(token);
+                    }
+                    apiTokenCache = { expiresAt: Date.now() + API_TOKEN_CACHE_TTL };
+                }
+            } catch (error) {
+                // KV در دسترس نیست؟ توکن قبلی می‌ماند — هیچ مسیری crash نمی‌کند؛
+                // کش هم ست نمی‌شود تا فراخوانی بعدی دوباره تلاش کند (قرارداد قبلی)
+                if (generation === apiTokenGeneration) {
+                    console.log(`[settings] cfApiToken read skipped (best-effort): ${safeError(error)}`);
+                }
+            } finally {
+                apiTokenInflight = null;
+            }
+        })();
+    }
+    await apiTokenInflight;
+
+    // فراخوانی‌ای که لودش با یک تزریق/ریست هم‌پوشان شده — یک‌بار تازه‌خوانی.
+    // بعد از applyApiToken کش ۵ثانیه‌ای تازه است؛ retry عملاً همان‌جا برمی‌گردد.
+    if (generation !== apiTokenGeneration && _reloadAttempt < 2) {
+        return loadApiToken(env, _reloadAttempt + 1);
     }
 }
 
@@ -123,6 +156,7 @@ export function applyApiToken(token: string): void {
     } catch {
         // بدون EMBEDED_SETTINGS، globals هنوز وجود ندارد — بی‌خطر رد شو
     }
+    apiTokenGeneration++; // لودهای در-حال-اجرا را کهنه می‌کند — نتیجه‌شان دیگر clobber نمی‌کند
     apiTokenCache = { expiresAt: Date.now() + API_TOKEN_CACHE_TTL };
 }
 
