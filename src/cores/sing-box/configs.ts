@@ -1,5 +1,6 @@
-import { Outbound, WireguardEndpoint, Config } from '#types/sing-box';
+import { Outbound, WireguardEndpoint, Config, ChainOutbound } from '#types/sing-box';
 import { getConfigAddresses, generateRemark, isHttps, getProtocols } from '@utils';
+import { safeError } from '@common';
 import { buildChainOutbound, buildUrlTest, buildWarpOutbound, buildWebsocketOutbound } from './outbounds.js';
 import { getSettings, getWarpAccounts } from '@settings';
 import { buildRoutingRules } from './routing';
@@ -92,7 +93,24 @@ export async function getSbCustomConfig(isFragment: boolean): Promise<Response> 
         upstreamParams: { upstreamServer, upstreamPort }
     } = getSettings();
 
-    const chainOutbound = chainProxy ? buildChainOutbound() : undefined;
+    // v0.8.54 — fail-soft هم‌راستا با clash (v0.8.51): زنجیره‌ی خراب هرگز نباید
+    // کل ساب sing-box را ۵۰۰ کند. buildChainOutbound روی blob زنجیره‌ی فاسد
+    // پرتاب می‌کند — new URL(chainProxy) برای رشته‌ی غیر-URL، و split/JSON روی
+    // فیلدهای ناقص — و مسیر رسیدن داده‌ی خراب باز است: blobهای KV باستان از
+    // پیش از ولیدیتور، بازیابی بکاپ قدیمی یا هر نویسنده‌ای که از ولیدیتور عبور
+    // نکند (لود دیتاست blob را همان‌طور که هست عبور می‌دهد؛ مشتق‌سازی فقط در
+    // ذخیره‌ی پنلِ ولیدیتورشده اجرا می‌شود). قرارداد fail-soft کد‌بیس: قابلیت
+    // اختیاریِ خراب حذف می‌شود، ساب بدون زنجیره سرو می‌شود.
+    let chainAttempt: ChainOutbound | undefined;
+    if (chainProxy) {
+        try {
+            chainAttempt = buildChainOutbound();
+        } catch (error) {
+            console.log(`chain outbound skipped (bad chainProxy — sub continues without chain): ${safeError(error)}`);
+        }
+    }
+    // const مجدد — باریک‌سازی نوع از طریق isChain (aliased condition) فقط روی const کار می‌کند
+    const chainOutbound = chainAttempt;
     const isChain = !!chainOutbound;
     const domains = [...new Set([mainDomain].concatIf(!!customDomain, customDomain))];
     const protocols = getProtocols();
