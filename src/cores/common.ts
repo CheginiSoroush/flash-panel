@@ -132,11 +132,29 @@ export async function getURLConfigs() {
     });
 }
 
+// v0.8.50 — پنجمین عضو خانواده‌ی «آپ‌استریم بی‌سقف» (بعد از DoH در v0.8.44،
+// my-ip در v0.8.45 و زنجیره‌ی کرون در v0.8.46) — این بار در مسیر ساب کلاینت:
+// fetchCustomSubs روی هر درخواست «raw» اجرا می‌شود؛ یک URL ساب سفارشی آویزان
+// (سرور مرده، سیاه‌چاله، اتصال نیمه‌باز) کل تولید ساب raw را برای همیشه نگه
+// می‌داشت و کلاینت «خطای آپدیت — بدون کانفیگ» می‌دید. سقف ۱۰ث هر واکشی؛ چون
+// واکشی‌ها با Promise.all موازی‌اند، دیوارِ زمانیِ کل تابع هم ۱۰ث است.
+const CUSTOM_SUB_FETCH_TIMEOUT_MS = 10_000;
+let customSubFetchTimeoutMs = CUSTOM_SUB_FETCH_TIMEOUT_MS;
+
+/** هُک تست — الگوی v0.8.44 (_setMyIpFetchTimeoutForTest) */
+export function _setCustomSubFetchTimeoutForTest(ms: number): void {
+    customSubFetchTimeoutMs = ms;
+}
+
 async function fetchCustomSubs(subs: string[]): Promise<string> {
     const results = await Promise.all(
         subs.map(async (url) => {
+            const controller = new AbortController();
+            // signal کل چرخه‌ی واکشی را پوشش می‌دهد — هدر و بدنه (آپ‌استریم
+            // کند-ریز که بدنه را قطره‌قطره می‌فرستد هم در همین سقف می‌میرد)
+            const timer = setTimeout(() => controller.abort(), customSubFetchTimeoutMs);
             try {
-                const res = await fetch(url);
+                const res = await fetch(url, { signal: controller.signal });
                 if (!res.ok) return '';
 
                 const text = (await res.text()).trim();
@@ -152,7 +170,11 @@ async function fetchCustomSubs(subs: string[]): Promise<string> {
 
                 return text;
             } catch {
+                // قرارداد موجود: ساب سفارشیِ مرده هرگز کل ساب raw را نمی‌شکند —
+                // حالا «آویزان» هم در همین قرارداد می‌افتد (abort → رد → '')
                 return '';
+            } finally {
+                clearTimeout(timer);
             }
         })
     );
