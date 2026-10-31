@@ -72,7 +72,22 @@ export async function handleSubscriptions(request: Request, env: Env): Promise<R
 
     // کلاینت قبلاً همین نسخه رو گرفته؟ کل تولید کانفیگ رد می‌شه → 304
     if (request.method === 'GET' && request.headers.get('If-None-Match') === etag) {
-        return new Response(null, { status: 304, headers: { ETag: etag } });
+        // v0.8.61 — 304 هم هدرهای per-request را منعکس می‌کند (RFC 9110 §15.4.5:
+        // فراداده‌ای که 200 می‌فرستاد). مهم‌ترینش subscription-userinfo است:
+        // انقضای کاربر آگاهانه جزو ورودی‌های ETag نیست (بدنه embed‌اش نمی‌کند)،
+        // پس تنها کانال رساندنش همین هدر است — resolveAndRecordSubUser آن را
+        // هر بار تازه از KV می‌خواند، ولی بدون این بلوک، تغییر انقضای کاربر تا
+        // چرخش بعدی ETag (تغییر settings/اکانت/DNS) هرگز به کلاینت نمی‌رسید و
+        // نمایش/هشدار انقضا در v2rayNG/Hiddify روی مقدار کهنه می‌ماند.
+        const h304 = new Headers({ ETag: etag });
+        if (userId) h304.set('X-Sub-User', userId);
+        if (path !== 'share-settings') {
+            h304.set('profile-update-interval', '3');
+            h304.set('profile-web-page-url', new URL(request.url).origin);
+            const userinfo = buildSubUserInfoHeader({ expireMs: subUserExpiresAt });
+            if (userinfo) h304.set('subscription-userinfo', userinfo);
+        }
+        return new Response(null, { status: 304, headers: h304 });
     }
 
     // ---------- مسیر سریع: کش بدنه‌ی اشتراک (سطح isolate) ----------
