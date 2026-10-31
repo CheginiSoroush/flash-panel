@@ -88,9 +88,13 @@ async function getBot(env: Env): Promise<BotConfig | null> {
     return null;
 }
 
-async function notifyAdmin(bot: BotConfig, html: string): Promise<void> {
+// v0.8.36 — تحویل واقعی: fetch برمی‌گرداند آیا تلگرام پیام را پذیرفت (2xx) یا نه.
+// 4xx/5xx تلگرام (outage/نرخ) یا خطای شبکه = false — گاردهای «یک‌بار در روز»
+// (digest/usageWarn) فقط روی true بسته می‌شوند تا پیامِ ازدست‌رفته در تیک بعدی
+// دوباره تلاش شود، نه اینکه تا فردا ساکت بماند.
+async function notifyAdmin(bot: BotConfig, html: string): Promise<boolean> {
     try {
-        await fetch(`https://api.telegram.org/bot${bot.token}/sendMessage`, {
+        const res = await fetch(`https://api.telegram.org/bot${bot.token}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -99,8 +103,10 @@ async function notifyAdmin(bot: BotConfig, html: string): Promise<void> {
                 parse_mode: 'HTML'
             })
         });
+        return res.ok;
     } catch (error) {
         console.log(`automation: notify failed — ${safeError(error)}`);
+        return false;
     }
 }
 
@@ -323,8 +329,7 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
 
     result.swept = sweep.swept.length;
     if (bot && (sweep.swept.length || sweep.expiringSoon.length)) {
-        await notifyAdmin(bot, buildSweepText(sweep.swept, sweep.expiringSoon));
-        result.notified = true;
+        result.notified = await notifyAdmin(bot, buildSweepText(sweep.swept, sweep.expiringSoon));
     }
 
     // ---------- ۲b) 🛡️ گارد ضد-abuse — workers.dev باید همیشه بسته بماند ----------
@@ -370,12 +375,12 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
             console.log(`automation: proxy tune — pool ${tune.poolSize}, healthy ${tune.healthyCount}, best ${tune.best ?? '—'}, changed ${tune.changed}${tune.skipped ? ` (${tune.skipped})` : ''}`);
 
             if (bot && tune.changed && tune.best) {
-                await notifyAdmin(bot,
+                const sent = await notifyAdmin(bot,
                     `⚡ <b>Auto-Tune ProxyIP</b>\n` +
                     `Best: ${esc(tune.best)}\n` +
                     `Applied: ${tune.applied.map(esc).join(' , ') || '—'}\n` +
                     `Healthy: ${tune.healthyCount}/${tune.poolSize}`);
-                result.notified = true;
+                result.notified = result.notified || sent;
             }
         }
     } catch (error) {
@@ -403,10 +408,14 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
     try {
         if (bot && !state.usageWarned && usage.success &&
             (usage.total ?? 0) / DAILY_QUOTA * 100 >= USAGE_WARN_PCT) {
-            await notifyAdmin(bot, buildUsageWarnText(usage.total ?? 0, usage.worker ?? 0));
-            state.usageWarned = true;
-            result.usageWarned = true;
-            await saveState(env, state);
+            // v0.8.36 — فقط تحویلِ واقعی گارد روزانه را می‌بندد؛ تلگرام پایین =
+            // تیک بعدی دوباره تلاش می‌کند (بدون افزودن put — saveState فقط روی موفقیت)
+            const sent = await notifyAdmin(bot, buildUsageWarnText(usage.total ?? 0, usage.worker ?? 0));
+            if (sent) {
+                state.usageWarned = true;
+                result.usageWarned = true;
+                await saveState(env, state);
+            }
         }
     } catch (error) {
         console.log(`automation: usage warn failed — ${safeError(error)}`);
@@ -423,10 +432,14 @@ export async function runScheduledAutomation(env: Env, now: number = Date.now())
             } catch {
                 // بدون telemetry — digest بدون این خط
             }
-            await notifyAdmin(bot, buildDigestText({ usage, users, date: today, bestProxyIP: result.bestProxyIP, bestCleanIP: result.bestCleanIP, edgeSummary }));
-            state.digestSent = true;
-            result.digestSent = true;
-            await saveState(env, state);
+            // v0.8.36 — همان قرارداد warn: شکست تلگرام گارد را نمی‌بندد؛ دایجست
+            // (یک‌بار در روز) تا تحویل واقعی در تیک‌های ساعتی همان روز تلاش می‌ماند
+            const sent = await notifyAdmin(bot, buildDigestText({ usage, users, date: today, bestProxyIP: result.bestProxyIP, bestCleanIP: result.bestCleanIP, edgeSummary }));
+            if (sent) {
+                state.digestSent = true;
+                result.digestSent = true;
+                await saveState(env, state);
+            }
         }
     } catch (error) {
         console.log(`automation: digest failed — ${safeError(error)}`);

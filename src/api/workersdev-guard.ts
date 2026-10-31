@@ -144,7 +144,8 @@ export function buildGuardText(res: WorkersDevGuardResult): string {
  */
 export async function runWorkersDevGuard(
     env: Env,
-    notify: ((html: string) => Promise<void>) | null
+    /** v0.8.36 — callback می‌تواند boolean تحویل برگرداند (notifyAdmin)؛ اینجا فقط گزارش است و تیک بعدی خودش دوباره چک می‌کند */
+    notify: ((html: string) => Promise<boolean | void>) | null
 ): Promise<WorkersDevGuardResult | null> {
     try {
         const res = await ensureWorkersDevDisabled();

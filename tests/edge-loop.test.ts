@@ -277,6 +277,37 @@ describe('edge-tuner — حلقه‌ی بسته', () => {
         expect(saved.baselineDate).toBe(today);
     });
 
+    it('هشدار تحویل‌نشده (false) cooldown هشدار را نمی‌بندد — تیک تیون بعدی دوباره تلاش می‌کند (v0.8.36)', async () => {
+        // now اولِ روز UTC تا هر دو ران همان روز telemetry را ببینند
+        const now1 = 1_700_008_200_000; // 2023-11-15T00:30:00Z
+        const now2 = now1 + 6 * 3_600_000 + 60_000; // +6h1m — هنوز همان روز UTC
+        const state = JSON.stringify({ baselineRtt: 100, baselineDate: '2023-11-13' });
+        const mock = createKvMock({
+            edgeTelemetry: makeDay(now1, 180, 12, '44344 IRSEL'),
+            edgeTunerState: state
+        });
+        const { runEdgeTuner } = await import('../src/api/edge-tuner');
+
+        // ران ۱ — جهش واقعی، ولی تلگرام تحویل نمی‌دهد (callback صریحاً false)
+        const notifyFail = vi.fn(async () => false);
+        const r1 = await runEdgeTuner({ kv: mock.kv } as unknown as Env, notifyFail, now1);
+        expect(r1.status).toBe('spike');
+        expect(notifyFail).toHaveBeenCalledTimes(1);
+
+        // تیون ثبت شود ولی cooldown هشدار بسته نشود → تیک بعدی تلاش مجدد ممکن
+        const saved1 = JSON.parse(mock.store.get('edgeTunerState')!);
+        expect(saved1.lastTuneAt).toBe(now1);
+        expect(saved1.lastAlertAt).toBeUndefined();
+
+        // ران ۲ — بعد از cooldown تیون، جهش ادامه دارد و هشدار بالاخره می‌رود
+        const notifyOk = vi.fn(async () => {});
+        const r2 = await runEdgeTuner({ kv: mock.kv } as unknown as Env, notifyOk, now2);
+        expect(r2.status).toBe('spike');
+        expect(notifyOk).toHaveBeenCalledTimes(1);
+        const saved2 = JSON.parse(mock.store.get('edgeTunerState')!);
+        expect(saved2.lastAlertAt).toBe(now2);
+    });
+
     it('cooldown — جهش پشت‌سرهم در بازه‌ی ۶ ساعت دوباره tuner بیدار نمی‌کند', async () => {
         const now = 1_700_000_000_000;
         const state = JSON.stringify({ baselineRtt: 100, baselineDate: new Date(now).toISOString().slice(0, 10), lastTuneAt: now - 60_000 });

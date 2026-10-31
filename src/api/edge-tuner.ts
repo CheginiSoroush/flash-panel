@@ -124,7 +124,8 @@ function aggTraffic(agg: EdgeAgg | undefined): number {
 
 export async function runEdgeTuner(
     env: Env,
-    notify: ((html: string) => Promise<void>) | null,
+    /** v0.8.36 — callback می‌تواند boolean تحویل برگرداند (notifyAdmin)؛ void = تحویل فرض می‌شود */
+    notify: ((html: string) => Promise<boolean | void>) | null,
     now: number = Date.now()
 ): Promise<EdgeTuneResult> {
     try {
@@ -192,6 +193,9 @@ export async function runEdgeTuner(
 
             const trafficDown = Object.values(day.colos ?? {}).reduce((sum, a) => sum + aggTraffic(a), 0);
 
+            // v0.8.36 — شکست تحویل (false) cooldown هشدار را نمی‌بندد: تیک تیون
+            // بعدی (۶ ساعت) دوباره تلاش می‌کند؛ تحویلِ موفق همان ۱۲ ساعت آرامش
+            let alertDelivered = false;
             if (notify && sinceAlert >= ALERT_COOLDOWN_MS) {
                 const asnLines = spikeAsns.length
                     ? spikeAsns.map((a) => `• ${escapeHtml(a)}`).join('\n')
@@ -204,14 +208,16 @@ export async function runEdgeTuner(
                     (trafficDown > 0 ? `Observed traffic: ↓ ${formatBytes(trafficDown)}\n` : '') +
                     `🔧 ProxyIP + CleanIP tuners triggered automatically.`;
                 try {
-                    await notify(html);
+                    alertDelivered = (await notify(html)) !== false;
                 } catch (error) {
                     console.log(`edge-tuner: alert failed — ${safeError(error)}`);
                 }
             }
 
             // baselineDate = today → blend این روزِ آلوده به جهش رد می‌شود
-            await saveState(env, { ...state, baselineRtt: baseline, baselineDate: today, lastTuneAt: now, lastAlertAt: now });
+            const next: EdgeTunerState = { ...state, baselineRtt: baseline, baselineDate: today, lastTuneAt: now };
+            if (alertDelivered) next.lastAlertAt = now;
+            await saveState(env, next);
             return { status: 'spike', todayAvgRtt: todayAvg, baselineRtt: baseline, rttSamples: rttN, spikeAsns, tuned };
         }
 

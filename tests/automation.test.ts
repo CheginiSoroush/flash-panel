@@ -483,6 +483,84 @@ describe('runScheduledAutomation', () => {
         expect(sentMessages).toHaveLength(1);
     });
 
+    it('retries the daily digest on the next tick when Telegram delivery failed (v0.8.36)', async () => {
+        const { runScheduledAutomation } = await import('../src/api/automation');
+        const env = makeEnv();
+        await seedBot(env);
+
+        // ران ۱ — تلگرام پایین است (502)؛ ران ۲ سالم. مصرف ۴۰٪ → فقط دایجست.
+        let telegramDown = true;
+        vi.stubGlobal('fetch', (async (input: any) => {
+            const url = String(input instanceof URL ? input.href : input);
+            if (url.includes('api.cloudflare.com')) {
+                return new Response(JSON.stringify({
+                    data: { viewer: { accounts: [{ total: [{ sum: { requests: 40_000 } }], worker: [{ sum: { requests: 10_000 } }] }] } }
+                }), { status: 200 });
+            }
+            if (url.includes('api.telegram.org')) {
+                if (telegramDown) return new Response('bad gateway', { status: 502 });
+                sentMessages.push(url);
+                return new Response(JSON.stringify({ ok: true }), { status: 200 });
+            }
+            return new Response('{}', { status: 404 });
+        }) as typeof fetch);
+
+        const first = await runScheduledAutomation(env, NOW);
+
+        // شکست تحویل ≠ ارسال‌شده — گارد روزانه نباید بسته شود
+        expect(first.digestSent).toBe(false);
+        const stored = JSON.parse(kvStore.get('automationState')!);
+        expect(stored.digestSent).toBeUndefined();
+
+        // تیک بعدی — تلگرام سالم → دایجست بالاخره می‌رود
+        telegramDown = false;
+        const second = await runScheduledAutomation(env, NOW + 3600_000);
+        expect(second.digestSent).toBe(true);
+        expect(sentMessages).toHaveLength(1);
+    });
+
+    it('retries the 80% usage warning when Telegram delivery failed (v0.8.36)', async () => {
+        const { runScheduledAutomation } = await import('../src/api/automation');
+        const env = makeEnv();
+        await seedBot(env);
+
+        let telegramDown = true;
+        vi.stubGlobal('fetch', (async (input: any) => {
+            const url = String(input instanceof URL ? input.href : input);
+            if (url.includes('api.cloudflare.com')) {
+                return new Response(JSON.stringify({
+                    data: { viewer: { accounts: [{ total: [{ sum: { requests: 95_000 } }], worker: [{ sum: { requests: 40_000 } }] }] } }
+                }), { status: 200 });
+            }
+            if (url.includes('api.telegram.org')) {
+                if (telegramDown) return new Response('bad gateway', { status: 502 });
+                sentMessages.push(url);
+                return new Response(JSON.stringify({ ok: true }), { status: 200 });
+            }
+            return new Response('{}', { status: 404 });
+        }) as typeof fetch);
+
+        // ران ۱ — ۹۵٪ ≥ ۸۰٪ ولی تلگرام 502 → نه warn نه digest گارد را نبندند
+        const first = await runScheduledAutomation(env, NOW);
+        expect(first.usageWarned).toBe(false);
+        expect(first.digestSent).toBe(false);
+        const stored = JSON.parse(kvStore.get('automationState')!);
+        expect(stored.usageWarned).toBeUndefined();
+
+        // ران ۲ — هر دو می‌روند (warn + digest)
+        telegramDown = false;
+        const second = await runScheduledAutomation(env, NOW + 3600_000);
+        expect(second.usageWarned).toBe(true);
+        expect(second.digestSent).toBe(true);
+        expect(sentMessages).toHaveLength(2);
+
+        // ران ۳ — گاردها روی تحویلِ موفق بسته شدند → هیچ پیام تکراری
+        const third = await runScheduledAutomation(env, NOW + 2 * 3600_000);
+        expect(third.usageWarned).toBe(false);
+        expect(third.digestSent).toBe(false);
+        expect(sentMessages).toHaveLength(2);
+    });
+
     it('buildDigestForCommand returns digest without touching daily guard', async () => {
         const { buildDigestForCommand } = await import('../src/api/automation');
         const { initForScheduled } = await import('@settings');
