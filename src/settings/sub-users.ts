@@ -118,23 +118,69 @@ export async function saveSubUsers(env: Env, users: SubUser[]): Promise<void> {
     await env.kv.put('subUsers', JSON.stringify(users));
 }
 
+// ---------- صف نوشتن subUsers (v0.8.35 — الگوی store.ts) ----------
+//
+// هر ۵ نویسنده‌ی این کلید قبلاً read-modify-write بی‌صف بودند — همان کلاس
+// lost-update که موتور store (v0.8.11/v0.8.25) برای proxySettings نابود کرد،
+// ولی نویسنده‌های subUsers از آن عبور می‌کردند. بدترین جفت: write آمار واکشی
+// (resolveAndRecordSubUser) هم‌زمان با revoke ادمین (updateSubUser active=false)
+// → آمار از روی نسخه‌ی کهنه‌ی خودش «کل blob» را بازنویسی می‌کرد = revoke بی‌صدا
+// پاک می‌شد و دسترسی کاربر برمی‌گشت. صف: serialize هم‌ایزوله + خواندن تازه داخل
+// صف (پایه‌ی write هرگز از خواندنِ بیرون صف نمی‌آید). KV تراکنش ندارد؛ مرز
+// isolate همان مرز پذیرفته‌شده‌ی معماری store.ts است.
+
+let subUsersWriteChain: Promise<unknown> = Promise.resolve();
+
+/** ریست صف بین تست‌ها */
+export function _resetSubUsersWriteQueueForTest(): void {
+    subUsersWriteChain = Promise.resolve();
+}
+
+interface SubUsersMutation<T> {
+    result: T;
+    /** undefined → بدون نوشتن (رد / بی‌تغییر / خطای اعتبارسنجی) */
+    next?: SubUser[];
+}
+
+async function mutateSubUsers<T>(
+    env: Env,
+    mutator: (users: SubUser[]) => SubUsersMutation<T> | Promise<SubUsersMutation<T>>
+): Promise<T> {
+    const run = subUsersWriteChain.catch(() => undefined).then(async (): Promise<T> => {
+        // خواندن تازه داخل صف — پایه‌ی write همیشه جدیدترین blob است
+        const users = await getSubUsers(env);
+        const out = await mutator(users);
+        if (out.next !== undefined) await saveSubUsers(env, out.next);
+        return out.result;
+    });
+    subUsersWriteChain = run;
+    return run;
+}
+
+/**
+ * جایگزینی کامل فهرست (بازیابی بکاپ) — از صف، تا با write های هم‌ایزوله تداخل نکند.
+ */
+export async function importSubUsers(env: Env, users: SubUser[]): Promise<void> {
+    await mutateSubUsers(env, () => ({ result: undefined, next: users }));
+}
+
 export async function createSubUser(env: Env, rawName: unknown): Promise<SubUser | null> {
     const name = sanitizeSubUserName(rawName);
     if (!name) return null;
 
-    const users = await getSubUsers(env);
-    if (users.length >= SUB_USERS_LIMIT) return null;
-
     // نام تکراری ممنوع نیست، ولی UUID همیشه یکتاست
-    const user: SubUser = {
-        id: crypto.randomUUID(),
-        name,
-        createdAt: Date.now(),
-        active: true
-    };
+    return mutateSubUsers(env, (users): SubUsersMutation<SubUser | null> => {
+        if (users.length >= SUB_USERS_LIMIT) return { result: null };
 
-    await saveSubUsers(env, [...users, user]);
-    return user;
+        const user: SubUser = {
+            id: crypto.randomUUID(),
+            name,
+            createdAt: Date.now(),
+            active: true
+        };
+
+        return { result: user, next: [...users, user] };
+    });
 }
 
 export async function updateSubUser(
@@ -142,50 +188,50 @@ export async function updateSubUser(
     id: string,
     patch: { name?: unknown; active?: unknown; telegramChatId?: unknown; expiresAt?: unknown }
 ): Promise<SubUser | null> {
-    const users = await getSubUsers(env);
-    const user = users.find(u => u.id === id);
-    if (!user) return null;
+    return mutateSubUsers(env, (users): SubUsersMutation<SubUser | null> => {
+        const user = users.find(u => u.id === id);
+        if (!user) return { result: null };
 
-    if (patch.name !== undefined) {
-        const name = sanitizeSubUserName(patch.name);
-        if (!name) return null;
-        user.name = name;
-    }
-
-    if (patch.active !== undefined) {
-        user.active = Boolean(patch.active);
-    }
-
-    if (patch.telegramChatId !== undefined) {
-        const chat = normalizeSubUserChatId(patch.telegramChatId);
-        // null = نامعتبر؛ '' = حذف لینک
-        if (chat === null) return null;
-        if (chat === '') delete user.telegramChatId;
-        else user.telegramChatId = chat;
-    }
-
-    if (patch.expiresAt !== undefined) {
-        // '' / null = حذف انقضا (بدون محدودیت زمانی)؛ عدد = epoch ms آینده
-        if (patch.expiresAt === '' || patch.expiresAt === null) {
-            delete user.expiresAt;
-        } else {
-            const exp = Number(patch.expiresAt);
-            if (!Number.isFinite(exp) || exp <= Date.now()) return null;
-            user.expiresAt = Math.floor(exp);
+        if (patch.name !== undefined) {
+            const name = sanitizeSubUserName(patch.name);
+            if (!name) return { result: null };
+            user.name = name;
         }
-    }
 
-    await saveSubUsers(env, users);
-    return user;
+        if (patch.active !== undefined) {
+            user.active = Boolean(patch.active);
+        }
+
+        if (patch.telegramChatId !== undefined) {
+            const chat = normalizeSubUserChatId(patch.telegramChatId);
+            // null = نامعتبر؛ '' = حذف لینک
+            if (chat === null) return { result: null };
+            if (chat === '') delete user.telegramChatId;
+            else user.telegramChatId = chat;
+        }
+
+        if (patch.expiresAt !== undefined) {
+            // '' / null = حذف انقضا (بدون محدودیت زمانی)؛ عدد = epoch ms آینده
+            if (patch.expiresAt === '' || patch.expiresAt === null) {
+                delete user.expiresAt;
+            } else {
+                const exp = Number(patch.expiresAt);
+                if (!Number.isFinite(exp) || exp <= Date.now()) return { result: null };
+                user.expiresAt = Math.floor(exp);
+            }
+        }
+
+        return { result: user, next: users };
+    });
 }
 
 export async function deleteSubUser(env: Env, id: string): Promise<boolean> {
-    const users = await getSubUsers(env);
-    const next = users.filter(u => u.id !== id);
-    if (next.length === users.length) return false;
+    return mutateSubUsers(env, (users): SubUsersMutation<boolean> => {
+        const next = users.filter(u => u.id !== id);
+        if (next.length === users.length) return { result: false };
 
-    await saveSubUsers(env, next);
-    return true;
+        return { result: true, next };
+    });
 }
 
 /**
@@ -254,13 +300,30 @@ export async function resolveAndRecordSubUser(
 
     if (!freshWindow) {
         // 🍳 فقط تغییرِ واقعی (شمارش جدید) سزاوار put است — قبلاً حتی داخل پنجره‌ی
-        // تازه، فقط برای lastFetchedAt هم کل blob نوشته می‌شد (هدررفت سهمیه‌ی write)
-        user.lastFetchedAt = now;
-        user.fetchCount = (user.fetchCount || 0) + 1;
-
+        // تازه، فقط برای lastFetchedAt هم کل blob نوشته می‌شد (هدررفت سهمیه‌ی write).
+        // v0.8.35: write از صف — داخل صف از رکورد «تازه» فقط فیلدهای آمار اعمال
+        // می‌شود؛ اگر نویسنده‌ی دیگری (revoke ادمین / سویپ انقضا / تغییر نام) همین
+        // حالا blob را عوض کرده باشد، نسخه‌ی تازه پایه است و تغییرش پاک نمی‌شود.
+        // پنجره روی رکورد تازه دوباره چک می‌شود تا دو واکشی هم‌زمان دو شمارش نسازند.
         try {
-            await saveSubUsers(env, users);
-            fetchSeenAt.set(id, now);
+            const wrote = await mutateSubUsers(env, (fresh): SubUsersMutation<boolean> => {
+                const target = fresh.find(u => u.id === id);
+                if (!target) return { result: false }; // در فاصله‌ی کوتاه حذف شده
+
+                const window = typeof target.lastFetchedAt === 'number' &&
+                    now - target.lastFetchedAt < SUB_USER_FETCH_THROTTLE_MS;
+                if (window) return { result: false };
+
+                target.lastFetchedAt = now;
+                target.fetchCount = (target.fetchCount || 0) + 1;
+                return { result: true, next: fresh };
+            });
+            if (wrote) {
+                fetchSeenAt.set(id, now);
+                // آینه‌ی رفتار قبلی: شیء برگشتی آمار به‌روز را هم ببیند
+                user.lastFetchedAt = now;
+                user.fetchCount = (user.fetchCount || 0) + 1;
+            }
         } catch {
             // write ناموفق — آمار مهم‌تر از دسترس‌پذیری اشتراک نیست
         }
@@ -298,34 +361,33 @@ export async function sweepExpiredSubUsers(
     now: number = Date.now(),
     soonWindowMs: number = 72 * 60 * 60 * 1000
 ): Promise<ExpirySweepResult> {
-    const result: ExpirySweepResult = { swept: [], expiringSoon: [], soonWindowMs };
-
     try {
-        const users = await getSubUsers(env);
-        let changed = false;
+        // v0.8.35 — از صف نوشتن: سویپ هم‌زمان با panel CRUD / write آمار، blob را
+        // از روی نسخه‌ی کهنه بازنویسی نمی‌کند (همان کلاس lost-update).
+        return await mutateSubUsers(env, (users): SubUsersMutation<ExpirySweepResult> => {
+            const result: ExpirySweepResult = { swept: [], expiringSoon: [], soonWindowMs };
+            let changed = false;
 
-        for (const user of users) {
-            if (!user.active) continue;
+            for (const user of users) {
+                if (!user.active) continue;
 
-            if (isSubUserExpired(user, now)) {
-                user.active = false;
-                result.swept.push(user);
-                changed = true;
-            } else if (
-                typeof user.expiresAt === 'number'
-                && user.expiresAt > now
-                && user.expiresAt - now <= soonWindowMs
-            ) {
-                result.expiringSoon.push(user);
+                if (isSubUserExpired(user, now)) {
+                    user.active = false;
+                    result.swept.push(user);
+                    changed = true;
+                } else if (
+                    typeof user.expiresAt === 'number'
+                    && user.expiresAt > now
+                    && user.expiresAt - now <= soonWindowMs
+                ) {
+                    result.expiringSoon.push(user);
+                }
             }
-        }
 
-        if (changed) {
-            await saveSubUsers(env, users);
-        }
+            return changed ? { result, next: users } : { result };
+        });
     } catch {
         // sweep نباید cron را بشکند — دور بعد دوباره امتحان می‌شود
+        return { swept: [], expiringSoon: [], soonWindowMs };
     }
-
-    return result;
 }

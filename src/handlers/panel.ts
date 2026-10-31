@@ -13,7 +13,7 @@ import { getDataset, updateDataset, invalidateDatasetCache } from '@kv';
 import { buildScript, updateMainSettings } from '@main';
 import { getGlobals, getMainSettings, getDefaultKvSettings, subscriptions, clients } from '@settings';
 import { CF_TOKEN_MISSING_ERROR } from '@api/cf-auth';
-import { createSubUser, deleteSubUser, getSubUsers, isValidSubUserId, saveSubUsers, updateSubUser } from '@settings/sub-users';
+import { createSubUser, deleteSubUser, getSubUsers, importSubUsers, isValidSubUserId, updateSubUser } from '@settings/sub-users';
 import {
     buildSettingsBackup,
     parseSettingsBackup,
@@ -399,7 +399,8 @@ async function importSettingsBackup(request: Request, env: Env): Promise<Respons
         ]);
 
         if (prepared.users) {
-            await saveSubUsers(env, prepared.users.users);
+            // v0.8.35 — جایگزینی کامل از صف نوشتن subUsers، نه put مستقیم
+            await importSubUsers(env, prepared.users.users);
         }
 
         if (prepared.bot) {
