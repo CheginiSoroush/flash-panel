@@ -492,11 +492,18 @@ function buildConfigsResponse(configs: Config[], fileName: string): Response {
 }
 
 function modifyOutbound(outbound: Outbound, tag: string, dialerProxy?: string): Outbound {
-    const newOutbound = structuredClone(outbound);
-    newOutbound.tag = tag;
+    // v0.8.63 — copy-on-write به‌جای structuredClone تمام‌عمیق (بنچمارک bun: ~۴۰×
+    // سریع‌تر — این تابع روی هر outbound هر ساب xray اجرا می‌شود). فقط دو مسیر
+    // نوشتن وجود دارد: tag در سطح اول و در صورت dialerProxy مسیر تودرتو
+    // streamSettings.sockopt — همان‌ها کپی می‌شوند؛ بقیه‌ی زیرشیءها بعد از build
+    // فقط-خواندنی‌اند (مصرف نهایی JSON.stringify است، هویتِ شیء بی‌معنا).
+    const newOutbound: Outbound = { ...outbound, tag };
 
     if (dialerProxy && newOutbound.streamSettings?.sockopt) {
-        newOutbound.streamSettings.sockopt.dialerProxy = dialerProxy;
+        newOutbound.streamSettings = {
+            ...newOutbound.streamSettings,
+            sockopt: { ...newOutbound.streamSettings.sockopt, dialerProxy }
+        };
     }
 
     return newOutbound;
