@@ -73,30 +73,37 @@ export async function getURLConfigs() {
     for (const domain of domains) {
         const totalPorts = ports.filter(port => domain.endsWith('workers.dev') || isHttps(port));
         const addrs = await getConfigAddresses(domain, false);
-        if (upstreamServer && upstreamPort) {
-            totalPorts.unshift(upstreamPort);
-            addrs.unshift(upstreamServer);
-        }
-
+        // v0.8.62 — جفت upstream دیگر در totalPorts/addrs ادغام نمی‌شود (unshift +
+        // XOR-skip — پاریتی با فیکس‌های xray v0.8.52 / sing-box v0.8.53 / clash).
+        // با تصادم (رایج‌ترین: ports=[443] و upstream روی همان ۴۴۳): جفت upstream
+        // دوبار تولید و کانفیگ‌های عادی همان پورت حذف می‌شدند — ساب raw بدون هیچ
+        // کانفیگ ورکری روی پورت تصادم. حالا upstream نقطه‌ی ورود اضافه است — اول
+        // صف، بدون تداخل با پورت‌های عادی؛ ترتیب بدون تصادم عیناً مثل قبل.
+        const hasUpstream = !!(upstreamServer && upstreamPort);
+        const pairs: Array<{ addr: string; port: number }> = [];
+        if (hasUpstream) pairs.push({ addr: upstreamServer, port: upstreamPort });
         for (const port of totalPorts) {
             for (const addr of addrs) {
-                const { sni, host } = selectSniHost(addr, domain);
-                if ((port === upstreamPort) !== (addr === upstreamServer)) continue;
-
-                if (protocols.includes(_VL_)) {
-                    const remark = generateRemark(proxyIndex, port, addr, _VL_, domain, false, false);
-                    const vlConfig = buildConfig(_VL_, addr, port, host, sni, remark, proxyIndex);
-                    VLConfs += `${vlConfig}\n`;
-                }
-
-                if (protocols.includes(_TR_)) {
-                    const remark = generateRemark(proxyIndex, port, addr, _TR_, domain, false, false);
-                    const trConfig = buildConfig(_TR_, addr, port, host, sni, remark, proxyIndex);
-                    TRConfs += `${trConfig}\n`;
-                }
-
-                proxyIndex++;
+                pairs.push({ addr, port });
             }
+        }
+
+        for (const { addr, port } of pairs) {
+            const { sni, host } = selectSniHost(addr, domain);
+
+            if (protocols.includes(_VL_)) {
+                const remark = generateRemark(proxyIndex, port, addr, _VL_, domain, false, false);
+                const vlConfig = buildConfig(_VL_, addr, port, host, sni, remark, proxyIndex);
+                VLConfs += `${vlConfig}\n`;
+            }
+
+            if (protocols.includes(_TR_)) {
+                const remark = generateRemark(proxyIndex, port, addr, _TR_, domain, false, false);
+                const trConfig = buildConfig(_TR_, addr, port, host, sni, remark, proxyIndex);
+                TRConfs += `${trConfig}\n`;
+            }
+
+            proxyIndex++;
         }
     }
 

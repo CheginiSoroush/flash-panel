@@ -123,44 +123,54 @@ export async function getClNormalConfig(): Promise<Response> {
     for (const domain of domains) {
         const totalPorts = ports.filter(port => domain.endsWith('workers.dev') || isHttps(port));
         const hosts = await getConfigAddresses(domain, false);
-        if (upstreamServer && upstreamPort) {
-            totalPorts.unshift(upstreamPort);
-            hosts.unshift(upstreamServer);
+        // v0.8.62 — جفت upstream دیگر در totalPorts/hosts ادغام نمی‌شود (unshift +
+        // XOR-skip — پاریتی با فیکس‌های xray v0.8.52 و sing-box v0.8.53). ادغامِ
+        // قدیمی وقتی upstreamPort عضو ports باشد (رایج‌ترین: ۴۴۳) دو ایراد می‌ساخت:
+        // (۱) جفت upstream دوبار تولید می‌شد — هر دو کپیِ پورت با شرط XOR پاس
+        // می‌کردند؛ (۲) کانفیگ‌های عادی همان پورت حذف می‌شدند — host عادی × پورت
+        // upstream توسط همان شرط skip می‌شد؛ با ports پیش‌فرض [443] یعنی سابِ
+        // clash بدون هیچ کانفیگ ورکری روی پورت تصادم، فقط دو کپی upstream. حالا
+        // upstream یک «نقطه‌ی ورود اضافه» است — اول صف، بدون تداخل با پورت‌های
+        // عادی. ترتیب در حالت بدون تصادم عیناً مثل قبل می‌ماند (port-بیرونی،
+        // host-درونی).
+        const hasUpstream = !!(upstreamServer && upstreamPort);
+        const pairs: Array<{ host: string; port: number }> = [];
+        if (hasUpstream) pairs.push({ host: upstreamServer, port: upstreamPort });
+        for (const port of totalPorts) {
+            for (const host of hosts) {
+                pairs.push({ host, port });
+            }
         }
 
         for (const protocol of protocols) {
             let protocolIndex = 1;
-            for (const port of totalPorts) {
-                for (const host of hosts) {
-                    if ((port === upstreamPort) !== (host === upstreamServer)) continue;
+            for (const { host, port } of pairs) {
+                const tag = generateRemark(protocolIndex, port, host, protocol, domain, false, false);
+                const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain, outbounds.length);
 
-                    const tag = generateRemark(protocolIndex, port, host, protocol, domain, false, false);
-                    const outbound = buildWebsocketOutbound(protocol, tag, host, port, domain, outbounds.length);
-
-                    if (outbound) {
-                        outbounds.push(outbound);
-                        if (domain === customDomain && domain !== mainDomain) {
-                            tagGroup['⚡ Best Ping D 🚀'].push(tag);
-                        } else {
-                            tagGroup['⚡ Best Ping 🚀'].push(tag);
-                        }
-
-                        if (isChain) {
-                            const chainTag = generateRemark(protocolIndex, port, host, protocol, domain, false, true);
-                            const chain = structuredClone(chainOutbound);
-                            chain['name'] = chainTag;
-                            chain['dialer-proxy'] = tag;
-                            outbounds.push(chain);
-
-                            if (domain === customDomain && domain !== mainDomain) {
-                                tagGroup['⚡ 🔗 Best Ping D 🚀'].push(chainTag);
-                            } else {
-                                tagGroup['⚡ 🔗 Best Ping 🚀'].push(chainTag);
-                            }
-                        }
-
-                        protocolIndex++;
+                if (outbound) {
+                    outbounds.push(outbound);
+                    if (domain === customDomain && domain !== mainDomain) {
+                        tagGroup['⚡ Best Ping D 🚀'].push(tag);
+                    } else {
+                        tagGroup['⚡ Best Ping 🚀'].push(tag);
                     }
+
+                    if (isChain) {
+                        const chainTag = generateRemark(protocolIndex, port, host, protocol, domain, false, true);
+                        const chain = structuredClone(chainOutbound);
+                        chain['name'] = chainTag;
+                        chain['dialer-proxy'] = tag;
+                        outbounds.push(chain);
+
+                        if (domain === customDomain && domain !== mainDomain) {
+                            tagGroup['⚡ 🔗 Best Ping D 🚀'].push(chainTag);
+                        } else {
+                            tagGroup['⚡ 🔗 Best Ping 🚀'].push(chainTag);
+                        }
+                    }
+
+                    protocolIndex++;
                 }
             }
         }
